@@ -1,0 +1,127 @@
+from fastapi import APIRouter, HTTPException, Depends, Query
+from typing import Optional, Literal
+from ..config import get_supabase_admin_client
+from ..routers.auth import require_auth
+from ..models.responses import TransactionsResponse, TransactionItem
+
+router = APIRouter(prefix="/transactions", tags=["Transactions"])
+
+
+@router.get("", response_model=TransactionsResponse)
+async def get_transactions(
+    type_filter: Optional[Literal["all", "receive", "issue", "transfer", "waste"]] = "all",
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    user_data: dict = Depends(require_auth)
+):
+    """Get transaction history with optional type filter."""
+    supabase = get_supabase_admin_client()
+    user = user_data["user"]
+
+    try:
+        # Get user profile for location filter
+        profile = supabase.table("profiles").select("*").eq(
+            "user_id", user.id
+        ).single().execute()
+
+        location_id = profile.data.get("location_id") if profile.data else None
+
+        # Build query
+        query = supabase.table("stock_transactions").select(
+            "*, items(name), profiles!stock_transactions_created_by_fkey(full_name)"
+        )
+
+        # Apply type filter
+        if type_filter and type_filter != "all":
+            query = query.eq("type", type_filter)
+
+        # Apply location filter - get both from and to
+        if location_id:
+            query = query.eq("location_id_from", location_id)
+
+        # Apply ordering and limit
+        query = query.order("created_at", desc=True).limit(limit)
+
+        result = query.execute()
+        all_data = result.data or []
+
+        # Manual pagination (offset)
+        paginated_data = all_data[offset:offset + limit] if offset > 0 else all_data[:limit]
+        result.data = paginated_data
+
+        # Get location names
+        locations = supabase.table("locations").select("id, name").execute()
+        location_map = {loc["id"]: loc["name"] for loc in (locations.data or [])}
+
+        # Format transactions
+        transactions = []
+        for t in (result.data or []):
+            item_name = t.get("items", {}).get("name", "Unknown") if t.get("items") else "Unknown"
+            created_by_name = "Unknown"
+            if t.get("profiles"):
+                created_by_name = t["profiles"].get("full_name") or "Unknown"
+
+            location_from = location_map.get(t.get("location_id_from")) if t.get("location_id_from") else None
+            location_to = location_map.get(t.get("location_id_to")) if t.get("location_id_to") else None
+
+            transactions.append(TransactionItem(
+                id=t["id"],
+                type=t["type"],
+                created_at=t["created_at"],
+                quantity=t["qty"],
+                unit=t["unit"],
+                item_name=item_name,
+                batch_id=t.get("batch_id"),
+                notes=t.get("notes"),
+                location_from=location_from,
+                location_to=location_to,
+                created_by_name=created_by_name
+            ))
+
+        return TransactionsResponse(
+            transactions=transactions,
+            total=len(all_data)
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{transaction_id}")
+async def get_transaction(transaction_id: str, user_data: dict = Depends(require_auth)):
+    """Get single transaction details."""
+    supabase = get_supabase_admin_client()
+
+    try:
+        result = supabase.table("stock_transactions").select(
+            "*, items(name, sku), profiles!stock_transactions_created_by_fkey(full_name), "
+            "stock_batches(id, supplier_id, quality_score)"
+        ).eq("id", transaction_id).single().execute()
+
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+
+        # Get location names
+        locations = supabase.table("locations").select("id, name").execute()
+        location_map = {loc["id"]: loc["name"] for loc in (locations.data or [])}
+
+        t = result.data
+        return {
+            "id": t["id"],
+            "type": t["type"],
+            "created_at": t["created_at"],
+            "quantity": t["qty"],
+            "unit": t["unit"],
+            "item": t.get("items"),
+            "batch": t.get("stock_batches"),
+            "notes": t.get("notes"),
+            "metadata": t.get("metadata"),
+            "location_from": location_map.get(t.get("location_id_from")),
+            "location_to": location_map.get(t.get("location_id_to")),
+            "created_by": t.get("profiles", {}).get("full_name") if t.get("profiles") else None
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

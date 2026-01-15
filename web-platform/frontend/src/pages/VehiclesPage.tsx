@@ -1,0 +1,191 @@
+import { useState } from 'react';
+import { Truck, Plus, Edit2, CheckCircle, XCircle } from 'lucide-react';
+import { Card, Button, Badge } from '../components/ui';
+import VehicleModal from '../components/modals/VehicleModal';
+import { useVehicles, useDeleteVehicle, useUpdateVehicle } from '../hooks/useData';
+import { useAuthStore } from '../stores/authStore';
+import type { Vehicle } from '../types';
+
+export default function VehiclesPage() {
+  const [showModal, setShowModal] = useState(false);
+  const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
+  const [showInactive, setShowInactive] = useState(false);
+
+  const user = useAuthStore((state) => state.user);
+  const isManager = user?.role && ['admin', 'zone_manager', 'location_manager'].includes(user.role);
+
+  const { data, isLoading, error, refetch } = useVehicles(!showInactive);
+  const deleteMutation = useDeleteVehicle();
+  const updateMutation = useUpdateVehicle();
+
+  const handleEdit = (vehicle: Vehicle) => {
+    setEditingVehicle(vehicle);
+    setShowModal(true);
+  };
+
+  const handleDeactivate = async (vehicle: Vehicle) => {
+    if (window.confirm(`Are you sure you want to deactivate ${vehicle.registration_number}?`)) {
+      try {
+        await deleteMutation.mutateAsync(vehicle.id);
+      } catch (err) {
+        console.error('Failed to deactivate vehicle:', err);
+      }
+    }
+  };
+
+  const handleReactivate = async (vehicle: Vehicle) => {
+    try {
+      await updateMutation.mutateAsync({ vehicleId: vehicle.id, data: { is_active: true } });
+    } catch (err) {
+      console.error('Failed to reactivate vehicle:', err);
+    }
+  };
+
+  const handleModalClose = () => {
+    setShowModal(false);
+    setEditingVehicle(null);
+  };
+
+  const handleSuccess = () => {
+    refetch();
+    handleModalClose();
+  };
+
+  if (isLoading) {
+    return (
+      <div className="animate-pulse space-y-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-20 bg-gray-200 rounded-xl"></div>
+        ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 text-red-600 p-4 rounded-lg">
+        Error loading vehicles: {(error as Error).message}
+      </div>
+    );
+  }
+
+  const vehicles = data?.vehicles || [];
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+            <Truck className="w-5 h-5 text-blue-600" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">Vehicles</h1>
+            <p className="text-sm text-gray-500">{vehicles.length} registered</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-sm text-gray-600">
+            <input
+              type="checkbox"
+              checked={showInactive}
+              onChange={(e) => setShowInactive(e.target.checked)}
+              className="rounded border-gray-300"
+            />
+            Show inactive
+          </label>
+          {isManager && (
+            <Button onClick={() => setShowModal(true)}>
+              <Plus className="w-4 h-4 mr-1" />
+              Add Vehicle
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Vehicles List */}
+      <Card padding="none">
+        <div className="divide-y divide-gray-200">
+          {vehicles.map((vehicle) => (
+            <div
+              key={vehicle.id}
+              className={`flex items-center gap-4 p-4 ${!vehicle.is_active ? 'bg-gray-50 opacity-75' : 'hover:bg-gray-50'} transition-colors`}
+            >
+              <div className={`w-12 h-12 ${vehicle.is_active ? 'bg-blue-100' : 'bg-gray-200'} rounded-lg flex items-center justify-center flex-shrink-0`}>
+                <Truck className={`w-6 h-6 ${vehicle.is_active ? 'text-blue-600' : 'text-gray-400'}`} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-gray-900 font-mono">
+                    {vehicle.registration_number}
+                  </span>
+                  <Badge variant={vehicle.is_active ? 'success' : 'default'} size="sm">
+                    {vehicle.is_active ? 'Active' : 'Inactive'}
+                  </Badge>
+                  <Badge variant="info" size="sm">
+                    {vehicle.fuel_type}
+                  </Badge>
+                </div>
+                <p className="text-sm text-gray-500">
+                  {vehicle.make && vehicle.model
+                    ? `${vehicle.make} ${vehicle.model}`
+                    : vehicle.make || vehicle.model || 'No make/model specified'}
+                </p>
+                {vehicle.notes && (
+                  <p className="text-xs text-gray-400 mt-1 truncate">{vehicle.notes}</p>
+                )}
+              </div>
+              {isManager && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleEdit(vehicle)}
+                    className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                    title="Edit"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                  {vehicle.is_active ? (
+                    <button
+                      onClick={() => handleDeactivate(vehicle)}
+                      className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Deactivate"
+                    >
+                      <XCircle className="w-4 h-4" />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleReactivate(vehicle)}
+                      className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                      title="Reactivate"
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+          {vehicles.length === 0 && (
+            <div className="p-12 text-center">
+              <Truck className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-500">No vehicles registered</p>
+              {isManager && (
+                <p className="text-sm text-gray-400">
+                  Click "Add Vehicle" to register your first vehicle
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {/* Vehicle Modal */}
+      <VehicleModal
+        isOpen={showModal}
+        onClose={handleModalClose}
+        onSuccess={handleSuccess}
+        vehicle={editingVehicle}
+      />
+    </div>
+  );
+}
