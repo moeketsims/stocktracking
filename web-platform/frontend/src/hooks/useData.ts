@@ -451,6 +451,20 @@ export function useUpdateVehicle() {
   });
 }
 
+export function useDeleteVehicle() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const response = await vehiclesApi.delete(id);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['vehicles'] });
+    },
+  });
+}
+
 // Drivers
 export function useDrivers(activeOnly: boolean = true) {
   return useQuery<{ drivers: Driver[] }>({
@@ -483,6 +497,20 @@ export function useUpdateDriver() {
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<Driver> }) => {
       const response = await driversApi.update(id, data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['drivers'] });
+    },
+  });
+}
+
+export function useDeleteDriver() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const response = await driversApi.delete(id);
       return response.data;
     },
     onSuccess: () => {

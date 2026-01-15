@@ -13,6 +13,7 @@ import {
   Truck,
   Users,
   Route,
+  LayoutGrid,
 } from 'lucide-react';
 import { useAuthStore } from './stores/authStore';
 import { useNotifications, useAlerts } from './hooks/useData';
@@ -26,6 +27,7 @@ import {
   AnalyticsPage,
   ReportsPage,
   ZoneOverviewPage,
+  OwnerDashboardPage,
   NotificationsPage,
   SettingsPage,
 } from './pages';
@@ -39,12 +41,13 @@ type TabId =
   | 'transactions'
   | 'alerts'
   | 'batches'
-  | 'analytics'
-  | 'reports'
-  | 'zone'
   | 'trips'
   | 'vehicles'
   | 'drivers'
+  | 'analytics'
+  | 'reports'
+  | 'zone'
+  | 'owner_dashboard'
   | 'notifications'
   | 'settings';
 
@@ -66,14 +69,15 @@ function App() {
 
   const moreTabs = [
     { id: 'batches' as const, label: 'Batches', icon: Boxes },
-    { id: 'analytics' as const, label: 'Analytics', icon: BarChart3 },
     { id: 'trips' as const, label: 'Trips', icon: Route },
     { id: 'vehicles' as const, label: 'Vehicles', icon: Truck },
     { id: 'drivers' as const, label: 'Drivers', icon: Users },
+    { id: 'analytics' as const, label: 'Analytics', icon: BarChart3 },
     ...(isManager()
       ? [
           { id: 'reports' as const, label: 'Reports', icon: FileText },
           { id: 'zone' as const, label: 'Zone Overview', icon: MapPin },
+          { id: 'owner_dashboard' as const, label: 'Owner Dashboard', icon: LayoutGrid },
         ]
       : []),
     { id: 'notifications' as const, label: 'Notifications', icon: Bell },
@@ -102,6 +106,8 @@ function App() {
         return <ReportsPage />;
       case 'zone':
         return <ZoneOverviewPage />;
+      case 'owner_dashboard':
+        return <OwnerDashboardPage />;
       case 'trips':
         return <TripsPage />;
       case 'vehicles':
@@ -120,26 +126,29 @@ function App() {
   return (
     <div className="min-h-screen bg-gray-100 flex">
       {/* Sidebar */}
-      <aside className="w-64 bg-gray-900 flex flex-col">
+      <aside className="w-64 bg-indigo-950 flex flex-col">
         <div className="p-6">
-          <h1 className="text-xl font-bold text-white flex items-center gap-2">
-            <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center">
-              🥔
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center">
+              <span className="text-xl">🥔</span>
             </div>
-            Potato Stock
-          </h1>
+            <div>
+              <h1 className="text-lg font-bold text-white">Potato Stock</h1>
+              <p className="text-xs text-indigo-300">Inventory Manager</p>
+            </div>
+          </div>
         </div>
 
-        <nav className="flex-1 px-4 space-y-1">
+        <nav className="flex-1 px-3 space-y-1">
           {/* Main Tabs */}
           {mainTabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium rounded-lg transition-colors relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
+              className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 ${
                 activeTab === tab.id
-                  ? 'bg-emerald-600 text-white before:absolute before:left-0 before:top-1 before:bottom-1 before:w-1 before:bg-emerald-400 before:rounded-full'
-                  : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                  ? 'bg-orange-500 text-white'
+                  : 'text-indigo-200 hover:bg-indigo-900 hover:text-white'
               }`}
             >
               <tab.icon className="w-5 h-5" />
@@ -152,7 +161,7 @@ function App() {
 
           {/* Divider */}
           <div className="pt-4 pb-2">
-            <p className="px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">
+            <p className="px-4 text-xs font-medium text-indigo-400 uppercase tracking-wider">
               More
             </p>
           </div>
@@ -162,10 +171,10 @@ function App() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium rounded-lg transition-colors relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
+              className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 ${
                 activeTab === tab.id
-                  ? 'bg-emerald-600 text-white before:absolute before:left-0 before:top-1 before:bottom-1 before:w-1 before:bg-emerald-400 before:rounded-full'
-                  : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                  ? 'bg-orange-500 text-white'
+                  : 'text-indigo-200 hover:bg-indigo-900 hover:text-white'
               }`}
             >
               <tab.icon className="w-5 h-5" />
@@ -180,8 +189,8 @@ function App() {
         </nav>
 
         {/* Version */}
-        <div className="p-4 border-t border-gray-800">
-          <p className="text-xs text-gray-500 text-center">v1.0.0</p>
+        <div className="p-4 border-t border-indigo-900">
+          <p className="text-xs text-indigo-400 text-center">v1.0.0</p>
         </div>
       </aside>
 
@@ -222,16 +231,23 @@ function App() {
 
 function AlertBadge() {
   const { data: alertsData } = useAlerts();
-  const totalAlerts =
+  const criticalCount = alertsData?.summary?.reorder_now_count || 0;
+  const warningCount =
     (alertsData?.summary?.low_stock_count || 0) +
-    (alertsData?.summary?.reorder_now_count || 0) +
     (alertsData?.summary?.expiring_soon_count || 0);
+  const totalAlerts = criticalCount + warningCount;
 
   if (totalAlerts === 0) return null;
 
+  // Cap at 99+ for cleaner display
+  const displayCount = totalAlerts > 99 ? '99+' : totalAlerts;
+
+  // Use red only for critical alerts, amber for warnings
+  const bgColor = criticalCount > 0 ? 'bg-red-500' : 'bg-amber-500';
+
   return (
-    <span className="ml-auto px-2 py-0.5 bg-red-500 text-white text-xs font-medium rounded-full">
-      {totalAlerts}
+    <span className={`ml-auto px-1.5 py-0.5 ${bgColor} text-white text-[10px] font-medium rounded-full min-w-[18px] text-center`}>
+      {displayCount}
     </span>
   );
 }
