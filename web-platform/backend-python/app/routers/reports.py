@@ -1,8 +1,8 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
-from typing import Literal
+from typing import Literal, Optional
 from datetime import datetime, timedelta
 from ..config import get_supabase_admin_client
-from ..routers.auth import require_manager
+from ..routers.auth import require_manager, get_view_location_id
 from ..models.responses import (
     DailySummaryResponse,
     DailySummaryItem,
@@ -17,6 +17,7 @@ router = APIRouter(prefix="/reports", tags=["Reports"])
 @router.get("/daily-summary", response_model=DailySummaryResponse)
 async def get_daily_summary(
     period_days: Literal[7, 14, 30] = 7,
+    view_location_id: Optional[str] = Query(None, description="Location ID to view (location_manager can view other shops read-only)"),
     user_data: dict = Depends(require_manager)
 ):
     """Get daily summary report - managers only."""
@@ -25,7 +26,8 @@ async def get_daily_summary(
     profile = user_data.get("profile", {})
 
     try:
-        location_id = profile.get("location_id")
+        # Get effective location for viewing (location_manager can view other shops)
+        location_id = get_view_location_id(profile, view_location_id)
         start_date = (datetime.now() - timedelta(days=period_days)).date()
 
         daily_breakdown = []
@@ -81,13 +83,17 @@ async def get_daily_summary(
 
 
 @router.get("/supplier-quality", response_model=SupplierQualityResponse)
-async def get_supplier_quality(user_data: dict = Depends(require_manager)):
+async def get_supplier_quality(
+    view_location_id: Optional[str] = Query(None, description="Location ID to view (location_manager can view other shops read-only)"),
+    user_data: dict = Depends(require_manager)
+):
     """Get supplier quality metrics - managers only."""
     supabase = get_supabase_admin_client()
     profile = user_data.get("profile", {})
 
     try:
-        location_id = profile.get("location_id")
+        # Get effective location for viewing (location_manager can view other shops)
+        location_id = get_view_location_id(profile, view_location_id)
 
         # Get all batches with supplier info
         batches_query = supabase.table("stock_batches").select(
@@ -179,6 +185,7 @@ async def get_supplier_quality(user_data: dict = Depends(require_manager)):
 @router.get("/export/daily-summary")
 async def export_daily_summary_csv(
     period_days: Literal[7, 14, 30] = 7,
+    view_location_id: Optional[str] = Query(None, description="Location ID to view (location_manager can view other shops read-only)"),
     user_data: dict = Depends(require_manager)
 ):
     """Export daily summary as CSV data."""
@@ -186,7 +193,7 @@ async def export_daily_summary_csv(
 
     try:
         # Get the data
-        summary = await get_daily_summary(period_days, user_data)
+        summary = await get_daily_summary(period_days, view_location_id, user_data)
 
         # Build CSV
         lines = ["Date,Received (kg),Issued (kg),Wasted (kg),Net Change (kg)"]

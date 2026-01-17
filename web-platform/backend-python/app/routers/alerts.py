@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
+from typing import Optional
 from datetime import datetime, timedelta
 from uuid import uuid4
 from ..config import get_supabase_admin_client
-from ..routers.auth import require_auth
+from ..routers.auth import require_auth, get_view_location_id
 from ..models.requests import AcknowledgeAlertRequest
 from ..models.responses import AlertsResponse, AlertSummary, AlertItem
 
@@ -139,7 +140,10 @@ def generate_alerts(supabase, location_id: str = None) -> list:
 
 
 @router.get("", response_model=AlertsResponse)
-async def get_alerts(user_data: dict = Depends(require_auth)):
+async def get_alerts(
+    view_location_id: Optional[str] = Query(None, description="Location ID to view (location_manager can view other shops read-only)"),
+    user_data: dict = Depends(require_auth)
+):
     """Get all active alerts and recently acknowledged ones."""
     supabase = get_supabase_admin_client()
     user = user_data["user"]
@@ -150,7 +154,8 @@ async def get_alerts(user_data: dict = Depends(require_auth)):
             "user_id", user.id
         ).single().execute()
 
-        location_id = profile.data.get("location_id") if profile.data else None
+        # Get effective location for viewing (location_manager can view other shops)
+        location_id = get_view_location_id(profile.data, view_location_id) if profile.data else None
 
         # Generate alerts
         all_alerts = generate_alerts(supabase, location_id)
@@ -216,7 +221,7 @@ async def acknowledge_alert(request: AcknowledgeAlertRequest, user_data: dict = 
             "acknowledged_at": datetime.now().isoformat()
         }
 
-        supabase.table("alert_acknowledgments").insert(ack_data).execute()
+        supabase.table("alert_acknowledgments").insert(ack_data)
 
         return {"success": True, "message": "Alert acknowledged"}
 
@@ -225,17 +230,21 @@ async def acknowledge_alert(request: AcknowledgeAlertRequest, user_data: dict = 
 
 
 @router.get("/summary")
-async def get_alert_summary(user_data: dict = Depends(require_auth)):
+async def get_alert_summary(
+    view_location_id: Optional[str] = Query(None, description="Location ID to view (location_manager can view other shops read-only)"),
+    user_data: dict = Depends(require_auth)
+):
     """Get just the alert counts for dashboard."""
     supabase = get_supabase_admin_client()
     user = user_data["user"]
 
     try:
-        profile = supabase.table("profiles").select("location_id").eq(
+        profile = supabase.table("profiles").select("*").eq(
             "user_id", user.id
         ).single().execute()
 
-        location_id = profile.data.get("location_id") if profile.data else None
+        # Get effective location for viewing (location_manager can view other shops)
+        location_id = get_view_location_id(profile.data, view_location_id) if profile.data else None
 
         alerts = generate_alerts(supabase, location_id)
 

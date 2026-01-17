@@ -1,10 +1,11 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
+from typing import Optional
 from datetime import datetime, timedelta
 from collections import defaultdict
 import random
 import math
 from ..config import get_supabase_admin_client
-from ..routers.auth import require_auth
+from ..routers.auth import require_auth, get_view_location_id
 from ..models.responses import (
     AnalyticsResponse,
     AnalyticsSummary,
@@ -32,6 +33,7 @@ router = APIRouter(prefix="/analytics", tags=["Analytics"])
 @router.get("", response_model=AnalyticsResponse)
 async def get_analytics(
     period_days: int = Query(default=30, ge=7, le=90),
+    view_location_id: Optional[str] = Query(None, description="Location ID to view (location_manager can view other shops read-only)"),
     user_data: dict = Depends(require_auth)
 ):
     """Get usage analytics including trends and patterns."""
@@ -40,11 +42,12 @@ async def get_analytics(
 
     try:
         # Get user profile
-        profile = supabase.table("profiles").select("location_id").eq(
+        profile = supabase.table("profiles").select("*").eq(
             "user_id", user.id
         ).single().execute()
 
-        location_id = profile.data.get("location_id") if profile.data else None
+        # Get effective location for viewing (location_manager can view other shops)
+        location_id = get_view_location_id(profile.data, view_location_id) if profile.data else None
 
         # Get last 7 days of daily usage summary
         seven_days_ago = (datetime.now() - timedelta(days=7)).date().isoformat()
@@ -291,17 +294,21 @@ async def get_analytics(
 
 
 @router.get("/stock-levels")
-async def get_stock_levels(user_data: dict = Depends(require_auth)):
+async def get_stock_levels(
+    view_location_id: Optional[str] = Query(None, description="Location ID to view (location_manager can view other shops read-only)"),
+    user_data: dict = Depends(require_auth)
+):
     """Get current stock levels with bag conversion."""
     supabase = get_supabase_admin_client()
     user = user_data["user"]
 
     try:
-        profile = supabase.table("profiles").select("location_id").eq(
+        profile = supabase.table("profiles").select("*").eq(
             "user_id", user.id
         ).single().execute()
 
-        location_id = profile.data.get("location_id") if profile.data else None
+        # Get effective location for viewing (location_manager can view other shops)
+        location_id = get_view_location_id(profile.data, view_location_id) if profile.data else None
 
         # Get stock balance with item info
         query = supabase.table("stock_balance").select(
@@ -542,7 +549,7 @@ def generate_hourly_pattern(seed: int, period_type: str = "today") -> dict:
 
 @router.get("/usage-comparison/hourly", response_model=UsageComparisonResponse)
 async def get_hourly_comparison(
-    location_id: str = Query(default=None),
+    view_location_id: Optional[str] = Query(None, description="Location ID to view (location_manager can view other shops read-only)"),
     user_data: dict = Depends(require_auth)
 ):
     """Get hourly usage comparison: Today vs Yesterday vs Same day last week."""
@@ -551,11 +558,12 @@ async def get_hourly_comparison(
 
     try:
         # Get user profile for location
-        profile = supabase.table("profiles").select("location_id").eq(
+        profile = supabase.table("profiles").select("*").eq(
             "user_id", user.id
         ).single().execute()
 
-        loc_id = location_id or (profile.data.get("location_id") if profile.data else None)
+        # Get effective location for viewing (location_manager can view other shops)
+        loc_id = get_view_location_id(profile.data, view_location_id) if profile.data else None
         loc_name = None
 
         if loc_id:
@@ -649,7 +657,7 @@ def generate_weekly_pattern(seed: int, period_type: str = "this_week") -> dict:
 
 @router.get("/usage-comparison/weekly", response_model=UsageComparisonResponse)
 async def get_weekly_comparison(
-    location_id: str = Query(default=None),
+    view_location_id: Optional[str] = Query(None, description="Location ID to view (location_manager can view other shops read-only)"),
     user_data: dict = Depends(require_auth)
 ):
     """Get weekly usage comparison: This week vs Last week."""
@@ -657,11 +665,12 @@ async def get_weekly_comparison(
     user = user_data["user"]
 
     try:
-        profile = supabase.table("profiles").select("location_id").eq(
+        profile = supabase.table("profiles").select("*").eq(
             "user_id", user.id
         ).single().execute()
 
-        loc_id = location_id or (profile.data.get("location_id") if profile.data else None)
+        # Get effective location for viewing (location_manager can view other shops)
+        loc_id = get_view_location_id(profile.data, view_location_id) if profile.data else None
         loc_name = None
 
         if loc_id:
@@ -762,7 +771,7 @@ def generate_monthly_pattern(seed: int, year: int, current_month: int = 12, is_c
 
 @router.get("/usage-comparison/monthly", response_model=UsageComparisonResponse)
 async def get_monthly_comparison(
-    location_id: str = Query(default=None),
+    view_location_id: Optional[str] = Query(None, description="Location ID to view (location_manager can view other shops read-only)"),
     user_data: dict = Depends(require_auth)
 ):
     """Get monthly usage comparison: This year vs Last year."""
@@ -770,11 +779,12 @@ async def get_monthly_comparison(
     user = user_data["user"]
 
     try:
-        profile = supabase.table("profiles").select("location_id").eq(
+        profile = supabase.table("profiles").select("*").eq(
             "user_id", user.id
         ).single().execute()
 
-        loc_id = location_id or (profile.data.get("location_id") if profile.data else None)
+        # Get effective location for viewing (location_manager can view other shops)
+        loc_id = get_view_location_id(profile.data, view_location_id) if profile.data else None
         loc_name = None
 
         if loc_id:

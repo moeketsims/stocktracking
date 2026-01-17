@@ -78,12 +78,12 @@ async def create_vehicle(request: CreateVehicleRequest, user_data: dict = Depend
             "is_active": True
         }
 
-        result = supabase.table("vehicles").insert(vehicle_data).execute()
+        result = supabase.table("vehicles").insert(vehicle_data)
 
         return {
             "success": True,
             "message": f"Vehicle {request.registration_number} created",
-            "vehicle": result.data[0]
+            "vehicle": result.data
         }
 
     except HTTPException:
@@ -156,7 +156,7 @@ async def deactivate_vehicle(vehicle_id: str, user_data: dict = Depends(require_
             raise HTTPException(status_code=400, detail="Vehicle is already inactive")
 
         # Soft delete
-        supabase.table("vehicles").update({"is_active": False}).eq("id", vehicle_id).execute()
+        supabase.table("vehicles").eq("id", vehicle_id).update({"is_active": False})
 
         return {
             "success": True,

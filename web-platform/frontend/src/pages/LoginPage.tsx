@@ -3,7 +3,11 @@ import { Eye, EyeOff, Mail, Lock } from 'lucide-react';
 import { Button, Input, Card } from '../components/ui';
 import { useLogin } from '../hooks/useAuth';
 
-export default function LoginPage() {
+interface LoginPageProps {
+  onForgotPassword?: () => void;
+}
+
+export default function LoginPage({ onForgotPassword }: LoginPageProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -82,6 +86,18 @@ export default function LoginPage() {
           >
             Sign In
           </Button>
+
+          {onForgotPassword && (
+            <div className="text-center">
+              <button
+                type="button"
+                onClick={onForgotPassword}
+                className="text-sm text-amber-700 hover:text-amber-800 hover:underline"
+              >
+                Forgot your password?
+              </button>
+            </div>
+          )}
         </form>
 
         <p className="text-center text-xs text-gray-400 mt-6">

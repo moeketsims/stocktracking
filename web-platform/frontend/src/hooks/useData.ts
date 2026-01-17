@@ -15,6 +15,8 @@ import {
   driversApi,
   tripsApi,
   ownerDashboardApi,
+  usersApi,
+  invitationsApi,
 } from '../lib/api';
 import type {
   DashboardData,
@@ -37,14 +39,18 @@ import type {
   TripsData,
   TripSummary,
   TripStopsData,
+  UsersData,
+  InvitationsData,
+  InviteUserForm,
+  UpdateUserForm,
 } from '../types';
 
 // Dashboard
-export function useDashboard() {
+export function useDashboard(viewLocationId?: string) {
   return useQuery<DashboardData>({
-    queryKey: ['dashboard'],
+    queryKey: ['dashboard', viewLocationId],
     queryFn: async () => {
-      const response = await dashboardApi.getDashboard();
+      const response = await dashboardApi.getDashboard(viewLocationId);
       return response.data;
     },
     staleTime: 30 * 1000, // 30 seconds
@@ -201,11 +207,11 @@ export function useOldestBatch(itemId: string) {
 }
 
 // Analytics
-export function useAnalytics() {
+export function useAnalytics(periodDays: number = 30, viewLocationId?: string) {
   return useQuery<AnalyticsData>({
-    queryKey: ['analytics'],
+    queryKey: ['analytics', periodDays, viewLocationId],
     queryFn: async () => {
-      const response = await analyticsApi.get();
+      const response = await analyticsApi.get(periodDays, viewLocationId);
       return response.data;
     },
   });
@@ -681,5 +687,133 @@ export function useAddStopToTrip() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['trip-stops'] });
     },
+  });
+}
+
+// User Management Hooks
+export function useUsers(params?: { role?: string; zone_id?: string; is_active?: boolean; search?: string }) {
+  return useQuery<UsersData>({
+    queryKey: ['users', params],
+    queryFn: async () => {
+      const response = await usersApi.list(params);
+      return response.data;
+    },
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useUpdateUser() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ userId, data }: { userId: string; data: UpdateUserForm }) => {
+      const response = await usersApi.update(userId, data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
+  });
+}
+
+export function useDeactivateUser() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      const response = await usersApi.deactivate(userId);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
+  });
+}
+
+export function useActivateUser() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      const response = await usersApi.activate(userId);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
+  });
+}
+
+export function useResetUserPassword() {
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      const response = await usersApi.resetPassword(userId);
+      return response.data;
+    },
+  });
+}
+
+// Invitations Hooks
+export function useInvitations(status?: string) {
+  return useQuery<InvitationsData>({
+    queryKey: ['invitations', status],
+    queryFn: async () => {
+      const response = await invitationsApi.list(status);
+      return response.data;
+    },
+  });
+}
+
+export function useCreateInvitation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: InviteUserForm) => {
+      const response = await invitationsApi.create(data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invitations'] });
+    },
+  });
+}
+
+export function useCancelInvitation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (invitationId: string) => {
+      const response = await invitationsApi.cancel(invitationId);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invitations'] });
+    },
+  });
+}
+
+export function useResendInvitation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (invitationId: string) => {
+      const response = await invitationsApi.resend(invitationId);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invitations'] });
+    },
+  });
+}
+
+// Zones (for dropdowns)
+export function useZones() {
+  return useQuery({
+    queryKey: ['zones'],
+    queryFn: async () => {
+      const response = await referenceApi.getZones();
+      return response.data.zones;
+    },
+    staleTime: 10 * 60 * 1000,
   });
 }

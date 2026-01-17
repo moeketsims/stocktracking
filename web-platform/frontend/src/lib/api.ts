@@ -48,14 +48,18 @@ export const authApi = {
 
 // Dashboard API
 export const dashboardApi = {
-  getDashboard: () => api.get('/api/dashboard'),
-  getTodayStats: () => api.get('/api/dashboard/today-stats'),
+  getDashboard: (viewLocationId?: string) =>
+    api.get('/api/dashboard', { params: viewLocationId ? { view_location_id: viewLocationId } : undefined }),
+  getTodayStats: (viewLocationId?: string) =>
+    api.get('/api/dashboard/today-stats', { params: viewLocationId ? { view_location_id: viewLocationId } : undefined }),
 };
 
 // Stock API
 export const stockApi = {
-  getOverview: () => api.get('/api/stock'),
-  getBalance: () => api.get('/api/stock/balance'),
+  getOverview: (viewLocationId?: string) =>
+    api.get('/api/stock', { params: viewLocationId ? { view_location_id: viewLocationId } : undefined }),
+  getBalance: (viewLocationId?: string) =>
+    api.get('/api/stock/balance', { params: viewLocationId ? { view_location_id: viewLocationId } : undefined }),
   receive: (data: any) => api.post('/api/stock/receive', data),
   issue: (data: any) => api.post('/api/stock/issue', data),
   transfer: (data: any) => api.post('/api/stock/transfer', data),
@@ -64,48 +68,54 @@ export const stockApi = {
 
 // Transactions API
 export const transactionsApi = {
-  getAll: (params?: { type_filter?: string; limit?: number; offset?: number }) =>
+  getAll: (params?: { type_filter?: string; limit?: number; offset?: number; view_location_id?: string }) =>
     api.get('/api/transactions', { params }),
   getById: (id: string) => api.get(`/api/transactions/${id}`),
 };
 
 // Alerts API
 export const alertsApi = {
-  getAll: () => api.get('/api/alerts'),
-  getSummary: () => api.get('/api/alerts/summary'),
+  getAll: (viewLocationId?: string) =>
+    api.get('/api/alerts', { params: viewLocationId ? { view_location_id: viewLocationId } : undefined }),
+  getSummary: (viewLocationId?: string) =>
+    api.get('/api/alerts/summary', { params: viewLocationId ? { view_location_id: viewLocationId } : undefined }),
   acknowledge: (data: any) => api.post('/api/alerts/acknowledge', data),
 };
 
 // Batches API
 export const batchesApi = {
-  getAll: (params?: { filter_type?: string; item_id?: string; limit?: number }) =>
+  getAll: (params?: { filter_type?: string; item_id?: string; limit?: number; view_location_id?: string }) =>
     api.get('/api/batches', { params }),
   getById: (id: string) => api.get(`/api/batches/${id}`),
-  getOldest: (itemId: string) => api.get(`/api/batches/oldest/${itemId}`),
+  getOldest: (itemId: string, viewLocationId?: string) =>
+    api.get(`/api/batches/oldest/${itemId}`, { params: viewLocationId ? { view_location_id: viewLocationId } : undefined }),
 };
 
 // Analytics API
 export const analyticsApi = {
-  get: (periodDays: number = 30) => api.get('/api/analytics', { params: { period_days: periodDays } }),
-  getStockLevels: () => api.get('/api/analytics/stock-levels'),
+  get: (periodDays: number = 30, viewLocationId?: string) =>
+    api.get('/api/analytics', { params: { period_days: periodDays, view_location_id: viewLocationId } }),
+  getStockLevels: (viewLocationId?: string) =>
+    api.get('/api/analytics/stock-levels', { params: viewLocationId ? { view_location_id: viewLocationId } : undefined }),
   getShopEfficiency: (periodDays: number = 30) =>
     api.get('/api/analytics/shop-efficiency', { params: { period_days: periodDays } }),
-  getHourlyComparison: (locationId?: string) =>
-    api.get('/api/analytics/usage-comparison/hourly', { params: { location_id: locationId } }),
-  getWeeklyComparison: (locationId?: string) =>
-    api.get('/api/analytics/usage-comparison/weekly', { params: { location_id: locationId } }),
-  getMonthlyComparison: (locationId?: string) =>
-    api.get('/api/analytics/usage-comparison/monthly', { params: { location_id: locationId } }),
+  getHourlyComparison: (viewLocationId?: string) =>
+    api.get('/api/analytics/usage-comparison/hourly', { params: viewLocationId ? { view_location_id: viewLocationId } : undefined }),
+  getWeeklyComparison: (viewLocationId?: string) =>
+    api.get('/api/analytics/usage-comparison/weekly', { params: viewLocationId ? { view_location_id: viewLocationId } : undefined }),
+  getMonthlyComparison: (viewLocationId?: string) =>
+    api.get('/api/analytics/usage-comparison/monthly', { params: viewLocationId ? { view_location_id: viewLocationId } : undefined }),
 };
 
 // Reports API
 export const reportsApi = {
-  getDailySummary: (periodDays: number = 7) =>
-    api.get('/api/reports/daily-summary', { params: { period_days: periodDays } }),
-  getSupplierQuality: () => api.get('/api/reports/supplier-quality'),
-  exportDailySummary: (periodDays: number = 7) =>
+  getDailySummary: (periodDays: number = 7, viewLocationId?: string) =>
+    api.get('/api/reports/daily-summary', { params: { period_days: periodDays, view_location_id: viewLocationId } }),
+  getSupplierQuality: (viewLocationId?: string) =>
+    api.get('/api/reports/supplier-quality', { params: viewLocationId ? { view_location_id: viewLocationId } : undefined }),
+  exportDailySummary: (periodDays: number = 7, viewLocationId?: string) =>
     api.get('/api/reports/export/daily-summary', {
-      params: { period_days: periodDays },
+      params: { period_days: periodDays, view_location_id: viewLocationId },
       responseType: 'blob',
     }),
 };
@@ -215,6 +225,36 @@ export const demoApi = {
   seed: () => api.post('/api/demo/seed'),
   clear: () => api.delete('/api/demo/clear'),
   status: () => api.get('/api/demo/status'),
+  createTestUser: () => api.post('/api/demo/create-test-user'),
+};
+
+// Users API (admin/zone manager)
+export const usersApi = {
+  list: (params?: { role?: string; zone_id?: string; is_active?: boolean; search?: string }) =>
+    api.get('/api/users', { params }),
+  get: (id: string) => api.get(`/api/users/${id}`),
+  update: (id: string, data: any) => api.patch(`/api/users/${id}`, data),
+  deactivate: (id: string) => api.post(`/api/users/${id}/deactivate`),
+  activate: (id: string) => api.post(`/api/users/${id}/activate`),
+  resetPassword: (id: string) => api.post(`/api/users/${id}/reset-password`),
+};
+
+// Invitations API
+export const invitationsApi = {
+  list: (status?: string) => api.get('/api/invitations', { params: { status } }),
+  create: (data: any) => api.post('/api/invitations', data),
+  cancel: (id: string) => api.delete(`/api/invitations/${id}`),
+  resend: (id: string) => api.post(`/api/invitations/${id}/resend`),
+};
+
+// Auth Extensions
+export const authExtApi = {
+  validateInvite: (token: string) => api.get(`/api/auth/validate-invite/${token}`),
+  acceptInvite: (data: { token: string; password: string }) =>
+    api.post('/api/auth/accept-invite', data),
+  forgotPassword: (email: string) => api.post('/api/auth/forgot-password', { email }),
+  resetPassword: (data: { token: string; password: string }) =>
+    api.post('/api/auth/reset-password', data),
 };
 
 // Barcode Scanning API

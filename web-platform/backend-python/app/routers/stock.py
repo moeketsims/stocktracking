@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
+from typing import Optional
 from datetime import datetime
 from uuid import uuid4
 from ..config import get_supabase_admin_client
-from ..routers.auth import require_auth, require_manager
+from ..routers.auth import require_auth, require_manager, get_view_location_id
 from ..models.requests import (
     ReceiveStockRequest,
     IssueStockRequest,
@@ -28,7 +29,10 @@ def convert_to_kg(quantity: float, unit: str, conversion_factor: float) -> float
 
 
 @router.get("", response_model=StockScreenResponse)
-async def get_stock_overview(user_data: dict = Depends(require_auth)):
+async def get_stock_overview(
+    view_location_id: Optional[str] = Query(None, description="Location ID to view (location_manager can view other shops read-only)"),
+    user_data: dict = Depends(require_auth)
+):
     """Get stock overview for the stock screen."""
     supabase = get_supabase_admin_client()
     user = user_data["user"]
@@ -41,7 +45,8 @@ async def get_stock_overview(user_data: dict = Depends(require_auth)):
         if profile.error:
             raise HTTPException(status_code=500, detail=f"Profile query failed: {profile.error}")
 
-        location_id = profile.data.get("location_id") if profile.data else None
+        # Get effective location for viewing (location_manager can view other shops)
+        location_id = get_view_location_id(profile.data, view_location_id) if profile.data else None
 
         # Get all items first (for lookup)
         items_result = supabase.table("items").select("*").execute()
@@ -184,7 +189,7 @@ async def receive_stock(request: ReceiveStockRequest, user_data: dict = Depends(
             "photo_url": request.photo_url
         }
 
-        batch = supabase.table("stock_batches").insert(batch_data).execute()
+        batch = supabase.table("stock_batches").insert(batch_data)
 
         # Create transaction
         transaction_data = {
@@ -205,11 +210,11 @@ async def receive_stock(request: ReceiveStockRequest, user_data: dict = Depends(
             }
         }
 
-        transaction = supabase.table("stock_transactions").insert(transaction_data).execute()
+        transaction = supabase.table("stock_transactions").insert(transaction_data)
 
         # Update batch with transaction id
         supabase.table("stock_batches").update({
-            "receive_transaction_id": transaction.data[0]["id"]
+            "receive_transaction_id": transaction.data["id"]
         }).eq("id", batch_id).execute()
 
         return {
@@ -304,12 +309,12 @@ async def issue_stock(request: IssueStockRequest, user_data: dict = Depends(requ
             }
         }
 
-        transaction = supabase.table("stock_transactions").insert(transaction_data).execute()
+        transaction = supabase.table("stock_transactions").insert(transaction_data)
 
         return {
             "success": True,
             "message": f"Issued {qty_kg:.2f} kg",
-            "transaction_id": transaction.data[0]["id"],
+            "transaction_id": transaction.data["id"],
             "batch_id": batch_id
         }
 
@@ -363,12 +368,12 @@ async def transfer_stock(request: TransferStockRequest, user_data: dict = Depend
             }
         }
 
-        transaction = supabase.table("stock_transactions").insert(transaction_data).execute()
+        transaction = supabase.table("stock_transactions").insert(transaction_data)
 
         return {
             "success": True,
             "message": f"Transferred {qty_kg:.2f} kg",
-            "transaction_id": transaction.data[0]["id"]
+            "transaction_id": transaction.data["id"]
         }
 
     except HTTPException:
@@ -417,12 +422,12 @@ async def record_waste(request: WasteStockRequest, user_data: dict = Depends(req
             }
         }
 
-        transaction = supabase.table("stock_transactions").insert(transaction_data).execute()
+        transaction = supabase.table("stock_transactions").insert(transaction_data)
 
         return {
             "success": True,
             "message": f"Recorded {qty_kg:.2f} kg waste",
-            "transaction_id": transaction.data[0]["id"]
+            "transaction_id": transaction.data["id"]
         }
 
     except HTTPException:
@@ -432,17 +437,21 @@ async def record_waste(request: WasteStockRequest, user_data: dict = Depends(req
 
 
 @router.get("/balance")
-async def get_stock_balance(user_data: dict = Depends(require_auth)):
+async def get_stock_balance(
+    view_location_id: Optional[str] = Query(None, description="Location ID to view (location_manager can view other shops read-only)"),
+    user_data: dict = Depends(require_auth)
+):
     """Get current stock balance."""
     supabase = get_supabase_admin_client()
     user = user_data["user"]
 
     try:
-        profile = supabase.table("profiles").select("location_id").eq(
+        profile = supabase.table("profiles").select("*").eq(
             "user_id", user.id
         ).single().execute()
 
-        location_id = profile.data.get("location_id") if profile.data else None
+        # Get effective location for viewing (location_manager can view other shops)
+        location_id = get_view_location_id(profile.data, view_location_id) if profile.data else None
 
         query = supabase.table("stock_balance").select(
             "*, locations(name), items(name, sku, unit)"

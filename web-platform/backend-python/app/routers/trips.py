@@ -206,12 +206,12 @@ async def create_trip(request: CreateTripRequest, user_data: dict = Depends(requ
             "supplier_id": request.supplier_id
         }
 
-        result = supabase.table("trips").insert(trip_data).execute()
+        result = supabase.table("trips").insert(trip_data)
 
         return {
             "success": True,
             "message": f"Trip {trip_number} created",
-            "trip": result.data[0]
+            "trip": result.data
         }
 
     except HTTPException:
@@ -439,12 +439,12 @@ async def cancel_trip(trip_id: str, user_data: dict = Depends(require_manager)):
         if existing.data["status"] in ("completed", "cancelled"):
             raise HTTPException(status_code=400, detail=f"Cannot cancel a {existing.data['status']} trip")
 
-        result = supabase.table("trips").update({"status": "cancelled"}).eq("id", trip_id).execute()
+        result = supabase.table("trips").eq("id", trip_id).update({"status": "cancelled"})
 
         return {
             "success": True,
             "message": "Trip cancelled",
-            "trip": result.data[0]
+            "trip": result.data
         }
 
     except HTTPException:
@@ -731,11 +731,11 @@ async def add_stop_to_trip(
             "notes": stop.get("notes")
         }
 
-        result = supabase.table("trip_stops").insert(stop_data).execute()
+        result = supabase.table("trip_stops").insert(stop_data)
 
         # Mark trip as multi-stop if not already
         if not trip.data.get("is_multi_stop"):
-            supabase.table("trips").update({"is_multi_stop": True}).eq("id", trip_id).execute()
+            supabase.table("trips").eq("id", trip_id).update({"is_multi_stop": True})
 
         return {
             "success": True,

@@ -9,6 +9,15 @@ class Settings(BaseSettings):
     supabase_service_key: str = ""
     port: int = 3001
 
+    # Email settings (Gmail SMTP)
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = ""
+    smtp_from_name: str = "Potato Stock Tracking"
+    app_url: str = "http://localhost:5173"  # Frontend URL for invite links
+
     class Config:
         env_file = ".env"
 
@@ -231,6 +240,34 @@ class AuthClient:
     def __init__(self, client: SupabaseClient):
         self.client = client
 
+    def sign_up(self, credentials: dict) -> "AuthResponse":
+        """Sign up a new user."""
+        url = f"{self.client.url}/auth/v1/signup"
+        headers = {
+            "apikey": self.client.key,
+            "Content-Type": "application/json"
+        }
+
+        with httpx.Client() as http:
+            response = http.post(url, headers=headers, json=credentials)
+
+            if response.status_code >= 400:
+                return AuthResponse(user=None, session=None, error=response.text)
+
+            data = response.json()
+            user = AuthUser(
+                id=data["user"]["id"],
+                email=data["user"]["email"],
+                user_metadata=data["user"].get("user_metadata", {})
+            )
+            session = None
+            if data.get("access_token"):
+                session = AuthSession(
+                    access_token=data["access_token"],
+                    refresh_token=data.get("refresh_token", "")
+                )
+            return AuthResponse(user=user, session=session, error=None)
+
     def sign_in_with_password(self, credentials: dict) -> "AuthResponse":
         url = f"{self.client.url}/auth/v1/token?grant_type=password"
         headers = {
@@ -300,6 +337,103 @@ class AuthClient:
 
     def sign_out(self):
         pass  # No-op for now
+
+    @property
+    def admin(self) -> "AuthAdmin":
+        return AuthAdmin(self.client)
+
+
+class AuthAdmin:
+    """Admin auth operations for user management."""
+
+    def __init__(self, client: SupabaseClient):
+        self.client = client
+
+    def create_user(self, user_data: dict) -> "AuthResponse":
+        """Create a new user with admin privileges."""
+        url = f"{self.client.url}/auth/v1/admin/users"
+        headers = {
+            "apikey": self.client.key,
+            "Authorization": f"Bearer {self.client.key}",
+            "Content-Type": "application/json"
+        }
+
+        with httpx.Client() as http:
+            response = http.post(url, headers=headers, json=user_data)
+
+            if response.status_code >= 400:
+                return AuthResponse(user=None, session=None, error=response.text)
+
+            data = response.json()
+            user = AuthUser(
+                id=data["id"],
+                email=data.get("email"),
+                user_metadata=data.get("user_metadata", {})
+            )
+            return AuthResponse(user=user, session=None, error=None)
+
+    def get_user_by_id(self, user_id: str) -> "AuthResponse":
+        """Get a user by their ID."""
+        url = f"{self.client.url}/auth/v1/admin/users/{user_id}"
+        headers = {
+            "apikey": self.client.key,
+            "Authorization": f"Bearer {self.client.key}",
+            "Content-Type": "application/json"
+        }
+
+        with httpx.Client() as http:
+            response = http.get(url, headers=headers)
+
+            if response.status_code >= 400:
+                return AuthResponse(user=None, session=None, error=response.text)
+
+            data = response.json()
+            user = AuthUser(
+                id=data["id"],
+                email=data.get("email"),
+                user_metadata=data.get("user_metadata", {})
+            )
+            return AuthResponse(user=user, session=None, error=None)
+
+    def update_user(self, user_id: str, update_data: dict) -> "AuthResponse":
+        """Update a user's details."""
+        url = f"{self.client.url}/auth/v1/admin/users/{user_id}"
+        headers = {
+            "apikey": self.client.key,
+            "Authorization": f"Bearer {self.client.key}",
+            "Content-Type": "application/json"
+        }
+
+        with httpx.Client() as http:
+            response = http.put(url, headers=headers, json=update_data)
+
+            if response.status_code >= 400:
+                return AuthResponse(user=None, session=None, error=response.text)
+
+            data = response.json()
+            user = AuthUser(
+                id=data["id"],
+                email=data.get("email"),
+                user_metadata=data.get("user_metadata", {})
+            )
+            return AuthResponse(user=user, session=None, error=None)
+
+    def generate_link(self, link_data: dict) -> dict:
+        """Generate an email link (password reset, signup, etc.)."""
+        url = f"{self.client.url}/auth/v1/admin/generate_link"
+        headers = {
+            "apikey": self.client.key,
+            "Authorization": f"Bearer {self.client.key}",
+            "Content-Type": "application/json"
+        }
+
+        with httpx.Client() as http:
+            response = http.post(url, headers=headers, json=link_data)
+
+            if response.status_code >= 400:
+                return {"error": response.text}
+
+            return response.json()
 
 
 class AuthUser:

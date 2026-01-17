@@ -103,7 +103,7 @@ async def seed_demo_data(user_data: dict = Depends(require_auth)):
                 }
 
                 try:
-                    supabase.table("stock_transactions").insert(tx_data).execute()
+                    supabase.table("stock_transactions").insert(tx_data)
                     results["receive_transactions"] += 1
                 except Exception as e:
                     results["errors"].append(f"Receive tx error: {str(e)}")
@@ -141,7 +141,7 @@ async def seed_demo_data(user_data: dict = Depends(require_auth)):
                     }
 
                     try:
-                        supabase.table("stock_transactions").insert(tx_data).execute()
+                        supabase.table("stock_transactions").insert(tx_data)
                         results["issue_transactions"] += 1
                     except Exception as e:
                         results["errors"].append(f"Issue tx error: {str(e)}")
@@ -178,7 +178,7 @@ async def seed_demo_data(user_data: dict = Depends(require_auth)):
                 }
 
                 try:
-                    supabase.table("stock_transactions").insert(tx_data).execute()
+                    supabase.table("stock_transactions").insert(tx_data)
                     results["waste_transactions"] += 1
                 except Exception as e:
                     results["errors"].append(f"Waste tx error: {str(e)}")
@@ -203,7 +203,7 @@ async def seed_demo_data(user_data: dict = Depends(require_auth)):
             }
 
             try:
-                supabase.table("stock_transactions").insert(tx_data).execute()
+                supabase.table("stock_transactions").insert(tx_data)
                 results["waste_transactions"] += 1
             except Exception as e:
                 results["errors"].append(f"Warehouse waste tx error: {str(e)}")
@@ -237,7 +237,7 @@ async def seed_demo_data(user_data: dict = Depends(require_auth)):
                 }
 
                 try:
-                    supabase.table("stock_transactions").insert(tx_data).execute()
+                    supabase.table("stock_transactions").insert(tx_data)
                     results["transfer_transactions"] += 1
                 except Exception as e:
                     results["errors"].append(f"Transfer tx error: {str(e)}")
@@ -270,7 +270,7 @@ async def seed_demo_data(user_data: dict = Depends(require_auth)):
             }
 
             try:
-                supabase.table("stock_transactions").insert(tx_data).execute()
+                supabase.table("stock_transactions").insert(tx_data)
                 results["receive_transactions"] += 1
             except Exception as e:
                 results["errors"].append(f"Today receive tx error: {str(e)}")
@@ -295,7 +295,7 @@ async def seed_demo_data(user_data: dict = Depends(require_auth)):
                 }
 
                 try:
-                    supabase.table("stock_transactions").insert(tx_data).execute()
+                    supabase.table("stock_transactions").insert(tx_data)
                     results["issue_transactions"] += 1
                 except Exception as e:
                     results["errors"].append(f"Today issue tx error: {str(e)}")
@@ -320,7 +320,7 @@ async def seed_demo_data(user_data: dict = Depends(require_auth)):
             }
 
             try:
-                supabase.table("stock_transactions").insert(tx_data).execute()
+                supabase.table("stock_transactions").insert(tx_data)
                 results["waste_transactions"] += 1
             except Exception as e:
                 results["errors"].append(f"Today waste tx error: {str(e)}")
@@ -345,7 +345,7 @@ async def seed_demo_data(user_data: dict = Depends(require_auth)):
             }
 
             try:
-                supabase.table("stock_transactions").insert(tx_data).execute()
+                supabase.table("stock_transactions").insert(tx_data)
                 results["transfer_transactions"] += 1
             except Exception as e:
                 results["errors"].append(f"Today transfer tx error: {str(e)}")
@@ -395,7 +395,7 @@ async def seed_demo_data(user_data: dict = Depends(require_auth)):
                         "metadata": {"demo_data": True, "trip_id": trip["id"]}
                     }
 
-                    supabase.table("stock_transactions").insert(tx_data).execute()
+                    supabase.table("stock_transactions").insert(tx_data)
                     results["transfer_transactions"] += 1
 
             except Exception as e:
@@ -462,6 +462,88 @@ async def clear_demo_data(user_data: dict = Depends(require_auth)):
             "message": f"Cleared {deleted_count} demo transactions and reset {reset_trips} trips."
         }
 
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/create-test-user")
+async def create_test_user(user_data: dict = Depends(require_auth)):
+    """
+    Create a test location_manager user for testing read-only access to other shops.
+
+    Creates:
+    - Email: location.manager@test.com
+    - Password: Test123!
+    - Role: location_manager
+    - Assigned to first available shop
+    """
+    supabase = get_supabase_admin_client()
+
+    try:
+        # Get first shop location
+        locations = supabase.table("locations").select("id, name").eq("type", "shop").limit(1).execute()
+        if not locations.data:
+            raise HTTPException(status_code=400, detail="No shop locations found")
+
+        shop = locations.data[0]
+
+        # Check if test user already exists
+        existing = supabase.table("profiles").select("*").eq("full_name", "Test Location Manager").execute()
+        if existing.data:
+            return {
+                "success": True,
+                "message": "Test user already exists",
+                "credentials": {
+                    "email": "location.manager@test.com",
+                    "password": "Test123!",
+                    "role": "location_manager",
+                    "location": shop["name"]
+                },
+                "user_id": existing.data[0]["user_id"]
+            }
+
+        # Create user in Supabase Auth
+        auth_response = supabase.auth.admin.create_user({
+            "email": "location.manager@test.com",
+            "password": "Test123!",
+            "email_confirm": True,
+            "user_metadata": {
+                "full_name": "Test Location Manager"
+            }
+        })
+
+        if not auth_response.user:
+            raise HTTPException(status_code=500, detail="Failed to create auth user")
+
+        new_user_id = auth_response.user.id
+
+        # Create profile
+        profile_data = {
+            "id": str(uuid4()),
+            "user_id": new_user_id,
+            "role": "location_manager",
+            "location_id": shop["id"],
+            "full_name": "Test Location Manager",
+            "created_at": datetime.now().isoformat()
+        }
+
+        supabase.table("profiles").insert(profile_data)
+
+        return {
+            "success": True,
+            "message": "Test location_manager user created successfully",
+            "credentials": {
+                "email": "location.manager@test.com",
+                "password": "Test123!",
+                "role": "location_manager",
+                "location": shop["name"]
+            },
+            "user_id": new_user_id,
+            "note": "This user can view all locations read-only but can only write to their assigned location"
+        }
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

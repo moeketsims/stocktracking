@@ -101,7 +101,7 @@ async def edit_batch(batch_id: str, request: BatchEditRequest, user_data: dict =
         # Record edit history
         if edit_records:
             for record in edit_records:
-                supabase.table("batch_edit_history").insert(record).execute()
+                supabase.table("batch_edit_history").insert(record)
 
         return {
             "success": True,

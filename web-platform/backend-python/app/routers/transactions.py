@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import Optional, Literal
 from ..config import get_supabase_admin_client
-from ..routers.auth import require_auth
+from ..routers.auth import require_auth, get_view_location_id
 from ..models.responses import TransactionsResponse, TransactionItem
 
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
@@ -10,6 +10,7 @@ router = APIRouter(prefix="/transactions", tags=["Transactions"])
 @router.get("", response_model=TransactionsResponse)
 async def get_transactions(
     type_filter: Optional[Literal["all", "receive", "issue", "transfer", "waste"]] = "all",
+    view_location_id: Optional[str] = Query(None, description="Location ID to view (location_manager can view other shops read-only)"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     user_data: dict = Depends(require_auth)
@@ -24,7 +25,8 @@ async def get_transactions(
             "user_id", user.id
         ).single().execute()
 
-        location_id = profile.data.get("location_id") if profile.data else None
+        # Get effective location for viewing (location_manager can view other shops)
+        location_id = get_view_location_id(profile.data, view_location_id) if profile.data else None
 
         # Build query
         query = supabase.table("stock_transactions").select(

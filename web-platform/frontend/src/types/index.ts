@@ -375,6 +375,15 @@ export interface WasteStockForm {
   notes?: string;
 }
 
+// Driver Form Types
+export interface CreateDriverForm {
+  full_name: string;
+  phone?: string;
+  license_number?: string;
+  license_expiry?: string;
+  notes?: string;
+}
+
 // Vehicle Types
 export interface Vehicle {
   id: string;
@@ -557,4 +566,78 @@ export interface OwnerDashboardData {
   waste_rate_30d_pct: number;
   usage_trend_direction: TrendDirection;
   usage_trend_pct: number;
+}
+
+// User Management Types
+export interface ManagedUser {
+  id: string;
+  user_id: string;
+  email: string | null;
+  role: UserRole;
+  full_name: string | null;
+  phone: string | null;
+  zone_id: string | null;
+  location_id: string | null;
+  zone_name: string | null;
+  location_name: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface UsersData {
+  users: ManagedUser[];
+  total: number;
+}
+
+export interface UserInvitation {
+  id: string;
+  email: string;
+  role: UserRole;
+  zone_id: string | null;
+  location_id: string | null;
+  zone_name: string | null;
+  location_name: string | null;
+  full_name: string | null;
+  invited_by: string;
+  expires_at: string;
+  accepted_at: string | null;
+  created_at: string;
+  status: 'pending' | 'accepted' | 'expired';
+}
+
+export interface InvitationsData {
+  invitations: UserInvitation[];
+  total: number;
+}
+
+export interface InviteUserForm {
+  email: string;
+  role: UserRole;
+  zone_id?: string;
+  location_id?: string;
+  full_name?: string;
+}
+
+export interface UpdateUserForm {
+  role?: UserRole;
+  zone_id?: string;
+  location_id?: string;
+  full_name?: string;
+  phone?: string;
+}
+
+export interface InviteValidation {
+  valid: boolean;
+  email: string;
+  role: UserRole;
+  full_name: string | null;
+  zone_name: string | null;
+  location_name: string | null;
+  expires_at: string;
+}
+
+export interface AcceptInviteForm {
+  token: string;
+  password: string;
 }

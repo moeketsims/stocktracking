@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import Optional, Literal
 from datetime import datetime, timedelta
 from ..config import get_supabase_admin_client
-from ..routers.auth import require_auth
+from ..routers.auth import require_auth, get_view_location_id
 from ..models.responses import BatchInfo
 
 router = APIRouter(prefix="/batches", tags=["Batch Management"])
@@ -12,6 +12,7 @@ router = APIRouter(prefix="/batches", tags=["Batch Management"])
 async def get_batches(
     filter_type: Optional[Literal["all", "expiring_soon", "poor_quality"]] = "all",
     item_id: Optional[str] = None,
+    view_location_id: Optional[str] = Query(None, description="Location ID to view (location_manager can view other shops read-only)"),
     limit: int = Query(50, ge=1, le=200),
     user_data: dict = Depends(require_auth)
 ):
@@ -21,11 +22,12 @@ async def get_batches(
 
     try:
         # Get user profile
-        profile = supabase.table("profiles").select("location_id").eq(
+        profile = supabase.table("profiles").select("*").eq(
             "user_id", user.id
         ).single().execute()
 
-        location_id = profile.data.get("location_id") if profile.data else None
+        # Get effective location for viewing (location_manager can view other shops)
+        location_id = get_view_location_id(profile.data, view_location_id) if profile.data else None
 
         # Build query - include locations for owner dashboard expiring batches view
         query = supabase.table("stock_batches").select(
@@ -157,17 +159,22 @@ async def get_batch(batch_id: str, user_data: dict = Depends(require_auth)):
 
 
 @router.get("/oldest/{item_id}")
-async def get_oldest_batch(item_id: str, user_data: dict = Depends(require_auth)):
+async def get_oldest_batch(
+    item_id: str,
+    view_location_id: Optional[str] = Query(None, description="Location ID to view (location_manager can view other shops read-only)"),
+    user_data: dict = Depends(require_auth)
+):
     """Get oldest batch for FIFO suggestion."""
     supabase = get_supabase_admin_client()
     user = user_data["user"]
 
     try:
-        profile = supabase.table("profiles").select("location_id").eq(
+        profile = supabase.table("profiles").select("*").eq(
             "user_id", user.id
         ).single().execute()
 
-        location_id = profile.data.get("location_id") if profile.data else None
+        # Get effective location for viewing (location_manager can view other shops)
+        location_id = get_view_location_id(profile.data, view_location_id) if profile.data else None
 
         query = supabase.table("stock_batches").select(
             "id, remaining_qty, received_at"

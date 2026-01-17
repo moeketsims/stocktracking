@@ -253,12 +253,12 @@ async def create_scan_session(
             "notes": request.notes
         }
 
-        result = supabase.table("barcode_scan_sessions").insert(session_data).execute()
+        result = supabase.table("barcode_scan_sessions").insert(session_data)
 
         return {
             "success": True,
             "message": "Scan session started",
-            "session": result.data[0]
+            "session": result.data
         }
 
     except Exception as e:
@@ -393,7 +393,7 @@ async def record_scan(
             "notes": request.notes
         }
 
-        scan_result = supabase.table("barcode_scan_logs").insert(scan_data).execute()
+        scan_result = supabase.table("barcode_scan_logs").insert(scan_data)
 
         # Update session totals
         update_data = {
@@ -521,8 +521,8 @@ async def bulk_receive_from_session(
                 "scan_session_id": session_id
             }
 
-            batch_result = supabase.table("stock_batches").insert(batch_data).execute()
-            created_batches.append(batch_result.data[0])
+            batch_result = supabase.table("stock_batches").insert(batch_data)
+            created_batches.append(batch_result.data)
 
             # Create transaction
             transaction_data = {
@@ -545,8 +545,8 @@ async def bulk_receive_from_session(
                 }
             }
 
-            trans_result = supabase.table("stock_transactions").insert(transaction_data).execute()
-            created_transactions.append(trans_result.data[0])
+            trans_result = supabase.table("stock_transactions").insert(transaction_data)
+            created_transactions.append(trans_result.data)
 
             # Update batch with transaction reference
             supabase.table("stock_batches").update({
@@ -749,12 +749,12 @@ async def create_barcode_mapping(
             "is_active": True
         }
 
-        result = supabase.table("supplier_barcode_mappings").insert(mapping_data).execute()
+        result = supabase.table("supplier_barcode_mappings").insert(mapping_data)
 
         return {
             "success": True,
             "message": "Barcode mapping created",
-            "mapping": result.data[0]
+            "mapping": result.data
         }
 
     except HTTPException:

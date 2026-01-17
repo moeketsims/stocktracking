@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   LayoutDashboard,
   Package,
@@ -14,6 +14,7 @@ import {
   Users,
   Route,
   LayoutGrid,
+  UserCog,
 } from 'lucide-react';
 import { useAuthStore } from './stores/authStore';
 import { useNotifications, useAlerts } from './hooks/useData';
@@ -30,10 +31,16 @@ import {
   OwnerDashboardPage,
   NotificationsPage,
   SettingsPage,
+  UsersPage,
 } from './pages';
 import TripsPage from './pages/TripsPage';
 import VehiclesPage from './pages/VehiclesPage';
 import DriversPage from './pages/DriversPage';
+import AcceptInvitePage from './pages/AcceptInvitePage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
+
+type PublicPage = 'login' | 'forgot-password' | 'accept-invite' | 'reset-password';
 
 type TabId =
   | 'dashboard'
@@ -48,16 +55,83 @@ type TabId =
   | 'reports'
   | 'zone'
   | 'owner_dashboard'
+  | 'users'
   | 'notifications'
   | 'settings';
 
 function App() {
   const { isAuthenticated, isManager } = useAuthStore();
   const [activeTab, setActiveTab] = useState<TabId>('dashboard');
+  const [publicPage, setPublicPage] = useState<PublicPage>('login');
+  const [inviteToken, setInviteToken] = useState<string>('');
+  const [resetToken, setResetToken] = useState<string>('');
   const { data: notificationsData } = useNotifications();
 
+  // Check URL for invite/reset tokens on load
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const invite = params.get('invite');
+    const reset = params.get('reset');
+    const type = params.get('type');
+
+    if (invite) {
+      setInviteToken(invite);
+      setPublicPage('accept-invite');
+    } else if (reset || type === 'recovery') {
+      // Handle Supabase recovery token from hash
+      const hash = window.location.hash;
+      if (hash) {
+        const hashParams = new URLSearchParams(hash.substring(1));
+        const accessToken = hashParams.get('access_token');
+        if (accessToken) {
+          setResetToken(accessToken);
+          setPublicPage('reset-password');
+        }
+      } else if (reset) {
+        setResetToken(reset);
+        setPublicPage('reset-password');
+      }
+    }
+  }, []);
+
+  const clearUrlParams = () => {
+    window.history.replaceState({}, document.title, window.location.pathname);
+    setInviteToken('');
+    setResetToken('');
+    setPublicPage('login');
+  };
+
   if (!isAuthenticated) {
-    return <LoginPage />;
+    // Handle public pages
+    if (publicPage === 'accept-invite' && inviteToken) {
+      return (
+        <AcceptInvitePage
+          token={inviteToken}
+          onSuccess={clearUrlParams}
+          onCancel={clearUrlParams}
+        />
+      );
+    }
+
+    if (publicPage === 'forgot-password') {
+      return (
+        <ForgotPasswordPage
+          onBack={() => setPublicPage('login')}
+        />
+      );
+    }
+
+    if (publicPage === 'reset-password' && resetToken) {
+      return (
+        <ResetPasswordPage
+          token={resetToken}
+          onSuccess={clearUrlParams}
+          onCancel={clearUrlParams}
+        />
+      );
+    }
+
+    return <LoginPage onForgotPassword={() => setPublicPage('forgot-password')} />;
   }
 
   const mainTabs = [
@@ -78,6 +152,7 @@ function App() {
           { id: 'reports' as const, label: 'Reports', icon: FileText },
           { id: 'zone' as const, label: 'Zone Overview', icon: MapPin },
           { id: 'owner_dashboard' as const, label: 'Owner Dashboard', icon: LayoutGrid },
+          { id: 'users' as const, label: 'User Management', icon: UserCog },
         ]
       : []),
     { id: 'notifications' as const, label: 'Notifications', icon: Bell },
@@ -114,6 +189,8 @@ function App() {
         return <VehiclesPage />;
       case 'drivers':
         return <DriversPage />;
+      case 'users':
+        return <UsersPage />;
       case 'notifications':
         return <NotificationsPage />;
       case 'settings':

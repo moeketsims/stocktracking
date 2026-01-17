@@ -85,12 +85,12 @@ async def create_driver(request: CreateDriverRequest, user_data: dict = Depends(
             "is_active": True
         }
 
-        result = supabase.table("drivers").insert(driver_data).execute()
+        result = supabase.table("drivers").insert(driver_data)
 
         return {
             "success": True,
             "message": f"Driver {request.full_name} created",
-            "driver": result.data[0]
+            "driver": result.data
         }
 
     except Exception as e:
@@ -158,7 +158,7 @@ async def deactivate_driver(driver_id: str, user_data: dict = Depends(require_ma
             raise HTTPException(status_code=404, detail="Driver not found")
 
         # Soft delete - set is_active to false
-        supabase.table("drivers").update({"is_active": False}).eq("id", driver_id).execute()
+        supabase.table("drivers").eq("id", driver_id).update({"is_active": False})
 
         return {
             "success": True,

@@ -80,7 +80,7 @@ async def create_adjustment(request: AdjustmentRequest, user_data: dict = Depend
             }
         }
 
-        transaction = supabase.table("stock_transactions").insert(transaction_data).execute()
+        transaction = supabase.table("stock_transactions").insert(transaction_data)
 
         # Update batch if specified
         if request.batch_id:

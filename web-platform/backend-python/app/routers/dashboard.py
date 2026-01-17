@@ -1,14 +1,18 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
+from typing import Optional
 from datetime import datetime, timedelta
 from ..config import get_supabase_admin_client
-from ..routers.auth import require_auth
+from ..routers.auth import require_auth, get_view_location_id
 from ..models.responses import DashboardResponse, DashboardStats, ForecastData
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
 
 @router.get("", response_model=DashboardResponse)
-async def get_dashboard(user_data: dict = Depends(require_auth)):
+async def get_dashboard(
+    view_location_id: Optional[str] = Query(None, description="Location ID to view (location_manager can view other shops read-only)"),
+    user_data: dict = Depends(require_auth)
+):
     """Get dashboard data including stats, forecasts, and stock balance."""
     supabase = get_supabase_admin_client()
     user = user_data["user"]
@@ -21,7 +25,8 @@ async def get_dashboard(user_data: dict = Depends(require_auth)):
         if profile.error:
             raise HTTPException(status_code=500, detail=f"Profile query failed: {profile.error}")
 
-        location_id = profile.data.get("location_id") if profile.data else None
+        # Get effective location for viewing (location_manager can view other shops)
+        location_id = get_view_location_id(profile.data, view_location_id) if profile.data else None
 
         # Get stock balance (simple query without joins - views don't support joins in PostgREST)
         stock_query = supabase.table("stock_balance").select("*")
@@ -182,17 +187,21 @@ async def get_dashboard(user_data: dict = Depends(require_auth)):
 
 
 @router.get("/today-stats")
-async def get_today_stats(user_data: dict = Depends(require_auth)):
+async def get_today_stats(
+    view_location_id: Optional[str] = Query(None, description="Location ID to view (location_manager can view other shops read-only)"),
+    user_data: dict = Depends(require_auth)
+):
     """Get quick stats for today."""
     supabase = get_supabase_admin_client()
     user = user_data["user"]
 
     try:
-        profile = supabase.table("profiles").select("location_id").eq(
+        profile = supabase.table("profiles").select("*").eq(
             "user_id", user.id
         ).single().execute()
 
-        location_id = profile.data.get("location_id") if profile.data else None
+        # Get effective location for viewing (location_manager can view other shops)
+        location_id = get_view_location_id(profile.data, view_location_id) if profile.data else None
 
         today = datetime.now().date().isoformat()
         today_start = f"{today}T00:00:00"

@@ -31,6 +31,7 @@ import {
 } from 'recharts';
 import { Card, Badge } from '../components/ui';
 import UsageComparisonCharts from '../components/UsageComparisonCharts';
+import LocationSelector from '../components/LocationSelector';
 import { useDashboard, useAnalytics, useShopEfficiency } from '../hooks/useData';
 import { useAuthStore } from '../stores/authStore';
 import { useSettingsStore } from '../stores/settingsStore';
@@ -121,9 +122,10 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 export default function DashboardPage() {
-  const { data, isLoading, error } = useDashboard();
+  const [viewLocationId, setViewLocationId] = useState<string | undefined>();
   const [selectedPeriod, setSelectedPeriod] = useState<7 | 30 | 90>(30);
-  const { data: analyticsData, isLoading: analyticsLoading } = useAnalytics(selectedPeriod);
+  const { data, isLoading, error } = useDashboard(viewLocationId);
+  const { data: analyticsData, isLoading: analyticsLoading } = useAnalytics(selectedPeriod, viewLocationId);
   const { data: efficiencyData } = useShopEfficiency(selectedPeriod);
   const { user } = useAuthStore();
   const { defaultUnit } = useSettingsStore();
@@ -214,6 +216,13 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      {/* Location Selector for location managers to view other shops */}
+      <LocationSelector
+        value={viewLocationId}
+        onChange={setViewLocationId}
+        className="mb-4"
+      />
+
       {/* Premium Enterprise Header - compact overview row */}
       <div className="flex items-center justify-between pb-2 border-b border-gray-200">
         <div>
