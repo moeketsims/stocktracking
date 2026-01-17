@@ -214,128 +214,105 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header with Welcome and Quick Stats */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Welcome Card */}
-        <Card className="lg:col-span-2 bg-gradient-to-br from-orange-500 to-orange-600 text-white border-0">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-bold">
-                Welcome back, {user?.full_name || 'User'}
-              </h2>
-              <p className="text-orange-100 mt-1">
-                Here's your stock performance overview
-              </p>
-              <div className="flex items-center gap-4 mt-4">
-                <div className="flex items-center gap-2">
-                  <Package className="w-5 h-5 text-orange-200" />
-                  <span className="text-lg font-semibold">
-                    {formatQty(getPreferredValue(stats.total_stock_kg, stats.total_stock_bags, defaultUnit))} {unitLabel}
-                  </span>
-                </div>
-                <div className="h-6 w-px bg-orange-400" />
-                <div className="flex items-center gap-2">
-                  {trendDirection === 'up' ? (
-                    <TrendingUp className="w-5 h-5 text-green-300" />
-                  ) : trendDirection === 'down' ? (
-                    <TrendingDown className="w-5 h-5 text-red-300" />
-                  ) : (
-                    <Activity className="w-5 h-5 text-orange-200" />
-                  )}
-                  <span className={`font-medium ${trendDirection === 'up' ? 'text-green-300' : trendDirection === 'down' ? 'text-red-300' : 'text-orange-200'}`}>
-                    {trendPct > 0 ? '+' : ''}{trendPct.toFixed(1)}% this week
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="hidden md:block">
-              <BarChart3 className="w-24 h-24 text-orange-300 opacity-50" />
+      {/* Premium Enterprise Header - compact overview row */}
+      <div className="flex items-center justify-between pb-2 border-b border-gray-200">
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">
+            Welcome back, {user?.full_name || 'User'}
+          </h1>
+          <p className="text-sm text-gray-500">Stock performance overview</p>
+        </div>
+        <div className="flex items-center gap-6">
+          {/* Total Stock */}
+          <div className="text-right">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Total Stock</p>
+            <p className="text-xl font-semibold text-gray-900">
+              {formatQty(getPreferredValue(stats.total_stock_kg, stats.total_stock_bags, defaultUnit))} {unitLabel}
+            </p>
+          </div>
+          {/* Trend */}
+          <div className="text-right">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Trend</p>
+            <div className="flex items-center gap-1.5 justify-end">
+              {trendDirection === 'up' ? (
+                <TrendingUp className="w-4 h-4 text-emerald-600" />
+              ) : trendDirection === 'down' ? (
+                <TrendingDown className="w-4 h-4 text-red-500" />
+              ) : (
+                <Activity className="w-4 h-4 text-gray-400" />
+              )}
+              <span className={`text-lg font-semibold ${trendDirection === 'up' ? 'text-emerald-600' : trendDirection === 'down' ? 'text-red-500' : 'text-gray-500'}`}>
+                {trendPct > 0 ? '+' : ''}{trendPct.toFixed(1)}%
+              </span>
             </div>
           </div>
-        </Card>
-
-        {/* Days of Cover Card */}
-        <Card className={`${forecast.days_of_cover < 3 ? 'bg-red-50 border-red-200' : forecast.days_of_cover < 7 ? 'bg-amber-50 border-amber-200' : 'bg-green-50 border-green-200'}`}>
-          <div className="text-center">
-            <Clock className={`w-8 h-8 mx-auto mb-1 ${forecast.days_of_cover < 3 ? 'text-red-500' : forecast.days_of_cover < 7 ? 'text-amber-500' : 'text-green-500'}`} />
-            <p className="text-sm font-medium text-gray-600">Days of Stock Cover</p>
-            <p className={`text-4xl font-bold ${forecast.days_of_cover < 3 ? 'text-red-600' : forecast.days_of_cover < 7 ? 'text-amber-600' : 'text-green-600'}`}>
+          {/* Days of Cover */}
+          <div className={`text-right px-4 py-2 rounded-card ${forecast.days_of_cover < 3 ? 'bg-red-50' : forecast.days_of_cover < 7 ? 'bg-amber-50' : 'bg-emerald-50'}`}>
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Days Cover</p>
+            <p className={`text-xl font-semibold ${forecast.days_of_cover < 3 ? 'text-red-600' : forecast.days_of_cover < 7 ? 'text-amber-600' : 'text-emerald-600'}`}>
               {Math.min(forecast.days_of_cover, 99).toFixed(0)}
             </p>
-            <div className="mt-2 space-y-1">
-              {forecast.reorder_by_date ? (
-                <p className="text-xs font-medium text-amber-600">
-                  Order by: {formatShortDate(forecast.reorder_by_date)}
-                </p>
-              ) : null}
-              <p className="text-xs text-gray-500">
-                {forecast.stock_out_date
-                  ? `Stock-out: ${formatShortDate(forecast.stock_out_date)}`
-                  : 'Stock levels healthy'}
-              </p>
-              {forecast.lead_time_days > 1 && (
-                <p className="text-xs text-gray-400">
-                  ({forecast.lead_time_days} day delivery)
-                </p>
-              )}
-            </div>
           </div>
-        </Card>
+        </div>
       </div>
 
-      {/* KPI Cards Row */}
+      {/* KPI Cards Row - clean, no decorative shapes */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-20 h-20 bg-orange-100 rounded-full -mr-10 -mt-10" />
-          <div className="relative">
-            <div className="flex items-center gap-2 text-orange-600 mb-2">
-              <ArrowDownToLine className="w-5 h-5" />
-              <span className="text-xs font-semibold uppercase tracking-wide">Received</span>
+        <Card>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-card bg-orange-50 flex items-center justify-center">
+              <ArrowDownToLine className="w-5 h-5 text-orange-600" />
             </div>
-            <p className="text-4xl font-extrabold text-gray-900 tracking-tight">
-              +{formatQty(getPreferredValue(stats.received_today_kg, stats.received_today_bags, defaultUnit))}
-            </p>
-            <p className="text-sm text-gray-500 mt-1">{unitLabel} today</p>
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Received</p>
+              <p className="text-2xl font-semibold text-gray-900">
+                +{formatQty(getPreferredValue(stats.received_today_kg, stats.received_today_bags, defaultUnit))}
+              </p>
+              <p className="text-xs text-gray-400">{unitLabel} today</p>
+            </div>
           </div>
         </Card>
 
-        <Card className="relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-20 h-20 bg-blue-100 rounded-full -mr-10 -mt-10" />
-          <div className="relative">
-            <div className="flex items-center gap-2 text-blue-600 mb-2">
-              <ArrowUpFromLine className="w-5 h-5" />
-              <span className="text-xs font-semibold uppercase tracking-wide">Issued</span>
+        <Card>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-card bg-blue-50 flex items-center justify-center">
+              <ArrowUpFromLine className="w-5 h-5 text-blue-600" />
             </div>
-            <p className="text-4xl font-extrabold text-gray-900 tracking-tight">
-              -{formatQty(getPreferredValue(stats.issued_today_kg, stats.issued_today_bags, defaultUnit))}
-            </p>
-            <p className="text-sm text-gray-500 mt-1">{unitLabel} today</p>
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Issued</p>
+              <p className="text-2xl font-semibold text-gray-900">
+                -{formatQty(getPreferredValue(stats.issued_today_kg, stats.issued_today_bags, defaultUnit))}
+              </p>
+              <p className="text-xs text-gray-400">{unitLabel} today</p>
+            </div>
           </div>
         </Card>
 
-        <Card className="relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-20 h-20 bg-red-100 rounded-full -mr-10 -mt-10" />
-          <div className="relative">
-            <div className="flex items-center gap-2 text-red-600 mb-2">
-              <Trash2 className="w-5 h-5" />
-              <span className="text-xs font-semibold uppercase tracking-wide">Wasted</span>
+        <Card>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-card bg-red-50 flex items-center justify-center">
+              <Trash2 className="w-5 h-5 text-red-500" />
             </div>
-            <p className="text-4xl font-extrabold text-gray-900 tracking-tight">
-              -{formatQty(getPreferredValue(stats.wasted_today_kg, stats.wasted_today_bags, defaultUnit))}
-            </p>
-            <p className="text-sm text-gray-500 mt-1">{unitLabel} today</p>
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Wasted</p>
+              <p className="text-2xl font-semibold text-gray-900">
+                -{formatQty(getPreferredValue(stats.wasted_today_kg, stats.wasted_today_bags, defaultUnit))}
+              </p>
+              <p className="text-xs text-gray-400">{unitLabel} today</p>
+            </div>
           </div>
         </Card>
 
-        <Card className="relative overflow-hidden">
-          <div className={`absolute top-0 right-0 w-20 h-20 rounded-full -mr-10 -mt-10 ${totalAlerts > 0 ? 'bg-red-100' : 'bg-green-100'}`} />
-          <div className="relative">
-            <div className={`flex items-center gap-2 mb-2 ${totalAlerts > 0 ? 'text-red-600' : 'text-green-600'}`}>
-              <AlertTriangle className="w-5 h-5" />
-              <span className="text-xs font-semibold uppercase tracking-wide">Alerts</span>
+        <Card>
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-card flex items-center justify-center ${totalAlerts > 0 ? 'bg-red-50' : 'bg-emerald-50'}`}>
+              <AlertTriangle className={`w-5 h-5 ${totalAlerts > 0 ? 'text-red-500' : 'text-emerald-500'}`} />
             </div>
-            <p className="text-4xl font-extrabold text-gray-900 tracking-tight">{totalAlerts}</p>
-            <p className="text-sm text-gray-500 mt-1">active alerts</p>
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Alerts</p>
+              <p className="text-2xl font-semibold text-gray-900">{totalAlerts}</p>
+              <p className="text-xs text-gray-400">active alerts</p>
+            </div>
           </div>
         </Card>
       </div>
@@ -659,41 +636,38 @@ export default function DashboardPage() {
               return (
                 <div
                   key={location.location_id}
-                  className="rounded-xl border border-gray-200 overflow-hidden hover:shadow-md transition-shadow"
+                  className="rounded-card border border-gray-200 overflow-hidden"
                 >
-                  <div className={`px-4 py-3 flex items-center justify-between ${
-                    location.location_type === 'warehouse' ? 'bg-blue-50' : 'bg-orange-50'
-                  }`}>
+                  {/* Enterprise-style header - neutral with icon accent */}
+                  <div className="px-4 py-3 flex items-center justify-between bg-gray-50 border-b border-gray-100">
                     <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                      <div className={`w-8 h-8 rounded-chip flex items-center justify-center ${
                         location.location_type === 'warehouse'
-                          ? 'bg-blue-100 text-blue-600'
-                          : 'bg-orange-100 text-orange-600'
+                          ? 'bg-slate-100 text-slate-600'
+                          : 'bg-orange-50 text-orange-600'
                       }`}>
                         {location.location_type === 'warehouse' ? (
-                          <Warehouse className="w-5 h-5" />
+                          <Warehouse className="w-4 h-4" />
                         ) : (
-                          <Store className="w-5 h-5" />
+                          <Store className="w-4 h-4" />
                         )}
                       </div>
                       <div>
-                        <h4 className="font-semibold text-gray-900 text-sm">{location.location_name}</h4>
+                        <h4 className="font-medium text-gray-900 text-sm">{location.location_name}</h4>
                         <p className="text-xs text-gray-500">{location.items.length} items</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-lg font-bold text-gray-900">
+                      <p className="text-lg font-semibold text-gray-900">
                         {formatQty(getPreferredValue(location.total_qty, location.total_bags, defaultUnit))}
                       </p>
                       <p className="text-xs text-gray-500">{unitLabel}</p>
                     </div>
                   </div>
                   <div className="px-4 py-3">
-                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden mb-3">
+                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mb-3">
                       <div
-                        className={`h-full rounded-full ${
-                          location.location_type === 'warehouse' ? 'bg-blue-500' : 'bg-orange-500'
-                        }`}
+                        className="h-full rounded-full bg-gray-400"
                         style={{ width: `${percentage}%` }}
                       />
                     </div>
@@ -709,7 +683,7 @@ export default function DashboardPage() {
                                 {formatQty(getPreferredValue(item.on_hand_qty, item.on_hand_bags, defaultUnit))}
                               </span>
                               <div className={`w-2 h-2 rounded-full ${
-                                status === 'low' ? 'bg-red-500' : status === 'reorder' ? 'bg-amber-500' : 'bg-green-500'
+                                status === 'low' ? 'bg-red-500' : status === 'reorder' ? 'bg-amber-500' : 'bg-emerald-500'
                               }`} />
                             </div>
                           </div>

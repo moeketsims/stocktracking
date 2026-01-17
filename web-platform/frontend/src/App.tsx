@@ -242,11 +242,13 @@ function AlertBadge() {
   // Cap at 99+ for cleaner display
   const displayCount = totalAlerts > 99 ? '99+' : totalAlerts;
 
-  // Use red only for critical alerts, amber for warnings
-  const bgColor = criticalCount > 0 ? 'bg-red-500' : 'bg-amber-500';
+  // Red only for critical, muted for warnings/counts - don't compete with brand orange
+  const style = criticalCount > 0
+    ? 'bg-red-500 text-white'
+    : 'bg-indigo-200 text-indigo-700';
 
   return (
-    <span className={`ml-auto px-1.5 py-0.5 ${bgColor} text-white text-[10px] font-medium rounded-full min-w-[18px] text-center`}>
+    <span className={`ml-auto px-1.5 py-0.5 ${style} text-[10px] font-medium rounded-full min-w-[18px] text-center`}>
       {displayCount}
     </span>
   );

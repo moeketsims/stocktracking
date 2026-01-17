@@ -11,10 +11,8 @@ import {
   Clock,
   GitBranch,
   ChevronDown,
-  ChevronUp,
+  ChevronRight,
   MoreVertical,
-  Edit,
-  Trash2,
   Search,
 } from 'lucide-react';
 import { Card, Button } from '../components/ui';
@@ -25,21 +23,13 @@ import { useTrips, useTripSummary, useStartTrip, useCancelTrip } from '../hooks/
 import { useAuthStore } from '../stores/authStore';
 import type { Trip, TripStatus, TripType } from '../types';
 
-// Status colors for BADGES ONLY - distinct from brand orange
+// Status colors for BADGES ONLY - muted/pastel, never same saturation as buttons
+// Rule: Orange is reserved for primary actions. Status chips use neutral/distinct colors.
 const statusConfig: Record<TripStatus, { color: string; bgColor: string; label: string }> = {
-  planned: { color: 'text-slate-600', bgColor: 'bg-slate-100', label: 'Planned' },
-  in_progress: { color: 'text-amber-700', bgColor: 'bg-amber-100', label: 'In Progress' },
-  completed: { color: 'text-emerald-700', bgColor: 'bg-emerald-100', label: 'Completed' },
+  planned: { color: 'text-gray-600', bgColor: 'bg-gray-100', label: 'Planned' },
+  in_progress: { color: 'text-slate-700', bgColor: 'bg-slate-100', label: 'In Progress' },
+  completed: { color: 'text-emerald-700', bgColor: 'bg-emerald-50', label: 'Completed' },
   cancelled: { color: 'text-gray-500', bgColor: 'bg-gray-100', label: 'Cancelled' },
-};
-
-const tripTypeLabels: Record<TripType, string> = {
-  supplier_to_warehouse: 'Supplier → Warehouse',
-  supplier_to_shop: 'Supplier → Shop',
-  warehouse_to_shop: 'Warehouse → Shop',
-  shop_to_shop: 'Shop → Shop',
-  shop_to_warehouse: 'Shop → Warehouse',
-  other: 'Other',
 };
 
 // Format number with currency grouping (R470,729)
@@ -51,20 +41,23 @@ export default function TripsPage() {
   const [showTripModal, setShowTripModal] = useState(false);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
-  const [statusFilter, setStatusFilter] = useState('');
   const [expandedTripId, setExpandedTripId] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Collapsed sections - Completed collapsed by default
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
+    planned: false,
+    in_progress: false,
+    completed: true,
+  });
+
   const menuRef = useRef<HTMLDivElement>(null);
 
   const user = useAuthStore((state) => state.user);
   const isManager = user?.role && ['admin', 'zone_manager', 'location_manager'].includes(user.role);
 
-  // Fetch all trips for counts, filter client-side for display
-  const { data: allTripsData } = useTrips();
-  const { data: tripsData, isLoading, error, refetch } = useTrips(
-    statusFilter ? { status: statusFilter } : undefined
-  );
+  const { data: tripsData, isLoading, error, refetch } = useTrips();
   const { data: summary } = useTripSummary();
   const startMutation = useStartTrip();
   const cancelMutation = useCancelTrip();
@@ -79,22 +72,6 @@ export default function TripsPage() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  // Calculate counts for filter tabs
-  const allTrips = allTripsData?.trips || [];
-  const counts = {
-    all: allTrips.length,
-    planned: allTrips.filter(t => t.status === 'planned').length,
-    in_progress: allTrips.filter(t => t.status === 'in_progress').length,
-    completed: allTrips.filter(t => t.status === 'completed').length,
-  };
-
-  const filterOptions = [
-    { value: '', label: 'All', count: counts.all },
-    { value: 'planned', label: 'Planned', count: counts.planned },
-    { value: 'in_progress', label: 'In Progress', count: counts.in_progress },
-    { value: 'completed', label: 'Completed', count: counts.completed },
-  ];
 
   const handleStartTrip = async (trip: Trip) => {
     try {
@@ -127,40 +104,13 @@ export default function TripsPage() {
     return date.toLocaleDateString('en-ZA', {
       day: 'numeric',
       month: 'short',
-      year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
     });
   };
 
-  // Get primary action for a trip based on status
-  // ALL primary actions use brand orange for consistency
-  const getPrimaryAction = (trip: Trip) => {
-    if (!isManager) return null;
-
-    switch (trip.status) {
-      case 'planned':
-        return {
-          label: 'Start',
-          icon: Play,
-          onClick: () => handleStartTrip(trip),
-          className: 'bg-orange-500 hover:bg-orange-600 text-white',
-          loading: startMutation.isPending,
-        };
-      case 'in_progress':
-        if (!trip.is_multi_stop) {
-          return {
-            label: 'Complete',
-            icon: CheckCircle,
-            onClick: () => handleCompleteTrip(trip),
-            className: 'bg-orange-500 hover:bg-orange-600 text-white',
-            loading: false,
-          };
-        }
-        return null;
-      default:
-        return null;
-    }
+  const toggleSection = (status: string) => {
+    setCollapsedSections(prev => ({ ...prev, [status]: !prev[status] }));
   };
 
   // Get route string for display
@@ -178,8 +128,9 @@ export default function TripsPage() {
     return parts.join(' → ');
   };
 
-  // Filter trips by search
-  const trips = (tripsData?.trips || []).filter(trip => {
+  // Filter and group trips
+  const allTrips = tripsData?.trips || [];
+  const filteredTrips = allTrips.filter(trip => {
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
     return (
@@ -188,6 +139,19 @@ export default function TripsPage() {
       trip.vehicles?.registration_number?.toLowerCase().includes(query)
     );
   });
+
+  // Group by status
+  const groupedTrips = {
+    planned: filteredTrips.filter(t => t.status === 'planned'),
+    in_progress: filteredTrips.filter(t => t.status === 'in_progress'),
+    completed: filteredTrips.filter(t => t.status === 'completed'),
+  };
+
+  const sectionOrder: Array<{ key: keyof typeof groupedTrips; label: string; icon: typeof Clock }> = [
+    { key: 'planned', label: 'Planned', icon: Clock },
+    { key: 'in_progress', label: 'In Progress', icon: Truck },
+    { key: 'completed', label: 'Completed', icon: CheckCircle },
+  ];
 
   if (isLoading) {
     return (
@@ -208,6 +172,133 @@ export default function TripsPage() {
     );
   }
 
+  // Render a single trip row (table-like)
+  const renderTripRow = (trip: Trip) => {
+    const config = statusConfig[trip.status];
+    const isExpanded = expandedTripId === trip.id;
+    const isMultiStop = trip.is_multi_stop;
+    const route = getRouteString(trip);
+
+    return (
+      <div key={trip.id}>
+        <div
+          className={`grid grid-cols-12 gap-4 px-4 py-3 items-center hover:bg-gray-50 transition-colors border-b border-gray-100 ${isMultiStop ? 'cursor-pointer' : ''}`}
+          onClick={() => isMultiStop && setExpandedTripId(isExpanded ? null : trip.id)}
+        >
+          {/* Trip ID + Route (col-span-4) */}
+          <div className="col-span-4 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-gray-900">{trip.trip_number}</span>
+              {isMultiStop && (
+                <GitBranch className="w-3.5 h-3.5 text-indigo-500" />
+              )}
+            </div>
+            <p className="text-sm text-gray-600 truncate">{route || '—'}</p>
+          </div>
+
+          {/* Driver / Vehicle (col-span-2) */}
+          <div className="col-span-2 min-w-0">
+            <p className="text-sm text-gray-900 truncate">{trip.driver_name || '—'}</p>
+            <p className="text-xs text-gray-500">{trip.vehicles?.registration_number || '—'}</p>
+          </div>
+
+          {/* Date (col-span-2) */}
+          <div className="col-span-2">
+            <p className="text-sm text-gray-600">{formatDate(trip.created_at)}</p>
+          </div>
+
+          {/* Status (col-span-1) */}
+          <div className="col-span-1">
+            <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${config.bgColor} ${config.color}`}>
+              {config.label}
+            </span>
+          </div>
+
+          {/* Cost (col-span-1) */}
+          <div className="col-span-1 text-right">
+            {trip.status === 'completed' ? (
+              <span className="font-semibold text-gray-900">{formatCurrency(trip.total_cost)}</span>
+            ) : (
+              <span className="text-gray-400">—</span>
+            )}
+          </div>
+
+          {/* Actions (col-span-2) */}
+          <div className="col-span-2 flex items-center justify-end gap-2" onClick={e => e.stopPropagation()}>
+            {/* Primary Action */}
+            {isManager && trip.status === 'planned' && (
+              <button
+                onClick={() => handleStartTrip(trip)}
+                disabled={startMutation.isPending}
+                className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-lg bg-orange-500 hover:bg-orange-600 text-white transition-colors"
+              >
+                <Play className="w-3.5 h-3.5" />
+                Start
+              </button>
+            )}
+            {isManager && trip.status === 'in_progress' && !isMultiStop && (
+              <button
+                onClick={() => handleCompleteTrip(trip)}
+                className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-lg bg-orange-500 hover:bg-orange-600 text-white transition-colors"
+              >
+                <CheckCircle className="w-3.5 h-3.5" />
+                Complete
+              </button>
+            )}
+
+            {/* Kebab Menu */}
+            {isManager && trip.status !== 'completed' && trip.status !== 'cancelled' && (
+              <div className="relative" ref={openMenuId === trip.id ? menuRef : null}>
+                <button
+                  onClick={() => setOpenMenuId(openMenuId === trip.id ? null : trip.id)}
+                  className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                >
+                  <MoreVertical className="w-4 h-4" />
+                </button>
+                {openMenuId === trip.id && (
+                  <div className="absolute right-0 top-full mt-1 w-36 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                    <button
+                      onClick={() => handleCancelTrip(trip)}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      <XCircle className="w-4 h-4" />
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Expand toggle for multi-stop */}
+            {isMultiStop && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setExpandedTripId(isExpanded ? null : trip.id); }}
+                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+              >
+                {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Expandable stops detail */}
+        {isMultiStop && isExpanded && (
+          <div className="bg-gray-50 border-b border-gray-200">
+            <TripStopsDetail
+              tripId={trip.id}
+              tripStatus={trip.status}
+              isManager={isManager || false}
+              onTripComplete={() => {
+                refetch();
+                setExpandedTripId(null);
+              }}
+            />
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* Header with Search */}
@@ -222,7 +313,6 @@ export default function TripsPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {/* Search Input */}
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
@@ -242,7 +332,7 @@ export default function TripsPage() {
         </div>
       </div>
 
-      {/* KPI Summary - Consistent Styling */}
+      {/* KPI Summary */}
       {summary && summary.total_trips > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
@@ -267,196 +357,71 @@ export default function TripsPage() {
         </div>
       )}
 
-      {/* Status Filter Tabs with Counts */}
-      <div className="flex items-center gap-1 border-b border-gray-200">
-        {filterOptions.map((option) => (
-          <button
-            key={option.value}
-            onClick={() => setStatusFilter(option.value)}
-            className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px ${
-              statusFilter === option.value
-                ? 'border-orange-500 text-orange-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            {option.label}
-            <span className={`ml-1.5 px-1.5 py-0.5 text-xs rounded-full ${
-              statusFilter === option.value
-                ? 'bg-orange-100 text-orange-600'
-                : 'bg-gray-100 text-gray-500'
-            }`}>
-              {option.count}
-            </span>
-          </button>
-        ))}
+      {/* Grouped Sections */}
+      <div className="space-y-4">
+        {sectionOrder.map(({ key, label, icon: SectionIcon }) => {
+          const trips = groupedTrips[key];
+          const isCollapsed = collapsedSections[key];
+          const config = statusConfig[key];
+
+          if (trips.length === 0) return null;
+
+          return (
+            <Card key={key} padding="none" className="overflow-hidden">
+              {/* Section Header */}
+              <button
+                onClick={() => toggleSection(key)}
+                className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200 hover:bg-gray-100 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${config.bgColor}`}>
+                    <SectionIcon className={`w-4 h-4 ${config.color}`} />
+                  </div>
+                  <span className="font-semibold text-gray-900">{label}</span>
+                  <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-gray-200 text-gray-600">
+                    {trips.length}
+                  </span>
+                </div>
+                {isCollapsed ? (
+                  <ChevronRight className="w-5 h-5 text-gray-400" />
+                ) : (
+                  <ChevronDown className="w-5 h-5 text-gray-400" />
+                )}
+              </button>
+
+              {/* Table Header - Sticky within section */}
+              {!isCollapsed && (
+                <>
+                  <div className="grid grid-cols-12 gap-4 px-4 py-2 bg-gray-50 border-b border-gray-200 text-xs font-medium text-gray-500 uppercase tracking-wider sticky top-[73px] z-10">
+                    <div className="col-span-4">Trip</div>
+                    <div className="col-span-2">Driver / Vehicle</div>
+                    <div className="col-span-2">Date</div>
+                    <div className="col-span-1">Status</div>
+                    <div className="col-span-1 text-right">Cost</div>
+                    <div className="col-span-2 text-right">Actions</div>
+                  </div>
+
+                  {/* Trip Rows */}
+                  {trips.map(renderTripRow)}
+                </>
+              )}
+            </Card>
+          );
+        })}
+
+        {/* Empty State */}
+        {filteredTrips.length === 0 && (
+          <Card className="p-12 text-center">
+            <MapPin className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+            <p className="text-gray-500 font-medium">No trips found</p>
+            <p className="text-sm text-gray-400 mt-1">
+              {searchQuery ? 'Try a different search term' : 'Create a new trip to get started'}
+            </p>
+          </Card>
+        )}
       </div>
 
-      {/* Trips List */}
-      <Card padding="none" className="overflow-hidden">
-        <div className="divide-y divide-gray-100">
-          {trips.map((trip) => {
-            const config = statusConfig[trip.status];
-            const isExpanded = expandedTripId === trip.id;
-            const isMultiStop = trip.is_multi_stop;
-            const primaryAction = getPrimaryAction(trip);
-            const route = getRouteString(trip);
-
-            return (
-              <div key={trip.id}>
-                <div
-                  className={`px-4 py-3 hover:bg-gray-50 transition-colors ${isMultiStop ? 'cursor-pointer' : ''}`}
-                  onClick={() => isMultiStop && setExpandedTripId(isExpanded ? null : trip.id)}
-                >
-                  <div className="flex items-center justify-between gap-4">
-                    {/* Left: Primary Info */}
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <div className={`w-9 h-9 ${config.bgColor} rounded-lg flex items-center justify-center flex-shrink-0`}>
-                        {isMultiStop ? (
-                          <GitBranch className={`w-4 h-4 ${config.color}`} />
-                        ) : (
-                          <MapPin className={`w-4 h-4 ${config.color}`} />
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        {/* Primary scan line: Trip ID, Status, Route */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold text-gray-900">{trip.trip_number}</span>
-                          {/* Status badge - using neutral for planned, not info/blue */}
-                          <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${config.bgColor} ${config.color}`}>
-                            {config.label}
-                          </span>
-                          {isMultiStop && (
-                            <span className="text-xs px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded font-medium">
-                              Multi-Stop
-                            </span>
-                          )}
-                        </div>
-                        {/* Route - prominent */}
-                        {route && (
-                          <p className="text-sm text-gray-700 mt-0.5 truncate font-medium">
-                            {route}
-                          </p>
-                        )}
-                        {/* Meta line: Vehicle, Driver, Date */}
-                        <p className="text-xs text-gray-400 mt-1 flex items-center gap-2">
-                          <span className="flex items-center gap-1">
-                            <Truck className="w-3 h-3" />
-                            {trip.vehicles?.registration_number || 'No vehicle'}
-                          </span>
-                          <span>•</span>
-                          <span>{trip.driver_name || 'No driver'}</span>
-                          <span>•</span>
-                          <span>{formatDate(trip.created_at)}</span>
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Right: Cost + Actions */}
-                    <div className="flex items-center gap-3 flex-shrink-0">
-                      {/* Cost display for completed trips */}
-                      {trip.status === 'completed' && (
-                        <div className="text-right mr-2">
-                          <span className="text-base font-bold text-gray-900">
-                            {formatCurrency(trip.total_cost)}
-                          </span>
-                          {trip.distance_km > 0 && (
-                            <p className="text-xs text-gray-400">{trip.distance_km.toFixed(0)} km</p>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Primary Action Button */}
-                      {primaryAction && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); primaryAction.onClick(); }}
-                          disabled={primaryAction.loading}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${primaryAction.className}`}
-                        >
-                          <primaryAction.icon className="w-4 h-4" />
-                          {primaryAction.label}
-                        </button>
-                      )}
-
-                      {/* Kebab Menu for secondary actions */}
-                      {isManager && trip.status !== 'completed' && trip.status !== 'cancelled' && (
-                        <div className="relative" ref={openMenuId === trip.id ? menuRef : null}>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setOpenMenuId(openMenuId === trip.id ? null : trip.id);
-                            }}
-                            className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                          >
-                            <MoreVertical className="w-4 h-4" />
-                          </button>
-                          {openMenuId === trip.id && (
-                            <div className="absolute right-0 top-full mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
-                              {trip.status === 'planned' && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleCancelTrip(trip); }}
-                                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
-                                >
-                                  <XCircle className="w-4 h-4" />
-                                  Cancel Trip
-                                </button>
-                              )}
-                              {trip.status === 'in_progress' && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleCancelTrip(trip); }}
-                                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
-                                >
-                                  <XCircle className="w-4 h-4" />
-                                  Cancel Trip
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Expand/collapse for multi-stop trips */}
-                      {isMultiStop && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setExpandedTripId(isExpanded ? null : trip.id); }}
-                          className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                        >
-                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Expandable stops detail for multi-stop trips */}
-                {isMultiStop && isExpanded && (
-                  <div className="bg-gray-50 border-t border-gray-100">
-                    <TripStopsDetail
-                      tripId={trip.id}
-                      tripStatus={trip.status}
-                      isManager={isManager || false}
-                      onTripComplete={() => {
-                        refetch();
-                        setExpandedTripId(null);
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          {trips.length === 0 && (
-            <div className="p-12 text-center">
-              <MapPin className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <p className="text-gray-500 font-medium">No trips found</p>
-              <p className="text-sm text-gray-400 mt-1">
-                {searchQuery ? 'Try a different search term' : statusFilter ? 'Try changing the filter' : 'Create a new trip to get started'}
-              </p>
-            </div>
-          )}
-        </div>
-      </Card>
-
-      {/* Trip Modal */}
+      {/* Modals */}
       <TripModal
         isOpen={showTripModal}
         onClose={() => setShowTripModal(false)}
@@ -466,7 +431,6 @@ export default function TripsPage() {
         }}
       />
 
-      {/* Complete Trip Modal */}
       <CompleteTripModal
         isOpen={showCompleteModal}
         onClose={() => {

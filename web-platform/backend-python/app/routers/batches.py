@@ -27,9 +27,9 @@ async def get_batches(
 
         location_id = profile.data.get("location_id") if profile.data else None
 
-        # Build query
+        # Build query - include locations for owner dashboard expiring batches view
         query = supabase.table("stock_batches").select(
-            "*, suppliers(name), items(name)"
+            "*, suppliers(name), items(name), locations(name)"
         ).gt("remaining_qty", 0)
 
         if location_id:
@@ -85,12 +85,17 @@ async def get_batches(
             if batch.get("items"):
                 item_name = batch["items"].get("name", "Unknown")
 
+            location_name = "Unknown"
+            if batch.get("locations"):
+                location_name = batch["locations"].get("name", "Unknown")
+
             batches.append({
                 "id": batch["id"],
                 "batch_id_display": batch["id"][:8],
                 "item_id": batch["item_id"],
                 "item_name": item_name,
                 "supplier_name": supplier_name,
+                "location_name": location_name,
                 "received_at": batch["received_at"],
                 "expiry_date": batch.get("expiry_date"),
                 "initial_qty": batch["initial_qty"],

@@ -160,6 +160,7 @@ export interface BatchDetail {
   item_id: string;
   item_name: string;
   supplier_name: string;
+  location_name?: string;
   received_at: string;
   expiry_date: string | null;
   initial_qty: number;
@@ -394,6 +395,7 @@ export interface Driver {
   name: string;
   full_name: string;
   license_number: string | null;
+  license_expiry: string | null;
   phone: string | null;
   is_active: boolean;
   notes: string | null;
@@ -502,4 +504,57 @@ export interface CreateTripForm {
   from_location_id?: string;
   to_location_id?: string;
   supplier_id?: string;
+}
+
+// Owner Dashboard Types
+export interface ShopDailyActivity {
+  received_bags: number;  // Fractional bags (e.g., 2.5)
+  issued_bags: number;    // Fractional bags
+  wasted_bags: number;    // Fractional bags
+  received_kg: number;
+  issued_kg: number;
+  wasted_kg: number;
+}
+
+export interface ShopAlertSummary {
+  low_stock_count: number;
+  reorder_count: number;
+  expiring_soon_count: number;
+  total_alerts: number;
+}
+
+export interface ShopDailyStatus {
+  location_id: string;
+  location_name: string;
+  location_type: 'shop' | 'warehouse';
+  total_stock_bags: number;  // Fractional bags
+  total_stock_kg: number;
+  activity: ShopDailyActivity;
+  alerts: ShopAlertSummary;
+  status: 'healthy' | 'warning' | 'critical';
+}
+
+export type TrendDirection = 'up' | 'down' | 'stable';
+
+export interface OwnerDashboardData {
+  generated_at: string;
+  date: string;
+  total_stock_bags: number;    // Fractional bags
+  total_stock_kg: number;
+  total_received_bags: number; // Fractional bags
+  total_issued_bags: number;   // Fractional bags
+  total_wasted_bags: number;   // Fractional bags
+  total_alerts: number;
+  shops: ShopDailyStatus[];
+  warehouse: ShopDailyStatus | null;
+  // Trend metrics
+  issued_7d_kg: number;
+  issued_30d_kg: number;
+  wasted_7d_kg: number;
+  wasted_30d_kg: number;
+  avg_daily_usage_kg: number;
+  waste_rate_7d_pct: number;
+  waste_rate_30d_pct: number;
+  usage_trend_direction: TrendDirection;
+  usage_trend_pct: number;
 }

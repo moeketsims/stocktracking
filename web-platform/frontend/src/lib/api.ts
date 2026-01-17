@@ -210,6 +210,13 @@ export const tripsApi = {
   completeStop: (stopId: string, data?: any) => api.post(`/api/trips/stops/${stopId}/complete`, data || {}),
 };
 
+// Demo Data API (for seeding test data)
+export const demoApi = {
+  seed: () => api.post('/api/demo/seed'),
+  clear: () => api.delete('/api/demo/clear'),
+  status: () => api.get('/api/demo/status'),
+};
+
 // Barcode Scanning API
 export const barcodeApi = {
   // Barcode lookup

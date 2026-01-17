@@ -338,9 +338,9 @@ class ZoneOverviewResponse(BaseModel):
 
 # Owner Dashboard Responses
 class ShopDailyActivity(BaseModel):
-    received_bags: int
-    issued_bags: int
-    wasted_bags: int
+    received_bags: float  # Fractional bags (e.g., 2.5)
+    issued_bags: float  # Fractional bags
+    wasted_bags: float  # Fractional bags
     received_kg: float  # Optional detail
     issued_kg: float  # Optional detail
     wasted_kg: float  # Optional detail
@@ -357,7 +357,7 @@ class ShopDailyStatus(BaseModel):
     location_id: str
     location_name: str
     location_type: str  # 'shop' or 'warehouse'
-    total_stock_bags: int  # Primary unit
+    total_stock_bags: float  # Fractional bags (e.g., 2.5)
     total_stock_kg: float  # Secondary/optional
     activity: ShopDailyActivity
     alerts: ShopAlertSummary
@@ -367,14 +367,24 @@ class ShopDailyStatus(BaseModel):
 class OwnerDashboardResponse(BaseModel):
     generated_at: str
     date: str
-    total_stock_bags: int  # Primary unit
+    total_stock_bags: float  # Fractional bags (e.g., 2.5)
     total_stock_kg: float  # Secondary/optional
-    total_received_bags: int
-    total_issued_bags: int
-    total_wasted_bags: int
+    total_received_bags: float  # Fractional bags
+    total_issued_bags: float  # Fractional bags
+    total_wasted_bags: float  # Fractional bags
     total_alerts: int
     shops: List[ShopDailyStatus]
     warehouse: Optional[ShopDailyStatus] = None
+    # Trend metrics
+    issued_7d_kg: float = 0
+    issued_30d_kg: float = 0
+    wasted_7d_kg: float = 0
+    wasted_30d_kg: float = 0
+    avg_daily_usage_kg: float = 0
+    waste_rate_7d_pct: float = 0
+    waste_rate_30d_pct: float = 0
+    usage_trend_direction: str = "stable"  # "up", "down", "stable"
+    usage_trend_pct: float = 0
 
 
 # Notification Responses

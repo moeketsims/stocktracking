@@ -6,6 +6,17 @@ export default {
     ],
     theme: {
         extend: {
+            // Premium Design System Tokens
+            borderRadius: {
+                'chip': '6px',      // chips, small controls
+                'card': '10px',     // cards, panels, buttons
+                'modal': '12px',    // modals, drawers
+            },
+            boxShadow: {
+                'card': '0 1px 3px rgba(0,0,0,0.08)',           // cards (subtle)
+                'dropdown': '0 4px 6px -1px rgba(0,0,0,0.1)',   // dropdowns/popovers
+                'modal': '0 10px 25px -5px rgba(0,0,0,0.15)',   // modals
+            },
             colors: {
                 brown: {
                     50: '#fdf8f6',
@@ -19,7 +30,7 @@ export default {
                     800: '#7c3a25',
                     900: '#663222',
                 },
-                // Primary orange color for the app
+                // Primary orange color for the app - actions only
                 primary: {
                     50: '#fff7ed',
                     100: '#ffedd5',

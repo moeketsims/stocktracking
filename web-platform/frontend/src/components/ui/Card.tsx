@@ -6,16 +6,17 @@ interface CardProps {
   padding?: 'none' | 'sm' | 'md' | 'lg';
 }
 
+// Premium enterprise card: r-10, 1px border, minimal shadow, no hover animation
 export default function Card({ children, className = '', padding = 'md' }: CardProps) {
   const paddings = {
     none: '',
     sm: 'p-4',
-    md: 'p-6',
-    lg: 'p-8',
+    md: 'p-5',  // 20px - enterprise standard
+    lg: 'p-6',
   };
 
   return (
-    <div className={`bg-white rounded-2xl border border-gray-100 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.1)] hover:shadow-[0_8px_30px_-4px_rgba(0,0,0,0.15)] hover:-translate-y-0.5 transition-all duration-300 ${paddings[padding]} ${className}`}>
+    <div className={`bg-white rounded-card border border-gray-200 shadow-card ${paddings[padding]} ${className}`}>
       {children}
     </div>
   );

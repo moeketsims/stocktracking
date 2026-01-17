@@ -181,8 +181,14 @@ class UpdateTripRequest(BaseModel):
 class CompleteTripRequest(BaseModel):
     distance_km: Optional[float] = Field(None, ge=0)
     fuel_cost: Optional[float] = Field(None, ge=0)
+    fuel_litres: Optional[float] = Field(None, ge=0)
     toll_cost: Optional[float] = Field(None, ge=0)
     other_cost: Optional[float] = Field(None, ge=0)
+    other_cost_description: Optional[str] = None
+    odometer_start: Optional[float] = Field(None, ge=0)
+    odometer_end: Optional[float] = Field(None, ge=0)
+    arrival_time: Optional[str] = None
+    linked_batch_ids: Optional[List[str]] = None
     notes: Optional[str] = None
 
 

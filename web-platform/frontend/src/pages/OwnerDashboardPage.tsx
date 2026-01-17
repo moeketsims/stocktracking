@@ -12,7 +12,9 @@ import {
 import { Card, Badge } from '../components/ui';
 import { useOwnerDashboard } from '../hooks/useData';
 import { useAuthStore } from '../stores/authStore';
+import { demoApi } from '../lib/api';
 import type { ShopDailyStatus } from '../types';
+import { useState } from 'react';
 
 // Helper to format quantities
 const formatQty = (value: number): string => {
@@ -24,6 +26,23 @@ const formatQty = (value: number): string => {
 export default function OwnerDashboardPage() {
   const { data, isLoading, error, refetch, dataUpdatedAt } = useOwnerDashboard();
   const { isAdmin } = useAuthStore();
+  const [seeding, setSeeding] = useState(false);
+  const [seedMessage, setSeedMessage] = useState<string | null>(null);
+
+  const handleSeedDemoData = async () => {
+    if (seeding) return;
+    setSeeding(true);
+    setSeedMessage(null);
+    try {
+      const response = await demoApi.seed();
+      setSeedMessage(`Success! Created ${response.data.details.receive_transactions + response.data.details.issue_transactions + response.data.details.waste_transactions + response.data.details.transfer_transactions} transactions.`);
+      refetch();
+    } catch (err: any) {
+      setSeedMessage(`Error: ${err.response?.data?.detail || err.message}`);
+    } finally {
+      setSeeding(false);
+    }
+  };
 
   // Access control
   if (!isAdmin()) {
@@ -53,7 +72,6 @@ export default function OwnerDashboardPage() {
   const {
     date,
     total_stock_bags,
-    total_stock_kg,
     total_received_bags,
     total_issued_bags,
     total_wasted_bags,
@@ -63,7 +81,6 @@ export default function OwnerDashboardPage() {
   } = data || {
     date: '',
     total_stock_bags: 0,
-    total_stock_kg: 0,
     total_received_bags: 0,
     total_issued_bags: 0,
     total_wasted_bags: 0,
@@ -74,11 +91,11 @@ export default function OwnerDashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header with date and refresh */}
+      {/* Header */}
       <Card className="bg-gradient-to-r from-orange-600 to-orange-700 text-white border-0">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-semibold">Daily Status Overview</h2>
+            <h2 className="text-xl font-semibold">Daily Overview</h2>
             <p className="text-orange-100 mt-1 flex items-center gap-2">
               <Clock className="w-4 h-4" />
               {date ? new Date(date).toLocaleDateString('en-ZA', {
@@ -89,79 +106,101 @@ export default function OwnerDashboardPage() {
               }) : 'Loading...'}
             </p>
           </div>
-          <button
-            onClick={() => refetch()}
-            className="p-2 hover:bg-orange-500 rounded-lg transition-colors"
-            title="Refresh data"
-          >
-            <RefreshCw className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSeedDemoData}
+              disabled={seeding}
+              className="px-4 h-9 bg-white text-orange-600 hover:bg-orange-50 rounded-[10px] transition-colors text-sm font-medium disabled:opacity-50"
+              title="Generate demo transactions"
+            >
+              {seeding ? 'Seeding...' : 'Seed Demo Data'}
+            </button>
+            <button
+              onClick={() => refetch()}
+              className="p-2 hover:bg-orange-500/50 rounded-[10px] transition-colors"
+              title="Refresh data"
+            >
+              <RefreshCw className="w-5 h-5" />
+            </button>
+          </div>
         </div>
       </Card>
 
-      {/* Aggregate Summary Stats */}
+      {/* Seed Message */}
+      {seedMessage && (
+        <div className={`p-4 rounded-[10px] text-sm flex items-center justify-between ${seedMessage.startsWith('Success') ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-red-50 text-red-800 border border-red-200'}`}>
+          <span>{seedMessage}</span>
+          <button onClick={() => setSeedMessage(null)} className="ml-4 text-lg font-medium hover:opacity-70">×</button>
+        </div>
+      )}
+
+      {/* Summary Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <SummaryCard
           icon={Package}
           label="Total Stock"
-          value={`${total_stock_bags} bags`}
-          subValue={`(${formatQty(total_stock_kg)} kg)`}
+          value={`${formatQty(total_stock_bags)}`}
+          unit="bags"
           color="orange"
         />
         <SummaryCard
           icon={ArrowDownToLine}
           label="Received Today"
-          value={`+${total_received_bags} bags`}
+          value={`+${formatQty(total_received_bags)}`}
+          unit="bags"
           color="green"
         />
         <SummaryCard
           icon={ArrowUpFromLine}
           label="Issued Today"
-          value={`-${total_issued_bags} bags`}
+          value={`-${formatQty(total_issued_bags)}`}
+          unit="bags"
           color="blue"
         />
         <SummaryCard
           icon={Trash2}
           label="Wasted Today"
-          value={`-${total_wasted_bags} bags`}
+          value={`-${formatQty(total_wasted_bags)}`}
+          unit="bags"
           color="red"
         />
         <SummaryCard
           icon={AlertTriangle}
-          label="Active Alerts"
+          label="Alerts"
           value={total_alerts.toString()}
           color={total_alerts > 0 ? 'amber' : 'green'}
         />
       </div>
 
-      {/* Warehouse Section (if exists) */}
+      {/* Warehouse */}
       {warehouse && (
         <Card>
           <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
             <Warehouse className="w-5 h-5 text-blue-600" />
             Warehouse
           </h3>
-          <ShopStatusCard shop={warehouse} />
+          <LocationCard location={warehouse} />
         </Card>
       )}
 
-      {/* Shops Grid */}
+      {/* Shops */}
       <Card>
         <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
           <Store className="w-5 h-5 text-amber-600" />
           Shops ({shops.length})
         </h3>
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-          {shops.map((shop) => (
-            <ShopStatusCard key={shop.location_id} shop={shop} />
-          ))}
-        </div>
-        {shops.length === 0 && (
+        {shops.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {shops.map((shop) => (
+              <LocationCard key={shop.location_id} location={shop} />
+            ))}
+          </div>
+        ) : (
           <p className="text-center text-gray-500 py-8">No shop data available</p>
         )}
       </Card>
 
-      {/* Last updated timestamp */}
+      {/* Last updated */}
       <p className="text-xs text-gray-400 text-center">
         Last updated: {new Date(dataUpdatedAt).toLocaleTimeString()}
       </p>
@@ -169,13 +208,11 @@ export default function OwnerDashboardPage() {
   );
 }
 
-// Sub-components
-
-function SummaryCard({ icon: Icon, label, value, subValue, color }: {
+function SummaryCard({ icon: Icon, label, value, unit, color }: {
   icon: React.ElementType;
   label: string;
   value: string;
-  subValue?: string;
+  unit?: string;
   color: string;
 }) {
   const colors: Record<string, string> = {
@@ -194,15 +231,16 @@ function SummaryCard({ icon: Icon, label, value, subValue, color }: {
         </div>
         <div>
           <p className="text-xs text-gray-500">{label}</p>
-          <p className="text-lg font-bold text-gray-900">{value}</p>
-          {subValue && <p className="text-xs text-gray-400">{subValue}</p>}
+          <p className="text-lg font-bold text-gray-900">
+            {value} {unit && <span className="text-sm font-medium text-gray-500">{unit}</span>}
+          </p>
         </div>
       </div>
     </Card>
   );
 }
 
-function ShopStatusCard({ shop }: { shop: ShopDailyStatus }) {
+function LocationCard({ location }: { location: ShopDailyStatus }) {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'critical':
@@ -214,72 +252,53 @@ function ShopStatusCard({ shop }: { shop: ShopDailyStatus }) {
     }
   };
 
-  const Icon = shop.location_type === 'warehouse' ? Warehouse : Store;
-  const iconBg = shop.location_type === 'warehouse' ? 'bg-blue-100 text-blue-600' : 'bg-amber-100 text-amber-600';
-
-  // Build alert text
-  const alertParts: string[] = [];
-  if (shop.alerts.low_stock_count > 0) alertParts.push(`${shop.alerts.low_stock_count} low stock`);
-  if (shop.alerts.expiring_soon_count > 0) alertParts.push(`${shop.alerts.expiring_soon_count} expiring`);
-  if (shop.alerts.reorder_count > 0) alertParts.push(`${shop.alerts.reorder_count} reorder`);
-  const alertText = alertParts.join(', ');
+  const Icon = location.location_type === 'warehouse' ? Warehouse : Store;
+  const iconBg = location.location_type === 'warehouse' ? 'bg-blue-100 text-blue-600' : 'bg-amber-100 text-amber-600';
 
   return (
     <div className={`p-4 rounded-lg border ${
-      shop.status === 'critical' ? 'border-red-200 bg-red-50' :
-      shop.status === 'warning' ? 'border-amber-200 bg-amber-50' :
+      location.status === 'critical' ? 'border-red-200 bg-red-50' :
+      location.status === 'warning' ? 'border-amber-200 bg-amber-50' :
       'border-gray-200 bg-gray-50'
     }`}>
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
-          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${iconBg}`}>
-            <Icon className="w-5 h-5" />
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${iconBg}`}>
+            <Icon className="w-4 h-4" />
           </div>
-          <div>
-            <h4 className="font-semibold text-gray-900">{shop.location_name}</h4>
-            {getStatusBadge(shop.status)}
-          </div>
+          <h4 className="font-semibold text-gray-900">{location.location_name}</h4>
         </div>
+        {getStatusBadge(location.status)}
       </div>
 
-      {/* Stock Levels */}
-      <div className="mb-4">
-        <p className="text-xs text-gray-500 mb-1">Current Stock</p>
-        <div className="flex items-baseline gap-2">
-          <span className="text-2xl font-bold text-gray-900">
-            {shop.total_stock_bags} bags
-          </span>
-          <span className="text-sm text-gray-400">
-            ({formatQty(shop.total_stock_kg)} kg)
-          </span>
-        </div>
+      {/* Stock */}
+      <div className="mb-3">
+        <span className="text-2xl font-bold text-gray-900">{formatQty(location.total_stock_bags)}</span>
+        <span className="text-sm text-gray-500 ml-1">bags</span>
       </div>
 
       {/* Today's Activity */}
-      <div className="grid grid-cols-3 gap-2 mb-4">
-        <div className="text-center p-2 bg-white rounded">
-          <ArrowDownToLine className="w-4 h-4 text-green-600 mx-auto mb-1" />
-          <p className="text-xs text-gray-500">Received</p>
-          <p className="font-semibold text-sm">+{shop.activity.received_bags}</p>
+      <div className="grid grid-cols-3 gap-2 text-center text-sm">
+        <div className="bg-white rounded p-2">
+          <p className="text-green-600 font-semibold">+{formatQty(location.activity.received_bags)}</p>
+          <p className="text-xs text-gray-500">In</p>
         </div>
-        <div className="text-center p-2 bg-white rounded">
-          <ArrowUpFromLine className="w-4 h-4 text-blue-600 mx-auto mb-1" />
-          <p className="text-xs text-gray-500">Issued</p>
-          <p className="font-semibold text-sm">-{shop.activity.issued_bags}</p>
+        <div className="bg-white rounded p-2">
+          <p className="text-blue-600 font-semibold">-{formatQty(location.activity.issued_bags)}</p>
+          <p className="text-xs text-gray-500">Out</p>
         </div>
-        <div className="text-center p-2 bg-white rounded">
-          <Trash2 className="w-4 h-4 text-red-600 mx-auto mb-1" />
-          <p className="text-xs text-gray-500">Wasted</p>
-          <p className="font-semibold text-sm">-{shop.activity.wasted_bags}</p>
+        <div className="bg-white rounded p-2">
+          <p className="text-red-600 font-semibold">-{formatQty(location.activity.wasted_bags)}</p>
+          <p className="text-xs text-gray-500">Waste</p>
         </div>
       </div>
 
       {/* Alerts */}
-      {shop.alerts.total_alerts > 0 && (
-        <div className="flex items-center gap-2 text-sm">
-          <AlertTriangle className="w-4 h-4 text-red-500" />
-          <span className="text-gray-600">{alertText}</span>
+      {location.alerts.total_alerts > 0 && (
+        <div className="mt-3 pt-3 border-t border-gray-200 flex items-center gap-2 text-sm text-red-600">
+          <AlertTriangle className="w-4 h-4" />
+          <span>{location.alerts.total_alerts} alert{location.alerts.total_alerts > 1 ? 's' : ''}</span>
         </div>
       )}
     </div>

@@ -58,6 +58,7 @@ class TableQuery:
         self._single = False
         self._order = None
         self._limit = None
+        self._delete = False
 
     def select(self, columns: str = "*") -> "TableQuery":
         self._select_columns = columns
@@ -92,6 +93,16 @@ class TableQuery:
         self._filters.append(f"{column}=in.({vals})")
         return self
 
+    def like(self, column: str, pattern: str) -> "TableQuery":
+        """Case-sensitive LIKE filter."""
+        self._filters.append(f"{column}=like.{pattern}")
+        return self
+
+    def ilike(self, column: str, pattern: str) -> "TableQuery":
+        """Case-insensitive LIKE filter."""
+        self._filters.append(f"{column}=ilike.{pattern}")
+        return self
+
     def order(self, column: str, desc: bool = False) -> "TableQuery":
         direction = "desc" if desc else "asc"
         self._order = f"{column}.{direction}"
@@ -106,6 +117,10 @@ class TableQuery:
         return self
 
     def execute(self) -> "QueryResult":
+        # Check if this is a delete operation
+        if self._delete:
+            return self._execute_delete()
+
         url = f"{self.client.url}/rest/v1/{self.table_name}"
         # Use list of tuples to allow multiple filters on same column
         params = [("select", self._select_columns)]
@@ -173,6 +188,35 @@ class TableQuery:
 
             result = response.json()
             return QueryResult(data=result[0] if isinstance(result, list) and result else result, error=None)
+
+    def delete(self) -> "TableQuery":
+        """Prepare for delete operation. Must be followed by filters and execute()."""
+        self._delete = True
+        return self
+
+    def _execute_delete(self) -> "QueryResult":
+        """Execute a DELETE operation with filters."""
+        url = f"{self.client.url}/rest/v1/{self.table_name}"
+        params = {}
+
+        for f in self._filters:
+            key, val = f.split("=", 1)
+            params[key] = val
+
+        headers = self.client.headers.copy()
+        headers["Prefer"] = "return=representation"
+
+        with httpx.Client(timeout=60.0) as http:
+            response = http.delete(url, headers=headers, params=params)
+
+            if response.status_code >= 400:
+                print(f"[SUPABASE DELETE ERROR] {self.table_name}: {response.status_code} - {response.text[:200]}")
+                return QueryResult(data=None, error=response.text)
+
+            result = response.json() if response.text else []
+            row_count = len(result) if isinstance(result, list) else 1
+            print(f"[SUPABASE DELETE] {self.table_name}: {row_count} rows deleted")
+            return QueryResult(data=result, error=None)
 
 
 class QueryResult:

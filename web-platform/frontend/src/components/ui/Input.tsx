@@ -8,6 +8,7 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   rightIcon?: ReactNode;
 }
 
+// Premium enterprise input: height 40px, r-10, 1px border
 const Input = forwardRef<HTMLInputElement, InputProps>(
   ({ label, error, icon, rightIcon, className = '', ...props }, ref) => {
     return (
@@ -26,8 +27,8 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
           <input
             ref={ref}
             className={`
-              block w-full rounded-lg border border-gray-300 bg-white
-              px-3 py-2 text-gray-900 placeholder-gray-400
+              block w-full h-10 rounded-card border border-gray-200 bg-white
+              px-3 text-sm text-gray-900 placeholder-gray-400
               focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent
               disabled:bg-gray-50 disabled:text-gray-500
               ${icon ? 'pl-10' : ''}
