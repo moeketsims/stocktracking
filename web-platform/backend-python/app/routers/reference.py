@@ -81,12 +81,11 @@ async def get_locations_by_zone(zone_id: str, user_data: dict = Depends(require_
 
 @router.get("/waste-reasons")
 async def get_waste_reasons():
-    """Get list of waste reasons."""
+    """Get list of waste reasons (simplified - no expiry tracking for potatoes)."""
     return {
         "reasons": [
             {"value": "spoiled", "label": "Spoiled / Rotten"},
             {"value": "damaged", "label": "Damaged"},
-            {"value": "expired", "label": "Expired"},
             {"value": "trim_prep_loss", "label": "Trim / Prep Loss"},
             {"value": "contaminated", "label": "Contaminated"},
             {"value": "other", "label": "Other"}

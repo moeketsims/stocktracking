@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import uuid4
 from ..config import get_supabase_admin_client
 from ..routers.auth import require_auth, require_manager, get_view_location_id
@@ -10,9 +10,35 @@ from ..models.requests import (
     TransferStockRequest,
     WasteStockRequest
 )
-from ..models.responses import StockScreenResponse, StockOverview, BatchInfo, FIFOSuggestion
+from ..models.responses import (
+    StockScreenResponse, StockOverview, BatchInfo, FIFOSuggestion
+)
 
 router = APIRouter(prefix="/stock", tags=["Stock Operations"])
+
+
+# Cache for default item (potatoes)
+_default_item_cache = {"item": None, "cached_at": None}
+
+
+def get_default_item(supabase) -> dict:
+    """Get the default 'Potatoes' item. Caches the result for 10 minutes."""
+    global _default_item_cache
+
+    now = datetime.utcnow()
+    if (_default_item_cache["item"] and
+        _default_item_cache["cached_at"] and
+        (now - _default_item_cache["cached_at"]).seconds < 600):
+        return _default_item_cache["item"]
+
+    # Fetch the default item (first item or one named 'Potatoes')
+    result = supabase.table("items").select("*").limit(1).execute()
+    if result.data:
+        _default_item_cache["item"] = result.data[0]
+        _default_item_cache["cached_at"] = now
+        return result.data[0]
+
+    raise HTTPException(status_code=500, detail="No items configured in the system")
 
 
 def get_conversion_factor(supabase, item_id: str) -> float:
@@ -26,6 +52,120 @@ def convert_to_kg(quantity: float, unit: str, conversion_factor: float) -> float
     if unit == "bag":
         return quantity * conversion_factor
     return quantity
+
+
+@router.get("/by-location")
+async def get_stock_by_location(user_data: dict = Depends(require_auth)):
+    """Get stock overview grouped by location - simplified view for potato tracking."""
+    supabase = get_supabase_admin_client()
+    user = user_data["user"]
+
+    try:
+        # Get user profile
+        profile = supabase.table("profiles").select("*").eq(
+            "user_id", user.id
+        ).single().execute()
+
+        user_role = profile.data.get("role") if profile.data else "staff"
+        user_location_id = profile.data.get("location_id") if profile.data else None
+        user_zone_id = profile.data.get("zone_id") if profile.data else None
+
+        # Get all locations based on user role
+        locations_query = supabase.table("locations").select("*")
+
+        # Filter locations based on role
+        if user_role == "staff" and user_location_id:
+            locations_query = locations_query.eq("id", user_location_id)
+        elif user_role == "location_manager" and user_zone_id:
+            locations_query = locations_query.eq("zone_id", user_zone_id)
+        # admin and zone_manager see all locations
+
+        locations_result = locations_query.order("type", desc=True).order("name").execute()
+        locations = locations_result.data or []
+
+        # Get stock balance for all locations
+        balance_result = supabase.table("stock_balance").select("*").execute()
+        balance_map = {}
+        for b in (balance_result.data or []):
+            loc_id = b["location_id"]
+            if loc_id not in balance_map:
+                balance_map[loc_id] = 0
+            balance_map[loc_id] += b.get("on_hand_qty", 0) or 0
+
+        # Get recent transactions for activity timestamps (last 7 days)
+        seven_days_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
+        transactions_result = supabase.table("stock_transactions").select(
+            "id, type, qty, created_at, location_id_from, location_id_to, created_by, notes"
+        ).gte("created_at", seven_days_ago).order("created_at", desc=True).limit(200).execute()
+
+        # Build activity map per location
+        activity_map = {}  # {location_id: {last_activity: str, activities: [...]}}
+        for tx in (transactions_result.data or []):
+            loc_from = tx.get("location_id_from")
+            loc_to = tx.get("location_id_to")
+
+            for loc_id in [loc_from, loc_to]:
+                if loc_id:
+                    if loc_id not in activity_map:
+                        activity_map[loc_id] = {"last_activity": tx["created_at"], "activities": []}
+                    # Keep up to 5 recent activities per location
+                    if len(activity_map[loc_id]["activities"]) < 5:
+                        activity_map[loc_id]["activities"].append({
+                            "id": tx["id"],
+                            "type": tx["type"],
+                            "qty": tx["qty"],
+                            "created_at": tx["created_at"],
+                            "notes": tx.get("notes")
+                        })
+
+        # Build location stock items
+        location_items = []
+        total_stock_kg = 0
+
+        for loc in locations:
+            loc_id = loc["id"]
+            stock_qty = balance_map.get(loc_id, 0)
+            total_stock_kg += stock_qty
+
+            # Determine status
+            if stock_qty <= 0:
+                status = "out"
+            elif stock_qty < 100:
+                status = "low"
+            else:
+                status = "in_stock"
+
+            # Get activity info
+            loc_activity = activity_map.get(loc_id, {})
+            last_activity = loc_activity.get("last_activity")
+            recent_activities = loc_activity.get("activities", [])
+
+            location_items.append({
+                "location_id": loc_id,
+                "location_name": loc["name"],
+                "location_type": loc["type"],
+                "on_hand_qty": stock_qty,
+                "status": status,
+                "last_activity": last_activity,
+                "recent_activity": [
+                    {
+                        "id": a["id"],
+                        "type": a["type"],
+                        "qty": a["qty"],
+                        "created_at": a["created_at"],
+                        "notes": a.get("notes")
+                    }
+                    for a in recent_activities
+                ]
+            })
+
+        return {
+            "locations": location_items,
+            "total_stock_kg": total_stock_kg
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("", response_model=StockScreenResponse)
@@ -169,23 +309,26 @@ async def receive_stock(request: ReceiveStockRequest, user_data: dict = Depends(
         if not location_id:
             raise HTTPException(status_code=400, detail="User has no assigned location")
 
+        # Auto-detect item if not provided
+        item_id = request.item_id
+        if not item_id:
+            default_item = get_default_item(supabase)
+            item_id = default_item["id"]
+
         # Convert to kg if needed
-        conversion_factor = get_conversion_factor(supabase, request.item_id)
+        conversion_factor = get_conversion_factor(supabase, item_id)
         qty_kg = convert_to_kg(request.quantity, request.unit, conversion_factor)
 
-        # Create batch
+        # Create batch (no expiry_date for potatoes, quality scoring removed)
         batch_id = str(uuid4())
         batch_data = {
             "id": batch_id,
-            "item_id": request.item_id,
+            "item_id": item_id,
             "location_id": location_id,
             "supplier_id": request.supplier_id,
             "initial_qty": qty_kg,
             "remaining_qty": qty_kg,
-            "quality_score": request.quality_score,
-            "defect_pct": request.defect_pct,
-            "quality_notes": request.quality_notes,
-            "expiry_date": request.expiry_date,
+            "quality_score": 1,  # Default to good quality (field kept for backwards compatibility)
             "photo_url": request.photo_url
         }
 
@@ -196,7 +339,7 @@ async def receive_stock(request: ReceiveStockRequest, user_data: dict = Depends(
             "id": str(uuid4()),
             "created_by": user.id,
             "location_id_to": location_id,
-            "item_id": request.item_id,
+            "item_id": item_id,
             "batch_id": batch_id,
             "qty": qty_kg,
             "unit": "kg",
@@ -205,8 +348,7 @@ async def receive_stock(request: ReceiveStockRequest, user_data: dict = Depends(
             "metadata": {
                 "original_unit": request.unit,
                 "original_qty": request.quantity,
-                "supplier_id": request.supplier_id,
-                "quality_score": request.quality_score
+                "supplier_id": request.supplier_id
             }
         }
 
@@ -232,7 +374,7 @@ async def receive_stock(request: ReceiveStockRequest, user_data: dict = Depends(
 
 @router.post("/issue")
 async def issue_stock(request: IssueStockRequest, user_data: dict = Depends(require_auth)):
-    """Issue stock - deducts from batch using FIFO if no batch specified."""
+    """Issue stock - deducts from batch using FIFO automatically."""
     supabase = get_supabase_admin_client()
     user = user_data["user"]
 
@@ -249,14 +391,20 @@ async def issue_stock(request: IssueStockRequest, user_data: dict = Depends(requ
         if not location_id:
             raise HTTPException(status_code=400, detail="User has no assigned location")
 
+        # Auto-detect item if not provided
+        item_id = request.item_id
+        if not item_id:
+            default_item = get_default_item(supabase)
+            item_id = default_item["id"]
+
         # Convert to kg
-        conversion_factor = get_conversion_factor(supabase, request.item_id)
+        conversion_factor = get_conversion_factor(supabase, item_id)
         qty_kg = convert_to_kg(request.quantity, request.unit, conversion_factor)
 
         # Get current balance
         balance = supabase.table("stock_balance").select("on_hand_qty").eq(
             "location_id", location_id
-        ).eq("item_id", request.item_id).single().execute()
+        ).eq("item_id", item_id).single().execute()
 
         current_qty = balance.data.get("on_hand_qty", 0) if balance.data else 0
 
@@ -267,20 +415,16 @@ async def issue_stock(request: IssueStockRequest, user_data: dict = Depends(requ
                 detail=f"Insufficient stock. Current: {current_qty:.2f} kg, Requested: {qty_kg:.2f} kg"
             )
 
-        # Determine which batch to use
-        batch_id = request.batch_id
-        if not batch_id:
-            # Use FIFO - get oldest batch with remaining qty
-            oldest = supabase.table("stock_batches").select("id, remaining_qty").eq(
-                "location_id", location_id
-            ).eq("item_id", request.item_id).gt("remaining_qty", 0).order(
-                "received_at", desc=False
-            ).limit(1).execute()
+        # Always use FIFO - get oldest batch with remaining qty
+        oldest = supabase.table("stock_batches").select("id, remaining_qty").eq(
+            "location_id", location_id
+        ).eq("item_id", item_id).gt("remaining_qty", 0).order(
+            "received_at", desc=False
+        ).limit(1).execute()
 
-            if oldest.data:
-                batch_id = oldest.data[0]["id"]
+        batch_id = oldest.data[0]["id"] if oldest.data else None
 
-        # Deduct from batch if specified
+        # Deduct from batch if found
         if batch_id:
             batch = supabase.table("stock_batches").select("remaining_qty").eq(
                 "id", batch_id
@@ -297,7 +441,7 @@ async def issue_stock(request: IssueStockRequest, user_data: dict = Depends(requ
             "id": str(uuid4()),
             "created_by": user.id,
             "location_id_from": location_id,
-            "item_id": request.item_id,
+            "item_id": item_id,
             "batch_id": batch_id,
             "qty": qty_kg,
             "unit": "kg",
@@ -334,14 +478,20 @@ async def transfer_stock(request: TransferStockRequest, user_data: dict = Depend
         if request.from_location_id == request.to_location_id:
             raise HTTPException(status_code=400, detail="Source and destination must be different")
 
+        # Auto-detect item if not provided
+        item_id = request.item_id
+        if not item_id:
+            default_item = get_default_item(supabase)
+            item_id = default_item["id"]
+
         # Convert to kg
-        conversion_factor = get_conversion_factor(supabase, request.item_id)
+        conversion_factor = get_conversion_factor(supabase, item_id)
         qty_kg = convert_to_kg(request.quantity, request.unit, conversion_factor)
 
         # Check source balance
         source_balance = supabase.table("stock_balance").select("on_hand_qty").eq(
             "location_id", request.from_location_id
-        ).eq("item_id", request.item_id).single().execute()
+        ).eq("item_id", item_id).single().execute()
 
         source_qty = source_balance.data.get("on_hand_qty", 0) if source_balance.data else 0
 
@@ -357,7 +507,7 @@ async def transfer_stock(request: TransferStockRequest, user_data: dict = Depend
             "created_by": user.id,
             "location_id_from": request.from_location_id,
             "location_id_to": request.to_location_id,
-            "item_id": request.item_id,
+            "item_id": item_id,
             "qty": qty_kg,
             "unit": "kg",
             "type": "transfer",
@@ -401,8 +551,14 @@ async def record_waste(request: WasteStockRequest, user_data: dict = Depends(req
         if not location_id:
             raise HTTPException(status_code=400, detail="User has no assigned location")
 
+        # Auto-detect item if not provided
+        item_id = request.item_id
+        if not item_id:
+            default_item = get_default_item(supabase)
+            item_id = default_item["id"]
+
         # Convert to kg
-        conversion_factor = get_conversion_factor(supabase, request.item_id)
+        conversion_factor = get_conversion_factor(supabase, item_id)
         qty_kg = convert_to_kg(request.quantity, request.unit, conversion_factor)
 
         # Create waste transaction
@@ -410,7 +566,7 @@ async def record_waste(request: WasteStockRequest, user_data: dict = Depends(req
             "id": str(uuid4()),
             "created_by": user.id,
             "location_id_from": location_id,
-            "item_id": request.item_id,
+            "item_id": item_id,
             "qty": qty_kg,
             "unit": "kg",
             "type": "waste",

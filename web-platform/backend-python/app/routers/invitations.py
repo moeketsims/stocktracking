@@ -13,7 +13,7 @@ router = APIRouter(prefix="/invitations", tags=["User Invitations"])
 
 class CreateInvitationRequest(BaseModel):
     email: EmailStr
-    role: str = Field(..., pattern="^(admin|zone_manager|location_manager|staff)$")
+    role: str = Field(..., pattern="^(admin|zone_manager|location_manager|driver|staff)$")
     zone_id: Optional[str] = None
     location_id: Optional[str] = None
     full_name: Optional[str] = None
@@ -33,8 +33,8 @@ async def list_invitations(
             "*, zones(name), locations(name)"
         ).order("created_at", desc=True)
 
-        # Zone managers see only their zone's invitations
-        if actor_profile["role"] == "zone_manager":
+        # Zone managers see only their zone's invitations (if they have a zone assigned)
+        if actor_profile["role"] == "zone_manager" and actor_profile.get("zone_id"):
             query = query.eq("zone_id", actor_profile["zone_id"])
 
         result = query.execute()

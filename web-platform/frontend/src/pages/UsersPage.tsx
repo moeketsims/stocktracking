@@ -34,6 +34,7 @@ const ROLE_LABELS: Record<string, string> = {
   admin: 'Admin',
   zone_manager: 'Zone Manager',
   location_manager: 'Location Manager',
+  driver: 'Driver',
   staff: 'Staff',
 };
 
@@ -41,6 +42,7 @@ const ROLE_COLORS: Record<string, string> = {
   admin: 'bg-purple-100 text-purple-800',
   zone_manager: 'bg-blue-100 text-blue-800',
   location_manager: 'bg-green-100 text-green-800',
+  driver: 'bg-orange-100 text-orange-800',
   staff: 'bg-gray-100 text-gray-800',
 };
 

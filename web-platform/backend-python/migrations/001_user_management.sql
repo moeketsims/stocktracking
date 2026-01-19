@@ -27,7 +27,7 @@ UPDATE profiles SET is_active = true WHERE is_active IS NULL;
 CREATE TABLE IF NOT EXISTS user_invitations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email VARCHAR(255) NOT NULL,
-    role VARCHAR(50) NOT NULL CHECK (role IN ('admin', 'zone_manager', 'location_manager', 'staff')),
+    role VARCHAR(50) NOT NULL CHECK (role IN ('admin', 'zone_manager', 'location_manager', 'driver', 'staff')),
     zone_id UUID REFERENCES zones(id) ON DELETE SET NULL,
     location_id UUID REFERENCES locations(id) ON DELETE SET NULL,
     full_name VARCHAR(255),

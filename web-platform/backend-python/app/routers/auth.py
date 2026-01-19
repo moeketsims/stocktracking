@@ -73,7 +73,7 @@ def get_view_location_id(profile: dict, view_location_id: Optional[str] = None) 
 
     - admin/zone_manager: Can view any location (view_location_id or None for all)
     - location_manager: Can view any location (view_location_id or their own if not specified)
-    - staff: Can only view their own location
+    - driver/staff: Can only view their own location
 
     Returns the location_id to filter by, or None for no filter (view all).
     """
@@ -93,7 +93,7 @@ def get_view_location_id(profile: dict, view_location_id: Optional[str] = None) 
         # If view_location_id specified, use that; otherwise default to their own
         return view_location_id if view_location_id else user_location_id
 
-    # Staff can only view their own location
+    # Driver and staff can only view their own location
     return user_location_id
 
 

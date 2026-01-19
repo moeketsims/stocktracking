@@ -2,8 +2,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import uvicorn
+import logging
 
 from app.config import get_settings
+from app.scheduler import start_scheduler, shutdown_scheduler
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 from app.routers import (
     auth_router,
     dashboard_router,
@@ -29,15 +37,22 @@ from app.routers.barcode import router as barcode_router
 from app.routers.demo_data import router as demo_data_router
 from app.routers.users import router as users_router
 from app.routers.invitations import router as invitations_router
+from app.routers.stock_requests import router as stock_requests_router
+from app.routers.pending_deliveries import router as pending_deliveries_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     print("Starting Potato Stock Tracking API...")
+    # Start the background scheduler for automated jobs
+    start_scheduler()
+    print("Background scheduler started")
     yield
     # Shutdown
     print("Shutting down...")
+    shutdown_scheduler()
+    print("Background scheduler stopped")
 
 
 app = FastAPI(
@@ -86,6 +101,8 @@ app.include_router(barcode_router, prefix="/api")
 app.include_router(demo_data_router, prefix="/api")
 app.include_router(users_router, prefix="/api")
 app.include_router(invitations_router, prefix="/api")
+app.include_router(stock_requests_router, prefix="/api")
+app.include_router(pending_deliveries_router, prefix="/api")
 
 
 if __name__ == "__main__":

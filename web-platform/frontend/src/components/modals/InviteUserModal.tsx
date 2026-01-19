@@ -13,6 +13,7 @@ interface InviteUserModalProps {
 
 const ROLE_OPTIONS = [
   { value: 'staff', label: 'Staff' },
+  { value: 'driver', label: 'Driver' },
   { value: 'location_manager', label: 'Location Manager' },
   { value: 'zone_manager', label: 'Zone Manager' },
   { value: 'admin', label: 'Admin' },
@@ -43,7 +44,7 @@ export default function InviteUserModal({
   // Filter roles based on current user's role
   const availableRoles = ROLE_OPTIONS.filter((role) => {
     if (isAdmin) return true;
-    if (isZoneManager) return ['staff', 'location_manager'].includes(role.value);
+    if (isZoneManager) return ['staff', 'driver', 'location_manager'].includes(role.value);
     return false;
   });
 

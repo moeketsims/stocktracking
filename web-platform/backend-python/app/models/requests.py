@@ -10,29 +10,25 @@ class LoginRequest(BaseModel):
 
 
 # Stock Operations Requests
+# Note: item_id is optional - if not provided, the system will use the default item (Potatoes)
 class ReceiveStockRequest(BaseModel):
-    item_id: str
+    item_id: Optional[str] = None  # Optional - auto-filled with default item
     quantity: float = Field(gt=0)
     unit: Literal["kg", "bag"] = "kg"
     supplier_id: str
-    quality_score: Literal[1, 2, 3] = 1
-    defect_pct: Optional[float] = Field(None, ge=0, le=100)
-    quality_notes: Optional[str] = None
-    expiry_date: Optional[str] = None
     notes: Optional[str] = None
     photo_url: Optional[str] = None
 
 
 class IssueStockRequest(BaseModel):
-    item_id: str
+    item_id: Optional[str] = None  # Optional - auto-filled with default item
     quantity: float = Field(gt=0)
     unit: Literal["kg", "bag"] = "kg"
-    batch_id: Optional[str] = None
     notes: Optional[str] = None
 
 
 class TransferStockRequest(BaseModel):
-    item_id: str
+    item_id: Optional[str] = None  # Optional - auto-filled with default item
     quantity: float = Field(gt=0)
     unit: Literal["kg", "bag"] = "kg"
     from_location_id: str
@@ -41,13 +37,12 @@ class TransferStockRequest(BaseModel):
 
 
 class WasteStockRequest(BaseModel):
-    item_id: str
+    item_id: Optional[str] = None  # Optional - auto-filled with default item
     quantity: float = Field(gt=0)
     unit: Literal["kg", "bag"] = "kg"
     reason: Literal[
         "spoiled",
         "damaged",
-        "expired",
         "trim_prep_loss",
         "contaminated",
         "other"
@@ -176,6 +171,11 @@ class UpdateTripRequest(BaseModel):
     origin_description: Optional[str] = None
     destination_description: Optional[str] = None
     notes: Optional[str] = None
+    status: Optional[str] = None
+    trip_type: Optional[str] = None
+    from_location_id: Optional[str] = None
+    to_location_id: Optional[str] = None
+    supplier_id: Optional[str] = None
 
 
 class CompleteTripRequest(BaseModel):
@@ -212,4 +212,73 @@ class CreateMultiStopTripRequest(BaseModel):
 
 class CompleteStopRequest(BaseModel):
     actual_qty_kg: Optional[float] = Field(None, ge=0)
+    notes: Optional[str] = None
+
+
+# Stock Request Requests (Replenishment Workflow)
+class CreateStockRequestRequest(BaseModel):
+    location_id: Optional[str] = None  # Optional if user has location_id in profile
+    quantity_bags: int = Field(gt=0)
+    urgency: Literal["urgent", "normal"] = "normal"
+    notes: Optional[str] = None
+
+
+class AcceptStockRequestRequest(BaseModel):
+    pass  # No body needed, uses auth context
+
+
+class CreateTripFromRequestRequest(BaseModel):
+    vehicle_id: str
+    driver_id: Optional[str] = None
+    supplier_id: str
+    notes: Optional[str] = None
+    auto_start: bool = True  # Auto-start the trip (skip "planned" status)
+    estimated_arrival_time: Optional[str] = None  # ISO datetime string for ETA
+    odometer_start: Optional[int] = Field(None, ge=0)  # Starting odometer reading
+
+
+class CreateTripFromMultipleRequestsRequest(BaseModel):
+    """Create a multi-stop trip from multiple stock requests."""
+    request_ids: List[str] = Field(min_length=1, description="List of stock request IDs to fulfill")
+    vehicle_id: str
+    driver_id: Optional[str] = None
+    supplier_id: str
+    notes: Optional[str] = None
+    auto_start: bool = True  # Auto-start the trip (skip "planned" status)
+    estimated_arrival_time: Optional[str] = None  # ISO datetime string for ETA
+
+
+# Pending Delivery Requests
+class ConfirmDeliveryRequest(BaseModel):
+    confirmed_qty_kg: float = Field(ge=0)
+    notes: Optional[str] = None
+    odometer_end: Optional[int] = Field(None, ge=0)  # Ending odometer reading
+
+
+class RejectDeliveryRequest(BaseModel):
+    reason: str
+
+
+# Cancel Stock Request (with reason)
+class CancelStockRequestRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
+
+
+# Update/Modify Stock Request
+class UpdateStockRequestRequest(BaseModel):
+    quantity_bags: Optional[int] = Field(None, gt=0)
+    urgency: Optional[Literal["urgent", "normal"]] = None
+    notes: Optional[str] = None
+
+
+# Start Trip with ETA
+class StartTripRequest(BaseModel):
+    estimated_arrival_time: Optional[str] = None  # ISO datetime string
+
+
+# Fulfill Remaining (partial fulfillment)
+class FulfillRemainingRequest(BaseModel):
+    vehicle_id: str
+    driver_id: Optional[str] = None
+    supplier_id: str
     notes: Optional[str] = None

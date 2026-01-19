@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { Modal, Button, Input, Select } from '../ui';
-import { useTransferStock, useItems, useLocations } from '../../hooks/useData';
+import { useTransferStock, useLocations } from '../../hooks/useData';
 import type { TransferStockForm } from '../../types';
 import { useAuthStore } from '../../stores/authStore';
 
@@ -9,15 +9,14 @@ interface TransferModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  preselectedItemId?: string;
+  fromLocationId?: string;
 }
 
-export default function TransferModal({ isOpen, onClose, onSuccess, preselectedItemId }: TransferModalProps) {
+export default function TransferModal({ isOpen, onClose, onSuccess, fromLocationId }: TransferModalProps) {
   const { user } = useAuthStore();
   const [form, setForm] = useState<TransferStockForm>({
-    item_id: '',
     quantity: 0,
-    unit: 'kg',
+    unit: 'bag',  // Default to bags
     from_location_id: '',
     to_location_id: '',
     notes: '',
@@ -25,28 +24,26 @@ export default function TransferModal({ isOpen, onClose, onSuccess, preselectedI
   const [error, setError] = useState('');
 
   const transferMutation = useTransferStock();
-  const { data: items } = useItems();
   const { data: locations } = useLocations();
 
   useEffect(() => {
     if (isOpen) {
       setForm({
-        item_id: preselectedItemId || items?.[0]?.id || '',
         quantity: 0,
-        unit: 'kg',
-        from_location_id: user?.location_id || '',
+        unit: 'bag',  // Default to bags
+        from_location_id: fromLocationId || user?.location_id || '',
         to_location_id: '',
         notes: '',
       });
       setError('');
     }
-  }, [isOpen, items, user, preselectedItemId]);
+  }, [isOpen, user, fromLocationId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    if (!form.item_id || form.quantity <= 0 || !form.from_location_id || !form.to_location_id) {
+    if (form.quantity <= 0 || !form.from_location_id || !form.to_location_id) {
       setError('Please fill in all required fields');
       return;
     }
@@ -65,11 +62,6 @@ export default function TransferModal({ isOpen, onClose, onSuccess, preselectedI
     }
   };
 
-  const itemOptions = (items || []).map((item: any) => ({
-    value: item.id,
-    label: item.name,
-  }));
-
   const locationOptions = (locations || []).map((loc: any) => ({
     value: loc.id,
     label: `${loc.name} (${loc.type})`,
@@ -79,9 +71,11 @@ export default function TransferModal({ isOpen, onClose, onSuccess, preselectedI
     (loc: { value: string; label: string }) => loc.value !== form.from_location_id
   );
 
-  const selectedItem = items?.find((item: any) => item.id === form.item_id);
   const fromLocation = locations?.find((loc: any) => loc.id === form.from_location_id);
   const toLocation = locations?.find((loc: any) => loc.id === form.to_location_id);
+
+  // Conversion factor for potatoes (10kg per bag)
+  const CONVERSION_FACTOR = 10;
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Transfer Stock" size="md">
@@ -91,14 +85,6 @@ export default function TransferModal({ isOpen, onClose, onSuccess, preselectedI
             {error}
           </div>
         )}
-
-        <Select
-          label="Item *"
-          options={itemOptions}
-          value={form.item_id}
-          onChange={(e) => setForm({ ...form, item_id: e.target.value })}
-          placeholder="Select an item"
-        />
 
         <div className="grid grid-cols-2 gap-4">
           <Input
@@ -112,21 +98,21 @@ export default function TransferModal({ isOpen, onClose, onSuccess, preselectedI
           <Select
             label="Unit"
             options={[
-              { value: 'kg', label: 'Kilograms (kg)' },
-              { value: 'bag', label: 'Bags' },
+              { value: 'bag', label: 'Bags (10 kg each)' },
+              { value: 'kg', label: 'Kilograms' },
             ]}
             value={form.unit}
             onChange={(e) => setForm({ ...form, unit: e.target.value as 'kg' | 'bag' })}
           />
         </div>
 
-        {form.unit === 'bag' && selectedItem && (
+        {form.unit === 'bag' && (
           <p className="text-sm text-gray-500">
-            1 bag = {selectedItem.conversion_factor} kg
+            1 bag = {CONVERSION_FACTOR} kg
             {form.quantity > 0 && (
               <span className="font-medium">
                 {' '}
-                ({(form.quantity * selectedItem.conversion_factor).toFixed(1)} kg total)
+                ({(form.quantity * CONVERSION_FACTOR).toFixed(1)} kg total)
               </span>
             )}
           </p>

@@ -105,6 +105,30 @@ class StockScreenResponse(BaseModel):
     fifo_suggestion: Optional[FIFOSuggestion] = None
 
 
+# Location-centric stock responses (simplified view)
+class RecentActivity(BaseModel):
+    id: str
+    type: str  # "receive", "issue", "transfer", "waste"
+    qty: float
+    created_at: str
+    notes: Optional[str] = None
+
+
+class LocationStockItem(BaseModel):
+    location_id: str
+    location_name: str
+    location_type: str  # "shop" or "warehouse"
+    on_hand_qty: float
+    status: str  # "in_stock", "low", "out"
+    last_activity: Optional[str] = None
+    recent_activity: List[RecentActivity] = []
+
+
+class LocationStockResponse(BaseModel):
+    locations: List[LocationStockItem]
+    total_stock_kg: float
+
+
 # Transaction Responses
 class TransactionItem(BaseModel):
     id: str

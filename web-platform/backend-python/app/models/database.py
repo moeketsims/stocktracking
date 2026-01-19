@@ -4,7 +4,7 @@ from datetime import datetime
 
 
 # Enums
-UserRole = Literal["admin", "zone_manager", "location_manager", "staff"]
+UserRole = Literal["admin", "zone_manager", "location_manager", "driver", "staff"]
 LocationType = Literal["shop", "warehouse"]
 TransactionType = Literal["receive", "issue", "transfer", "waste", "adjustment"]
 NotificationType = Literal["bag_used", "threshold_alert", "daily_summary"]

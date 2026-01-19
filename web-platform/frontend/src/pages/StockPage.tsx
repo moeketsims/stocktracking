@@ -1,36 +1,99 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Search,
   ArrowDownToLine,
   ArrowUpFromLine,
   ArrowLeftRight,
   Trash2,
+  MapPin,
+  Clock,
+  Warehouse,
+  Store,
+  X,
+  TrendingDown,
+  AlertTriangle,
   Package,
-  Boxes,
+  Activity,
+  AlertCircle,
   ChevronDown,
   ChevronRight,
-  MoreHorizontal,
-  X,
-  Clock,
+  Check,
+  Truck,
+  ClipboardList,
 } from 'lucide-react';
-import { Badge, Button } from '../components/ui';
-import { useStockOverview, useBatches, useTransactions } from '../hooks/useData';
+import { Button } from '../components/ui';
+import { useStockByLocation } from '../hooks/useData';
 import { useAuthStore } from '../stores/authStore';
+import { pendingDeliveriesApi } from '../lib/api';
 import ReceiveModal from '../components/modals/ReceiveModal';
 import IssueModal from '../components/modals/IssueModal';
 import TransferModal from '../components/modals/TransferModal';
 import WasteModal from '../components/modals/WasteModal';
-import type { StockOverview, BatchDetail, TransactionItem } from '../types';
+import StockRequestModal from '../components/modals/StockRequestModal';
+import ConfirmDeliveryModal from '../components/modals/ConfirmDeliveryModal';
+import type { LocationStockItem, RecentActivity, PendingDelivery } from '../types';
 
-// Helper function to format numbers
-const formatQty = (value: number): string => {
+// Target stock levels by location type (in kg)
+const TARGET_STOCK = {
+  warehouse: 1500000, // 1,500 tons
+  shop: 150000,       // 150 tons
+};
+
+// Status thresholds based on % of target
+// Healthy: ≥ 85%, Low: 65-84%, Critical: < 65%
+type StockStatus = 'healthy' | 'low' | 'critical';
+
+function getStockStatus(qty: number, locationType: 'warehouse' | 'shop'): StockStatus {
+  const target = TARGET_STOCK[locationType];
+  const percent = (qty / target) * 100;
+
+  if (percent >= 85) return 'healthy';
+  if (percent >= 65) return 'low';
+  return 'critical';
+}
+
+function getCapacityPercent(qty: number, locationType: 'warehouse' | 'shop'): number {
+  const target = TARGET_STOCK[locationType];
+  return Math.min(100, Math.round((qty / target) * 100));
+}
+
+// Calculate how much needed to reach target
+function getNeededToTarget(qty: number, locationType: 'warehouse' | 'shop'): number {
+  const target = TARGET_STOCK[locationType];
+  return Math.max(0, target - qty);
+}
+
+// Conversion: 1 bag = 10 kg
+const KG_PER_BAG = 10;
+
+// Format number with thousand separators
+const formatNumber = (value: number, decimals: number = 0): string => {
   if (value === 0) return '0';
-  const formatted = value.toFixed(1);
-  return formatted.endsWith('.0') ? formatted.slice(0, -2) : formatted;
+  return new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  }).format(value);
+};
+
+// Convert kg to bags
+const kgToBags = (kg: number): number => kg / KG_PER_BAG;
+
+// Format stock value in bags
+// >= 1000 bags: no decimals, < 1000 bags: 1 decimal if fractional
+const formatStockValue = (kg: number): { value: string; unit: string } => {
+  const bags = kgToBags(kg);
+  if (bags >= 1000) {
+    return { value: formatNumber(bags, 0), unit: 'bags' };
+  }
+  // Show 1 decimal for smaller amounts if not a whole number
+  const decimals = bags % 1 === 0 ? 0 : 1;
+  return { value: formatNumber(bags, decimals), unit: 'bags' };
 };
 
 // Helper to get relative time
-const getRelativeTime = (dateStr: string): string => {
+const getRelativeTime = (dateStr: string | null): string => {
+  if (!dateStr) return 'No activity';
   const date = new Date(dateStr);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
@@ -45,103 +108,174 @@ const getRelativeTime = (dateStr: string): string => {
   return date.toLocaleDateString();
 };
 
+// Check if location has stale data (no activity in 3+ days)
+const isStaleData = (lastActivity: string | null): boolean => {
+  if (!lastActivity) return true;
+  const date = new Date(lastActivity);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = diffMs / 86400000;
+  return diffDays >= 3;
+};
+
+// Sort options
+type SortOption = 'name' | 'lowest_percent' | 'highest_percent' | 'lowest_stock' | 'highest_stock' | 'last_updated';
+
+const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: 'name', label: 'Name' },
+  { value: 'lowest_percent', label: 'Lowest %' },
+  { value: 'highest_percent', label: 'Highest %' },
+  { value: 'lowest_stock', label: 'Least stock' },
+  { value: 'highest_stock', label: 'Most stock' },
+  { value: 'last_updated', label: 'Last updated' },
+];
+
 export default function StockPage() {
-  const { data, isLoading, error, refetch } = useStockOverview();
-  const { isManager } = useAuthStore();
+  const queryClient = useQueryClient();
+  const { data, isLoading, error, refetch } = useStockByLocation();
+  const { isManager, user } = useAuthStore();
 
-  // Master pane state
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  // Search/filter/sort state
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'in_stock' | 'low' | 'out'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'healthy' | 'low' | 'critical'>('all');
+  const [sortBy, setSortBy] = useState<SortOption>('name');
+  const [showSortMenu, setShowSortMenu] = useState(false);
 
-  // Detail pane state
-  const [showMovements, setShowMovements] = useState(false);
+  // Drawer state
+  const [selectedLocation, setSelectedLocation] = useState<LocationStockItem | null>(null);
 
   // Modal state
   const [showReceiveModal, setShowReceiveModal] = useState(false);
   const [showIssueModal, setShowIssueModal] = useState(false);
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [showWasteModal, setShowWasteModal] = useState(false);
+  const [showRequestModal, setShowRequestModal] = useState(false);
+  const [showConfirmDeliveryModal, setShowConfirmDeliveryModal] = useState(false);
+  const [selectedDelivery, setSelectedDelivery] = useState<PendingDelivery | null>(null);
 
-  // Filter items based on search and status
-  const filteredItems = useMemo(() => {
-    return data?.overview.filter((item) => {
-      const matchesSearch =
-        item.item_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.sku.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
-      return matchesSearch && matchesStatus;
-    }) || [];
-  }, [data?.overview, searchQuery, statusFilter]);
+  // Fetch pending deliveries
+  const { data: pendingDeliveriesData, refetch: refetchDeliveries } = useQuery({
+    queryKey: ['pending-deliveries', 'pending'],
+    queryFn: () => pendingDeliveriesApi.getPending(undefined, 10).then(r => r.data),
+  });
 
-  // Check if any filters are active
-  const hasActiveFilters = searchQuery !== '' || statusFilter !== 'all';
-
-  // Clear all filters
-  const clearFilters = () => {
-    setSearchQuery('');
-    setStatusFilter('all');
-  };
-
-  // Sync selectedItemId with filtered items
+  // Check URL for delivery confirmation
   useEffect(() => {
-    if (filteredItems.length === 0) {
-      setSelectedItemId(null);
-    } else if (selectedItemId) {
-      const stillExists = filteredItems.some((item) => item.item_id === selectedItemId);
-      if (!stillExists) {
-        setSelectedItemId(filteredItems[0].item_id);
+    const params = new URLSearchParams(window.location.search);
+    const confirmId = params.get('confirm');
+    if (confirmId && pendingDeliveriesData?.deliveries) {
+      const delivery = pendingDeliveriesData.deliveries.find((d: PendingDelivery) => d.id === confirmId);
+      if (delivery) {
+        setSelectedDelivery(delivery);
+        setShowConfirmDeliveryModal(true);
+        // Clear the URL param
+        window.history.replaceState({}, document.title, window.location.pathname);
       }
-    } else {
-      setSelectedItemId(filteredItems[0].item_id);
     }
-  }, [filteredItems, selectedItemId]);
+  }, [pendingDeliveriesData]);
 
-  // Get selected item from filtered list
-  const selectedItem = filteredItems.find((item) => item.item_id === selectedItemId);
+  const pendingDeliveries = pendingDeliveriesData?.deliveries || [];
 
-  // Fetch batches for selected item
-  const { data: batchesData } = useBatches('all', selectedItemId || undefined);
+  // Compute status for all locations
+  const locationsWithStatus = useMemo(() =>
+    (data?.locations || []).map(loc => ({
+      ...loc,
+      computedStatus: getStockStatus(loc.on_hand_qty, loc.location_type as 'warehouse' | 'shop'),
+      capacityPercent: getCapacityPercent(loc.on_hand_qty, loc.location_type as 'warehouse' | 'shop'),
+    })),
+    [data?.locations]
+  );
 
-  // Fetch transactions for movements section
-  const { data: transactionsData } = useTransactions('all', 50);
+  // Filter and sort locations
+  const filteredLocations = useMemo(() => {
+    let result = locationsWithStatus.filter((loc) => {
+      const matchesSearch = loc.location_name.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesStatus = statusFilter === 'all' || loc.computedStatus === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
 
-  // Filter transactions for selected item
-  const itemTransactions = useMemo(() => {
-    if (!selectedItem || !transactionsData?.transactions) return [];
-    return transactionsData.transactions
-      .filter((t) => t.item_name === selectedItem.item_name)
-      .slice(0, 10);
-  }, [selectedItem, transactionsData]);
+    // Sort
+    switch (sortBy) {
+      case 'lowest_percent':
+        result = [...result].sort((a, b) => a.capacityPercent - b.capacityPercent);
+        break;
+      case 'highest_percent':
+        result = [...result].sort((a, b) => b.capacityPercent - a.capacityPercent);
+        break;
+      case 'lowest_stock':
+        result = [...result].sort((a, b) => a.on_hand_qty - b.on_hand_qty);
+        break;
+      case 'highest_stock':
+        result = [...result].sort((a, b) => b.on_hand_qty - a.on_hand_qty);
+        break;
+      case 'last_updated':
+        result = [...result].sort((a, b) => {
+          if (!a.last_activity) return 1;
+          if (!b.last_activity) return -1;
+          return new Date(b.last_activity).getTime() - new Date(a.last_activity).getTime();
+        });
+        break;
+      case 'name':
+      default:
+        result = [...result].sort((a, b) => a.location_name.localeCompare(b.location_name));
+        break;
+    }
 
-  // Get last movement time
-  const lastMovement = itemTransactions[0];
+    return result;
+  }, [locationsWithStatus, searchQuery, statusFilter, sortBy]);
 
-  // Get FIFO suggestion for selected item
-  const fifoSuggestion = data?.fifo_suggestion;
-  const selectedItemBatches = batchesData?.batches || [];
+  // Calculate summary stats with computed status
+  const summaryStats = useMemo(() => ({
+    totalStock: data?.total_stock_kg || 0,
+    locationCount: locationsWithStatus.length,
+    healthyCount: locationsWithStatus.filter(l => l.computedStatus === 'healthy').length,
+    lowCount: locationsWithStatus.filter(l => l.computedStatus === 'low').length,
+    criticalCount: locationsWithStatus.filter(l => l.computedStatus === 'critical').length,
+  }), [data?.total_stock_kg, locationsWithStatus]);
 
   const handleSuccess = () => {
     refetch();
+    refetchDeliveries();
+    setSelectedLocation(null);
+  };
+
+  const handleDeliveryConfirmSuccess = () => {
+    refetch();
+    refetchDeliveries();
+    queryClient.invalidateQueries({ queryKey: ['stock-requests'] });
+    setShowConfirmDeliveryModal(false);
+    setSelectedDelivery(null);
+  };
+
+  const openModal = (modal: 'receive' | 'issue' | 'transfer' | 'waste') => {
+    switch (modal) {
+      case 'receive':
+        setShowReceiveModal(true);
+        break;
+      case 'issue':
+        setShowIssueModal(true);
+        break;
+      case 'transfer':
+        setShowTransferModal(true);
+        break;
+      case 'waste':
+        setShowWasteModal(true);
+        break;
+    }
   };
 
   if (isLoading) {
     return (
-      <div className="h-[calc(100vh-8rem)] flex -m-8">
-        <div className="w-72 border-r border-gray-200 bg-white animate-pulse">
-          <div className="p-3 space-y-2">
-            <div className="h-9 bg-gray-100 rounded-md" />
-            <div className="h-7 bg-gray-100 rounded-md" />
-            <div className="space-y-1 mt-3">
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="h-12 bg-gray-100 rounded-md" />
-              ))}
-            </div>
-          </div>
+      <div className="space-y-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-24 bg-gray-100 rounded-2xl animate-pulse" />
+          ))}
         </div>
-        <div className="flex-1 bg-gray-50 animate-pulse p-6">
-          <div className="h-28 bg-gray-100 rounded-lg mb-3" />
-          <div className="h-64 bg-gray-100 rounded-lg" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="h-44 bg-gray-100 rounded-2xl animate-pulse" />
+          ))}
         </div>
       </div>
     );
@@ -149,470 +283,683 @@ export default function StockPage() {
 
   if (error) {
     return (
-      <div className="bg-red-50 text-red-600 p-4 rounded-lg">
+      <div className="bg-red-50 text-red-600 p-4 rounded-2xl">
         Error loading stock data: {(error as Error).message}
       </div>
     );
   }
 
+  const totalFormatted = formatStockValue(summaryStats.totalStock);
+
   return (
-    <div className="h-[calc(100vh-8rem)] flex -m-8">
-      {/* Master Pane - Item List (narrower, tool-like) */}
-      <div className="w-72 border-r border-gray-200 bg-white flex flex-col">
+    <div className="space-y-6">
+      {/* Summary Tiles - Clickable to filter */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <SummaryTile
+          icon={Package}
+          iconBg="bg-emerald-100"
+          iconColor="text-emerald-600"
+          label="Total Stock"
+          value={totalFormatted.value}
+          unit={totalFormatted.unit}
+          onClick={() => setStatusFilter('all')}
+          isActive={statusFilter === 'all'}
+        />
+        <SummaryTile
+          icon={MapPin}
+          iconBg="bg-gray-100"
+          iconColor="text-gray-600"
+          label="Healthy"
+          value={summaryStats.healthyCount.toString()}
+          subtitle={summaryStats.healthyCount === 1 ? 'location' : 'locations'}
+          onClick={() => setStatusFilter('healthy')}
+          isActive={statusFilter === 'healthy'}
+        />
+        <SummaryTile
+          icon={TrendingDown}
+          iconBg="bg-amber-100"
+          iconColor="text-amber-600"
+          label="Low"
+          value={summaryStats.lowCount.toString()}
+          subtitle={summaryStats.lowCount === 1 ? 'location' : 'locations'}
+          highlight={summaryStats.lowCount > 0 ? 'warning' : undefined}
+          onClick={() => setStatusFilter('low')}
+          isActive={statusFilter === 'low'}
+        />
+        <SummaryTile
+          icon={AlertTriangle}
+          iconBg="bg-red-100"
+          iconColor="text-red-600"
+          label="Critical"
+          value={summaryStats.criticalCount.toString()}
+          subtitle={summaryStats.criticalCount === 1 ? 'location' : 'locations'}
+          highlight={summaryStats.criticalCount > 0 ? 'error' : undefined}
+          onClick={() => setStatusFilter('critical')}
+          isActive={statusFilter === 'critical'}
+        />
+      </div>
+
+      {/* Controls Row - Sticky */}
+      <div className="sticky top-0 z-30 -mx-6 px-6 py-4 -mt-4 bg-gray-50/95 backdrop-blur-sm border-b border-gray-100 flex flex-col sm:flex-row sm:items-center gap-4">
         {/* Search */}
-        <div className="p-3 border-b border-gray-100">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search items..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-7 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search locations..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white text-sm"
+          />
         </div>
 
-        {/* Filters + Count (aligned as control bar) */}
-        <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-1.5">
-          {(['all', 'in_stock', 'low', 'out'] as const).map((status) => (
+        {/* Filter Tabs */}
+        <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl">
+          {(['all', 'healthy', 'low', 'critical'] as const).map((status) => (
             <button
               key={status}
               onClick={() => setStatusFilter(status)}
-              className={`px-2 py-0.5 text-xs font-medium rounded transition-colors ${
+              className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all ${
                 statusFilter === status
-                  ? 'bg-emerald-100 text-emerald-700'
-                  : 'text-gray-500 hover:bg-gray-100'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
               }`}
             >
-              {status === 'all' ? 'All' : status === 'in_stock' ? 'In Stock' : status === 'low' ? 'Low' : 'Out'}
+              {status === 'all' ? 'All' : status.charAt(0).toUpperCase() + status.slice(1)}
             </button>
           ))}
-          <span className="ml-auto text-xs text-gray-400">
-            {filteredItems.length}
-          </span>
-          {hasActiveFilters && (
-            <button
-              onClick={clearFilters}
-              className="text-xs text-gray-400 hover:text-gray-600"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
+        </div>
+
+        {/* Sort Dropdown - Proper select-style control */}
+        <div className="relative">
+          <button
+            onClick={() => setShowSortMenu(!showSortMenu)}
+            className={`flex items-center gap-2 pl-3 pr-2 py-2 text-sm bg-white border rounded-xl transition-all min-w-[140px] ${
+              showSortMenu
+                ? 'border-emerald-500 ring-2 ring-emerald-500/20'
+                : 'border-gray-200 hover:border-gray-300'
+            }`}
+          >
+            <span className="text-gray-500">Sort by</span>
+            <span className="font-medium text-gray-900 flex-1 text-left">{SORT_OPTIONS.find(o => o.value === sortBy)?.label}</span>
+            <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showSortMenu ? 'rotate-180' : ''}`} />
+          </button>
+          {showSortMenu && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setShowSortMenu(false)} />
+              <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg py-1 z-20 min-w-[180px]">
+                {SORT_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => {
+                      setSortBy(option.value);
+                      setShowSortMenu(false);
+                    }}
+                    className={`w-full px-3 py-2.5 text-left text-sm flex items-center justify-between hover:bg-gray-50 ${
+                      sortBy === option.value ? 'text-emerald-600 bg-emerald-50/50' : 'text-gray-700'
+                    }`}
+                  >
+                    {option.label}
+                    {sortBy === option.value && <Check className="w-4 h-4" />}
+                  </button>
+                ))}
+              </div>
+            </>
           )}
         </div>
 
-        {/* Item List */}
-        <div className="flex-1 overflow-auto">
-          {filteredItems.length === 0 ? (
-            <div className="p-6 text-center">
-              <Package className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-              <p className="text-sm text-gray-500">No items found</p>
-              {hasActiveFilters && (
-                <button
-                  onClick={clearFilters}
-                  className="mt-2 text-xs text-emerald-600 hover:text-emerald-700"
-                >
-                  Clear filters
-                </button>
-              )}
-            </div>
-          ) : (
-            <div>
-              {filteredItems.map((item) => (
-                <ItemRow
-                  key={item.item_id}
-                  item={item}
-                  isSelected={item.item_id === selectedItemId}
-                  onClick={() => setSelectedItemId(item.item_id)}
-                />
-              ))}
-            </div>
-          )}
+        {/* CTAs */}
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            onClick={() => setShowRequestModal(true)}
+            variant="secondary"
+            className="gap-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+          >
+            <ClipboardList className="w-4 h-4" />
+            Request Stock
+          </Button>
+          <Button onClick={() => setShowReceiveModal(true)} className="gap-2">
+            <ArrowDownToLine className="w-4 h-4" />
+            Receive Stock
+          </Button>
         </div>
       </div>
 
-      {/* Detail Pane - Single workspace feel */}
-      <div className="flex-1 overflow-auto bg-gray-50">
-        {selectedItem ? (
-          <div className="p-5">
-            {/* Item Header Card */}
-            <div className="bg-white rounded-lg border border-gray-200 p-4 mb-3">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-lg font-semibold text-gray-900">{selectedItem.item_name}</h2>
-                    <span className="text-xs font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
-                      {selectedItem.sku}
-                    </span>
-                    <StatusBadge status={selectedItem.status} />
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1 flex items-center gap-1.5">
-                    <span>{selectedItem.active_batch_count} batches</span>
-                    {lastMovement && (
-                      <>
-                        <span className="text-gray-300">·</span>
-                        <Clock className="w-3 h-3" />
-                        <span>{getRelativeTime(lastMovement.created_at)}</span>
-                      </>
-                    )}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <div className="flex items-baseline gap-1 justify-end">
-                    <span className="text-2xl font-bold text-gray-900">
-                      {formatQty(selectedItem.on_hand_qty)}
-                    </span>
-                    <span className="text-xs text-gray-500 font-medium">{selectedItem.unit}</span>
-                  </div>
-                  <p className="text-xs text-gray-400">on hand</p>
-                </div>
-              </div>
-
-              {/* Action Bar - Clean alignment */}
-              <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2">
-                <Button size="sm" onClick={() => setShowReceiveModal(true)} className="gap-1">
-                  <ArrowDownToLine className="w-3.5 h-3.5" />
-                  Receive
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => setShowIssueModal(true)} className="gap-1">
-                  <ArrowUpFromLine className="w-3.5 h-3.5" />
-                  Issue
-                </Button>
-                <div className="flex-1" />
-                {isManager() && (
-                  <Button size="sm" variant="ghost" onClick={() => setShowTransferModal(true)} className="gap-1 text-gray-600">
-                    <ArrowLeftRight className="w-3.5 h-3.5" />
-                    Transfer
-                  </Button>
-                )}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setShowWasteModal(true)}
-                  className="gap-1 text-gray-500 hover:text-red-600 hover:bg-red-50"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  Waste
-                </Button>
-                <button className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded">
-                  <MoreHorizontal className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            {/* FIFO Recommendation Strip - Slim inline */}
-            {fifoSuggestion && (
-              <div className="flex items-center gap-3 px-3 py-2 mb-3 bg-emerald-50/50 border border-emerald-100 rounded-md">
-                <Boxes className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                <p className="text-sm text-emerald-800 flex-1">
-                  <span className="font-medium">FIFO:</span>{' '}
-                  <button className="font-mono text-emerald-700 hover:text-emerald-900 bg-emerald-100 px-1.5 py-0.5 rounded text-xs font-semibold">
-                    {fifoSuggestion.batch_id_display}
-                  </button>
-                  <span className="text-emerald-600 ml-1.5">
-                    {formatQty(fifoSuggestion.remaining_qty)} kg · {getRelativeTime(fifoSuggestion.received_at)}
-                  </span>
-                </p>
-                <button className="text-xs text-emerald-600 hover:text-emerald-700">View</button>
-                <Button size="sm" onClick={() => setShowIssueModal(true)}>
-                  Issue
-                </Button>
-              </div>
-            )}
-
-            {/* Main workspace surface - Batches + Movements */}
-            <div className="bg-white rounded-lg border border-gray-200">
-              {/* Active Batches Section */}
-              <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-gray-900">Active Batches</h3>
-                <span className="text-xs text-gray-400">{selectedItemBatches.length} total</span>
-              </div>
-
-              {selectedItemBatches.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-left border-b border-gray-100 bg-gray-50/50">
-                        <th className="px-4 py-2 font-medium text-gray-500 text-xs">Batch</th>
-                        <th className="px-4 py-2 font-medium text-gray-500 text-xs cursor-pointer hover:text-gray-700">
-                          Remaining <ChevronDown className="w-3 h-3 inline" />
-                        </th>
-                        <th className="px-4 py-2 font-medium text-gray-500 text-xs">Quality</th>
-                        <th className="px-4 py-2 font-medium text-gray-500 text-xs cursor-pointer hover:text-gray-700">
-                          Received <ChevronDown className="w-3 h-3 inline" />
-                        </th>
-                        <th className="px-4 py-2 font-medium text-gray-500 text-xs">Status</th>
-                        <th className="px-4 py-2 w-16"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedItemBatches.slice(0, 5).map((batch) => (
-                        <BatchRow key={batch.id} batch={batch} onIssue={() => setShowIssueModal(true)} />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="p-6 text-center text-gray-500">
-                  <p className="text-sm">No active batches for this item</p>
-                </div>
-              )}
-
-              {selectedItemBatches.length > 5 && (
-                <div className="px-4 py-2 border-t border-gray-100">
-                  <button className="text-xs text-emerald-600 hover:text-emerald-700 font-medium flex items-center gap-0.5">
-                    View all {selectedItemBatches.length} batches <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
-
-              {/* Recent Movements - Collapsed panel */}
-              <div className="border-t border-gray-100">
-                <button
-                  onClick={() => setShowMovements(!showMovements)}
-                  className="w-full px-4 py-2.5 flex items-center justify-between text-left hover:bg-gray-50 transition-colors"
-                >
-                  <span className="text-sm font-semibold text-gray-900">
-                    Recent Movements
-                    <span className="font-normal text-gray-400 ml-1">({itemTransactions.length})</span>
-                  </span>
-                  {showMovements ? (
-                    <ChevronDown className="w-4 h-4 text-gray-400" />
-                  ) : (
-                    <ChevronRight className="w-4 h-4 text-gray-400" />
-                  )}
-                </button>
-                {showMovements && (
-                  <div className="border-t border-gray-50">
-                    {itemTransactions.length > 0 ? (
-                      <div>
-                        {itemTransactions.map((tx) => (
-                          <TransactionRow key={tx.id} transaction={tx} />
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="px-4 py-6 text-center">
-                        <p className="text-sm text-gray-400">No movements yet for this item</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
+      {/* Pending Deliveries Section */}
+      {pendingDeliveries.length > 0 && (
+        <div className="bg-orange-50 border border-orange-200 rounded-2xl p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Truck className="w-5 h-5 text-orange-600" />
+            <h3 className="font-semibold text-gray-900">Pending Deliveries</h3>
+            <span className="ml-auto px-2 py-0.5 bg-orange-200 text-orange-800 text-xs font-medium rounded-full">
+              {pendingDeliveries.length} awaiting confirmation
+            </span>
           </div>
-        ) : (
-          <div className="h-full flex items-center justify-center">
-            <div className="text-center">
-              <Package className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-              <h3 className="text-sm font-medium text-gray-600">
-                {hasActiveFilters ? 'No matching items' : 'Select an item'}
-              </h3>
-              <p className="text-xs text-gray-400 mt-1">
-                {hasActiveFilters ? 'Adjust filters to see items' : 'Choose from the list'}
-              </p>
-              {hasActiveFilters && (
-                <button onClick={clearFilters} className="mt-3 text-xs text-emerald-600 hover:text-emerald-700">
-                  Clear filters
-                </button>
-              )}
-            </div>
+          <div className="space-y-3">
+            {pendingDeliveries.slice(0, 3).map((delivery: PendingDelivery) => (
+              <button
+                key={delivery.id}
+                onClick={() => {
+                  setSelectedDelivery(delivery);
+                  setShowConfirmDeliveryModal(true);
+                }}
+                className="w-full bg-white rounded-xl border border-orange-100 p-4 text-left hover:border-orange-300 transition-colors"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-medium text-gray-900">
+                    Trip #{delivery.trip?.trip_number || 'Unknown'}
+                  </span>
+                  <span className="text-sm text-gray-500">
+                    {delivery.driver_claimed_bags} bags
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">
+                    From: {delivery.supplier?.name || 'Unknown supplier'}
+                  </span>
+                  <span className="text-orange-600 font-medium flex items-center gap-1">
+                    Confirm <ChevronRight className="w-3.5 h-3.5" />
+                  </span>
+                </div>
+              </button>
+            ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* Location Cards Grid */}
+      {filteredLocations.length === 0 ? (
+        <div className="text-center py-16 bg-gray-50 rounded-2xl">
+          <MapPin className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+          <h3 className="text-lg font-medium text-gray-600">No locations found</h3>
+          <p className="text-sm text-gray-400 mt-1">
+            {searchQuery || statusFilter !== 'all'
+              ? 'Try adjusting your search or filters'
+              : 'No locations have been set up yet'}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredLocations.map((location) => (
+            <LocationCard
+              key={location.location_id}
+              location={location}
+              status={location.computedStatus}
+              capacityPercent={location.capacityPercent}
+              onClick={() => setSelectedLocation(location)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Details Drawer */}
+      <DetailsDrawer
+        location={selectedLocation}
+        onClose={() => setSelectedLocation(null)}
+        onAction={openModal}
+        isManager={isManager()}
+      />
 
       {/* Modals */}
       <ReceiveModal
         isOpen={showReceiveModal}
         onClose={() => setShowReceiveModal(false)}
         onSuccess={handleSuccess}
-        preselectedItemId={selectedItemId || undefined}
       />
       <IssueModal
         isOpen={showIssueModal}
         onClose={() => setShowIssueModal(false)}
         onSuccess={handleSuccess}
-        preselectedItemId={selectedItemId || undefined}
+        locationId={selectedLocation?.location_id}
       />
       {isManager() && (
         <TransferModal
           isOpen={showTransferModal}
           onClose={() => setShowTransferModal(false)}
           onSuccess={handleSuccess}
-          preselectedItemId={selectedItemId || undefined}
+          fromLocationId={selectedLocation?.location_id}
         />
       )}
       <WasteModal
         isOpen={showWasteModal}
         onClose={() => setShowWasteModal(false)}
         onSuccess={handleSuccess}
-        preselectedItemId={selectedItemId || undefined}
+      />
+      <StockRequestModal
+        isOpen={showRequestModal}
+        onClose={() => setShowRequestModal(false)}
+        onSuccess={handleSuccess}
+        locationId={user?.location_id || selectedLocation?.location_id}
+        locationName={user?.location_name || selectedLocation?.location_name}
+        currentStockKg={selectedLocation?.on_hand_qty || 0}
+        targetStockKg={TARGET_STOCK[
+          (selectedLocation?.location_type as 'warehouse' | 'shop') || 'shop'
+        ]}
+      />
+      <ConfirmDeliveryModal
+        isOpen={showConfirmDeliveryModal}
+        onClose={() => {
+          setShowConfirmDeliveryModal(false);
+          setSelectedDelivery(null);
+        }}
+        onSuccess={handleDeliveryConfirmSuccess}
+        delivery={selectedDelivery}
       />
     </div>
   );
 }
 
-// Item Row - Tighter, tool-like
-function ItemRow({
-  item,
-  isSelected,
+// Summary Tile Component - Left accent style matching location cards
+function SummaryTile({
+  icon: Icon,
+  iconBg,
+  iconColor,
+  label,
+  value,
+  unit,
+  subtitle,
+  highlight,
   onClick,
+  isActive,
 }: {
-  item: StockOverview;
-  isSelected: boolean;
-  onClick: () => void;
+  icon: React.ComponentType<{ className?: string }>;
+  iconBg: string;
+  iconColor: string;
+  label: string;
+  value: string;
+  unit?: string;
+  subtitle?: string;
+  highlight?: 'warning' | 'error';
+  onClick?: () => void;
+  isActive?: boolean;
 }) {
-  const statusColors = {
-    in_stock: 'bg-emerald-500',
-    low: 'bg-amber-500',
-    out: 'bg-red-500',
-  };
+  // Determine accent color based on state (softer saturation)
+  const accentColor = isActive ? 'bg-emerald-400' :
+    highlight === 'warning' ? 'bg-amber-300' :
+    highlight === 'error' ? 'bg-red-300' :
+    'bg-gray-200';
 
   return (
     <button
       onClick={onClick}
-      className={`w-full px-3 py-2 text-left transition-all outline-none group ${
-        isSelected
-          ? 'bg-emerald-50 border-l-2 border-l-emerald-600'
-          : 'border-l-2 border-l-transparent hover:bg-gray-50'
+      className={`group bg-white rounded-2xl border border-gray-100 transition-all text-left w-full overflow-hidden flex cursor-pointer hover:shadow-md hover:shadow-gray-100/80 hover:border-gray-200 ${
+        isActive ? 'ring-2 ring-emerald-500 ring-offset-1' : ''
       }`}
     >
-      <div className="flex items-center gap-2.5">
-        <div className={`w-2 h-2 rounded-full ${statusColors[item.status]} flex-shrink-0`} />
-        <div className="flex-1 min-w-0">
-          <div className={`text-sm font-medium truncate ${isSelected ? 'text-emerald-900' : 'text-gray-900'}`}>
-            {item.item_name}
+      {/* Left accent bar - thinner (w-0.5 = 2px) */}
+      <div className={`w-0.5 shrink-0 ${accentColor}`} />
+
+      {/* Content */}
+      <div className="flex-1 p-5 flex items-start justify-between">
+        <div>
+          <div className={`w-9 h-9 rounded-xl ${iconBg} flex items-center justify-center mb-3`}>
+            <Icon className={`w-4 h-4 ${iconColor}`} />
           </div>
-          <div className="text-xs text-gray-400 font-mono">{item.sku}</div>
+          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">{label}</p>
+          <div className="flex items-baseline gap-1.5 mt-1">
+            <span className="text-2xl font-bold text-gray-900 tabular-nums">{value}</span>
+            {unit && <span className="text-xs text-gray-400">{unit}</span>}
+            {subtitle && <span className="text-xs text-gray-400">{subtitle}</span>}
+          </div>
         </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          <span className={`text-sm font-semibold ${isSelected ? 'text-emerald-900' : 'text-gray-900'}`}>
-            {formatQty(item.on_hand_qty)}
-          </span>
-          <span className="text-xs text-gray-400 bg-gray-100 px-1 py-0.5 rounded font-medium">
-            {item.unit}
-          </span>
-        </div>
-        <ChevronRight className={`w-4 h-4 text-gray-300 flex-shrink-0 transition-opacity ${
-          isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-        }`} />
+        {/* Hover chevron hint */}
+        <ChevronRight className="w-4 h-4 text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity mt-1" />
       </div>
     </button>
   );
 }
 
-// Status Badge
-function StatusBadge({ status }: { status: 'in_stock' | 'low' | 'out' }) {
-  const config = {
-    in_stock: { label: 'In Stock', variant: 'success' as const },
-    low: { label: 'Low', variant: 'warning' as const },
-    out: { label: 'Out', variant: 'error' as const },
-  };
-  const { label, variant } = config[status];
-  return <Badge variant={variant} size="sm">{label}</Badge>;
-}
+// Status configuration - semantic colors with softer accents
+const STATUS_CONFIG = {
+  healthy: { label: 'Healthy', textColor: 'text-emerald-700', bgColor: 'bg-emerald-50', barColor: 'bg-emerald-500', accentColor: 'bg-emerald-400' },
+  low: { label: 'Low', textColor: 'text-amber-700', bgColor: 'bg-amber-50', barColor: 'bg-amber-500', accentColor: 'bg-amber-400' },
+  critical: { label: 'Critical', textColor: 'text-red-700', bgColor: 'bg-red-50', barColor: 'bg-red-500', accentColor: 'bg-red-400' },
+};
 
-// Batch Row - Tightened status semantics
-function BatchRow({ batch, onIssue }: { batch: BatchDetail; onIssue: () => void }) {
-  const qualityConfig = {
-    1: { label: 'Good', color: 'text-emerald-600' },
-    2: { label: 'OK', color: 'text-amber-600' },
-    3: { label: 'Poor', color: 'text-red-600' },
-  };
-
-  const percentLeft = Math.round((batch.remaining_qty / batch.initial_qty) * 100);
-
-  // Tightened semantics: neutral for normal, amber for <15%, red for <5%
-  const getStatusStyle = () => {
-    if (percentLeft < 5) return { barColor: 'bg-red-500', textColor: 'text-red-600', label: 'Critical' };
-    if (percentLeft < 15) return { barColor: 'bg-amber-500', textColor: 'text-amber-600', label: 'Low' };
-    return { barColor: 'bg-gray-300', textColor: 'text-gray-500', label: '' };
-  };
-
-  const statusStyle = getStatusStyle();
-  const quality = qualityConfig[batch.quality_score];
+// Location Card Component - Subtle left accent instead of loud border
+function LocationCard({
+  location,
+  status,
+  capacityPercent,
+  onClick,
+}: {
+  location: LocationStockItem;
+  status: StockStatus;
+  capacityPercent: number;
+  onClick: () => void;
+}) {
+  const statusStyle = STATUS_CONFIG[status];
+  const LocationIcon = location.location_type === 'warehouse' ? Warehouse : Store;
+  const stockFormatted = formatStockValue(location.on_hand_qty);
+  const targetFormatted = formatStockValue(TARGET_STOCK[location.location_type as 'warehouse' | 'shop']);
+  const stale = isStaleData(location.last_activity);
+  const neededToTarget = getNeededToTarget(location.on_hand_qty, location.location_type as 'warehouse' | 'shop');
+  const neededFormatted = formatStockValue(neededToTarget);
 
   return (
-    <tr className="border-b border-gray-50 hover:bg-gray-50/50 group">
-      <td className="px-4 py-2.5">
-        <div className="flex items-center gap-1.5">
-          {batch.is_oldest && (
-            <span className="px-1 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700 rounded">
-              FIFO
-            </span>
-          )}
-          <span className="font-mono text-xs text-gray-700">{batch.batch_id_display}</span>
+    <button
+      onClick={onClick}
+      className="group bg-white rounded-2xl border border-gray-100 text-left hover:shadow-lg hover:shadow-gray-100/50 hover:border-gray-200 transition-all duration-200 w-full overflow-hidden flex"
+    >
+      {/* Left accent bar - thinner (w-0.5 = 2px), softer color */}
+      <div className={`w-0.5 shrink-0 ${statusStyle.accentColor}`} />
+
+      {/* Card content */}
+      <div className="flex-1 p-5">
+        {/* Header */}
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+              location.location_type === 'warehouse' ? 'bg-violet-100' : 'bg-slate-100'
+            }`}>
+              <LocationIcon className={`w-5 h-5 ${
+                location.location_type === 'warehouse' ? 'text-violet-600' : 'text-slate-600'
+              }`} />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900 text-[15px] leading-tight">{location.location_name}</h3>
+              <p className="text-xs text-gray-400 capitalize">{location.location_type}</p>
+            </div>
+          </div>
+          <div className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusStyle.bgColor} ${statusStyle.textColor}`}>
+            {statusStyle.label}
+          </div>
         </div>
-      </td>
-      <td className="px-4 py-2.5">
-        <span className="text-sm font-medium text-gray-900">{formatQty(batch.remaining_qty)}</span>
-        <span className="text-xs text-gray-400 ml-1">/ {formatQty(batch.initial_qty)} kg</span>
-      </td>
-      <td className={`px-4 py-2.5 text-sm ${quality.color}`}>
-        {quality.label}
-      </td>
-      <td className="px-4 py-2.5 text-sm text-gray-600">
-        {getRelativeTime(batch.received_at)}
-      </td>
-      <td className="px-4 py-2.5">
-        <div className="flex items-center gap-2" title="Remaining / Original">
-          <div className="w-12 h-1 bg-gray-100 rounded-full overflow-hidden">
+
+        {/* Stock Value */}
+        <div className="mb-3">
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-3xl font-bold text-gray-900 tabular-nums">{stockFormatted.value}</span>
+            <span className="text-xs text-gray-400">{stockFormatted.unit}</span>
+          </div>
+        </div>
+
+        {/* Capacity Bar */}
+        <div className="mb-2">
+          <div className="flex items-center justify-between text-xs mb-1">
+            <span className={`font-medium ${statusStyle.textColor}`}>{capacityPercent}% of target</span>
+            <span className="text-gray-400">Target: {targetFormatted.value} {targetFormatted.unit}</span>
+          </div>
+          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
             <div
-              className={`h-full rounded-full ${statusStyle.barColor}`}
-              style={{ width: `${percentLeft}%` }}
+              className={`h-full rounded-full transition-all ${statusStyle.barColor}`}
+              style={{ width: `${capacityPercent}%` }}
             />
           </div>
-          <span className={`text-xs font-medium ${statusStyle.textColor}`}>
-            {statusStyle.label || `${percentLeft}%`}
-          </span>
         </div>
-      </td>
-      <td className="px-4 py-2.5 text-right">
-        <button
-          onClick={(e) => { e.stopPropagation(); onIssue(); }}
-          className="opacity-0 group-hover:opacity-100 text-xs text-emerald-600 hover:text-emerald-700 font-medium transition-opacity"
-        >
-          Issue
-        </button>
-      </td>
-    </tr>
+
+        {/* Needed to target - only show for low/critical */}
+        {status !== 'healthy' && neededToTarget > 0 && (
+          <p className="text-xs text-gray-500 mb-2">
+            Need <span className="font-medium text-gray-700">+{neededFormatted.value} {neededFormatted.unit}</span> to reach target
+          </p>
+        )}
+
+        {/* Footer - secondary metrics */}
+        <div className="flex items-center justify-between pt-2 border-t border-gray-50">
+          <div className={`flex items-center gap-1.5 text-xs ${stale ? 'text-amber-500' : 'text-gray-400'}`}>
+            {stale ? <AlertCircle className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
+            <span>{getRelativeTime(location.last_activity)}</span>
+          </div>
+          {location.recent_activity.length > 0 && (
+            <div className="flex items-center gap-1 text-xs text-gray-400">
+              <Activity className="w-3 h-3" />
+              <span>{location.recent_activity.length} recent</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </button>
   );
 }
 
-// Transaction Row
-function TransactionRow({ transaction }: { transaction: TransactionItem }) {
-  const config = {
-    receive: { icon: ArrowDownToLine, color: 'text-emerald-600', bg: 'bg-emerald-50', sign: '+' },
-    issue: { icon: ArrowUpFromLine, color: 'text-blue-600', bg: 'bg-blue-50', sign: '-' },
-    transfer: { icon: ArrowLeftRight, color: 'text-violet-600', bg: 'bg-violet-50', sign: '' },
-    waste: { icon: Trash2, color: 'text-red-600', bg: 'bg-red-50', sign: '-' },
-    adjustment: { icon: Package, color: 'text-gray-600', bg: 'bg-gray-50', sign: '' },
-  };
+// Details Drawer Component
+function DetailsDrawer({
+  location,
+  onClose,
+  onAction,
+  isManager,
+}: {
+  location: LocationStockItem | null;
+  onClose: () => void;
+  onAction: (action: 'receive' | 'issue' | 'transfer' | 'waste') => void;
+  isManager: boolean;
+}) {
+  if (!location) return null;
 
-  const txConfig = config[transaction.type];
-  const Icon = txConfig.icon;
+  const status = getStockStatus(location.on_hand_qty, location.location_type as 'warehouse' | 'shop');
+  const statusStyle = STATUS_CONFIG[status];
+  const LocationIcon = location.location_type === 'warehouse' ? Warehouse : Store;
+  const stockFormatted = formatStockValue(location.on_hand_qty);
+  const capacityPercent = getCapacityPercent(location.on_hand_qty, location.location_type as 'warehouse' | 'shop');
+  const target = TARGET_STOCK[location.location_type as 'warehouse' | 'shop'];
+  const targetFormatted = formatStockValue(target);
+  const stale = isStaleData(location.last_activity);
+  const neededToTarget = getNeededToTarget(location.on_hand_qty, location.location_type as 'warehouse' | 'shop');
+  const neededFormatted = formatStockValue(neededToTarget);
 
   return (
-    <div className="px-4 py-2 flex items-center gap-2.5 hover:bg-gray-50 border-b border-gray-50 last:border-0">
-      <div className={`w-6 h-6 ${txConfig.bg} rounded flex items-center justify-center flex-shrink-0`}>
-        <Icon className={`w-3 h-3 ${txConfig.color}`} />
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 transition-opacity"
+        onClick={onClose}
+      />
+
+      {/* Drawer */}
+      <div className="fixed right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl z-50 overflow-y-auto">
+        {/* Header */}
+        <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+              location.location_type === 'warehouse' ? 'bg-violet-100' : 'bg-slate-100'
+            }`}>
+              <LocationIcon className={`w-5 h-5 ${
+                location.location_type === 'warehouse' ? 'text-violet-600' : 'text-slate-600'
+              }`} />
+            </div>
+            <div>
+              <h2 className="font-semibold text-gray-900">{location.location_name}</h2>
+              <p className="text-sm text-gray-500 capitalize">{location.location_type}</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center transition-colors"
+          >
+            <X className="w-5 h-5 text-gray-400" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-6 space-y-6">
+          {/* Stock Summary */}
+          <div className={`rounded-2xl p-5 ${
+            status === 'critical' ? 'bg-red-50' :
+            status === 'low' ? 'bg-amber-50' :
+            'bg-gray-50'
+          }`}>
+            <div className="flex items-center justify-between mb-4">
+              <div className={`px-2.5 py-1 rounded-full text-xs font-medium ${statusStyle.bgColor} ${statusStyle.textColor}`}>
+                {statusStyle.label}
+              </div>
+              <div className={`flex items-center gap-1.5 text-sm ${stale ? 'text-amber-600' : 'text-gray-400'}`}>
+                {stale ? <AlertCircle className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
+                <span>{stale ? 'Stale data' : getRelativeTime(location.last_activity)}</span>
+              </div>
+            </div>
+
+            <div className="flex items-baseline gap-2 mb-1">
+              <span className="text-4xl font-bold text-gray-900 tabular-nums">{stockFormatted.value}</span>
+              <span className="text-sm text-gray-400">{stockFormatted.unit}</span>
+              <span className="text-xs text-gray-400">({formatNumber(location.on_hand_qty, 0)} kg)</span>
+            </div>
+
+            {/* Needed to target guidance */}
+            {status !== 'healthy' && neededToTarget > 0 && (
+              <p className="text-sm text-gray-600 mb-4">
+                Need <span className="font-semibold text-gray-800">+{neededFormatted.value} {neededFormatted.unit}</span> to reach target
+              </p>
+            )}
+
+            {/* Capacity visualization */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className={`font-medium ${statusStyle.textColor}`}>{capacityPercent}% of target</span>
+                <span className="text-gray-500">Target: {targetFormatted.value} {targetFormatted.unit}</span>
+              </div>
+              <div className="h-3 bg-white/60 rounded-full overflow-hidden relative">
+                {/* 85% threshold marker (Healthy line) */}
+                <div
+                  className="absolute top-0 bottom-0 w-0.5 bg-emerald-300 z-10"
+                  style={{ left: '85%' }}
+                  title="Healthy threshold (85%)"
+                />
+                {/* 65% threshold marker (Low line) */}
+                <div
+                  className="absolute top-0 bottom-0 w-0.5 bg-amber-300 z-10"
+                  style={{ left: '65%' }}
+                  title="Low threshold (65%)"
+                />
+                {/* Current level */}
+                <div
+                  className={`h-full rounded-full transition-all ${statusStyle.barColor}`}
+                  style={{ width: `${capacityPercent}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-xs text-gray-400">
+                <span>Critical &lt;65%</span>
+                <span>Low 65-84%</span>
+                <span>Healthy ≥85%</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Actions */}
+          <div>
+            <h3 className="text-sm font-medium text-gray-700 mb-3">Quick Actions</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <ActionButton
+                icon={ArrowUpFromLine}
+                label="Issue Stock"
+                description="Record usage"
+                onClick={() => onAction('issue')}
+                color="slate"
+              />
+              {isManager && (
+                <ActionButton
+                  icon={ArrowLeftRight}
+                  label="Transfer"
+                  description="Move to location"
+                  onClick={() => onAction('transfer')}
+                  color="violet"
+                />
+              )}
+              <ActionButton
+                icon={ArrowDownToLine}
+                label="Receive"
+                description="Add new stock"
+                onClick={() => onAction('receive')}
+                color="emerald"
+              />
+              <ActionButton
+                icon={Trash2}
+                label="Record Waste"
+                description="Log spoilage"
+                onClick={() => onAction('waste')}
+                color="red"
+              />
+            </div>
+          </div>
+
+          {/* Recent Activity */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <Activity className="w-4 h-4 text-gray-400" />
+              <h3 className="text-sm font-medium text-gray-700">Recent Activity</h3>
+            </div>
+            {location.recent_activity.length > 0 ? (
+              <div className="space-y-2">
+                {location.recent_activity.map((activity) => (
+                  <ActivityItem key={activity.id} activity={activity} />
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 bg-gray-50 rounded-xl">
+                <Activity className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                <p className="text-sm text-gray-400">No recent activity</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// Action Button Component
+function ActionButton({
+  icon: Icon,
+  label,
+  description,
+  onClick,
+  color,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  description: string;
+  onClick: () => void;
+  color: 'slate' | 'violet' | 'emerald' | 'red';
+}) {
+  const colorClasses = {
+    slate: 'bg-slate-50 hover:bg-slate-100 text-slate-600 active:bg-slate-200',
+    violet: 'bg-violet-50 hover:bg-violet-100 text-violet-600 active:bg-violet-200',
+    emerald: 'bg-emerald-50 hover:bg-emerald-100 text-emerald-600 active:bg-emerald-200',
+    red: 'bg-red-50 hover:bg-red-100 text-red-600 active:bg-red-200',
+  };
+
+  return (
+    <button
+      onClick={onClick}
+      className={`p-4 rounded-xl text-left transition-colors ${colorClasses[color]}`}
+    >
+      <Icon className="w-5 h-5 mb-2" />
+      <p className="font-medium text-sm text-gray-900">{label}</p>
+      <p className="text-xs text-gray-500">{description}</p>
+    </button>
+  );
+}
+
+// Activity Item Component
+function ActivityItem({ activity }: { activity: RecentActivity }) {
+  const config = {
+    receive: { icon: ArrowDownToLine, color: 'text-emerald-600', bg: 'bg-emerald-100', label: 'Received', sign: '+' },
+    issue: { icon: ArrowUpFromLine, color: 'text-slate-600', bg: 'bg-slate-100', label: 'Issued', sign: '-' },
+    transfer: { icon: ArrowLeftRight, color: 'text-violet-600', bg: 'bg-violet-100', label: 'Transfer', sign: '' },
+    waste: { icon: Trash2, color: 'text-red-600', bg: 'bg-red-100', label: 'Waste', sign: '-' },
+    adjustment: { icon: MapPin, color: 'text-gray-600', bg: 'bg-gray-100', label: 'Adjusted', sign: '' },
+  };
+
+  const typeConfig = config[activity.type] || config.adjustment;
+  const Icon = typeConfig.icon;
+
+  return (
+    <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${typeConfig.bg}`}>
+        <Icon className={`w-4 h-4 ${typeConfig.color}`} />
       </div>
       <div className="flex-1 min-w-0">
-        <span className="text-sm text-gray-700 capitalize">{transaction.type}</span>
-        <span className="text-xs text-gray-400 ml-2">
-          {getRelativeTime(transaction.created_at)} · {transaction.created_by_name}
-        </span>
+        <p className="text-sm font-medium text-gray-900">{typeConfig.label}</p>
+        {activity.notes && (
+          <p className="text-xs text-gray-500 truncate">{activity.notes}</p>
+        )}
       </div>
-      <span className={`text-sm font-medium ${txConfig.color}`}>
-        {txConfig.sign}{formatQty(transaction.quantity)} {transaction.unit}
-      </span>
+      <div className="text-right">
+        <p className={`text-sm font-semibold tabular-nums ${typeConfig.color}`}>
+          {typeConfig.sign}{formatNumber(kgToBags(activity.qty), activity.qty % KG_PER_BAG === 0 ? 0 : 1)} bags
+        </p>
+        <p className="text-xs text-gray-400">{getRelativeTime(activity.created_at)}</p>
+      </div>
     </div>
   );
 }

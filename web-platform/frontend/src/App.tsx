@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import {
   LayoutDashboard,
   Package,
-  History,
   AlertTriangle,
   Settings,
   Boxes,
@@ -12,17 +11,17 @@ import {
   Bell,
   Truck,
   Users,
-  Route,
   LayoutGrid,
   UserCog,
+  ClipboardList,
+  PackageCheck,
 } from 'lucide-react';
 import { useAuthStore } from './stores/authStore';
-import { useNotifications, useAlerts } from './hooks/useData';
+import { useNotifications, useAlerts, usePendingDeliveriesCount } from './hooks/useData';
 import {
   LoginPage,
   DashboardPage,
   StockPage,
-  TransactionsPage,
   AlertsPage,
   BatchesPage,
   AnalyticsPage,
@@ -36,6 +35,8 @@ import {
 import TripsPage from './pages/TripsPage';
 import VehiclesPage from './pages/VehiclesPage';
 import DriversPage from './pages/DriversPage';
+import RequestsPage from './pages/RequestsPage';
+import DeliveriesPage from './pages/DeliveriesPage';
 import AcceptInvitePage from './pages/AcceptInvitePage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
@@ -45,12 +46,13 @@ type PublicPage = 'login' | 'forgot-password' | 'accept-invite' | 'reset-passwor
 type TabId =
   | 'dashboard'
   | 'stock'
-  | 'transactions'
   | 'alerts'
   | 'batches'
   | 'trips'
   | 'vehicles'
   | 'drivers'
+  | 'requests'
+  | 'deliveries'
   | 'analytics'
   | 'reports'
   | 'zone'
@@ -61,11 +63,26 @@ type TabId =
 
 function App() {
   const { isAuthenticated, isManager } = useAuthStore();
-  const [activeTab, setActiveTab] = useState<TabId>('dashboard');
+  const [activeTab, setActiveTab] = useState<TabId>('stock');
   const [publicPage, setPublicPage] = useState<PublicPage>('login');
   const [inviteToken, setInviteToken] = useState<string>('');
   const [resetToken, setResetToken] = useState<string>('');
+  const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+  const [pendingTripRequest, setPendingTripRequest] = useState<string | null>(null);
   const { data: notificationsData } = useNotifications();
+  const { data: pendingDeliveriesCount = 0 } = usePendingDeliveriesCount();
+
+  // Navigate to trips page with specific trip selected
+  const handleNavigateToTrip = (tripId: string) => {
+    setSelectedTripId(tripId);
+    setActiveTab('trips');
+  };
+
+  // Navigate to trips page with request pre-selected for trip creation
+  const handleNavigateToCreateTrip = (requestId: string) => {
+    setPendingTripRequest(requestId);
+    setActiveTab('trips');
+  };
 
   // Check URL for invite/reset tokens on load
   useEffect(() => {
@@ -135,25 +152,25 @@ function App() {
   }
 
   const mainTabs = [
-    { id: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard },
     { id: 'stock' as const, label: 'Stock', icon: Package },
-    { id: 'transactions' as const, label: 'Transactions', icon: History },
+    { id: 'requests' as const, label: 'Requests', icon: ClipboardList },
+    { id: 'deliveries' as const, label: 'Deliveries', icon: PackageCheck },
+    { id: 'vehicles' as const, label: 'Vehicles', icon: Truck },
+    { id: 'drivers' as const, label: 'Drivers', icon: Users },
     { id: 'alerts' as const, label: 'Alerts', icon: AlertTriangle },
+    { id: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard },
   ];
 
   const moreTabs = [
     { id: 'batches' as const, label: 'Batches', icon: Boxes },
-    { id: 'trips' as const, label: 'Trips', icon: Route },
-    { id: 'vehicles' as const, label: 'Vehicles', icon: Truck },
-    { id: 'drivers' as const, label: 'Drivers', icon: Users },
     { id: 'analytics' as const, label: 'Analytics', icon: BarChart3 },
     ...(isManager()
       ? [
-          { id: 'reports' as const, label: 'Reports', icon: FileText },
-          { id: 'zone' as const, label: 'Zone Overview', icon: MapPin },
-          { id: 'owner_dashboard' as const, label: 'Owner Dashboard', icon: LayoutGrid },
-          { id: 'users' as const, label: 'User Management', icon: UserCog },
-        ]
+        { id: 'reports' as const, label: 'Reports', icon: FileText },
+        { id: 'zone' as const, label: 'Zone Overview', icon: MapPin },
+        { id: 'owner_dashboard' as const, label: 'Owner Dashboard', icon: LayoutGrid },
+        { id: 'users' as const, label: 'User Management', icon: UserCog },
+      ]
       : []),
     { id: 'notifications' as const, label: 'Notifications', icon: Bell },
     { id: 'settings' as const, label: 'Settings', icon: Settings },
@@ -169,8 +186,6 @@ function App() {
         return <DashboardPage />;
       case 'stock':
         return <StockPage />;
-      case 'transactions':
-        return <TransactionsPage />;
       case 'alerts':
         return <AlertsPage />;
       case 'batches':
@@ -184,11 +199,28 @@ function App() {
       case 'owner_dashboard':
         return <OwnerDashboardPage />;
       case 'trips':
-        return <TripsPage />;
+        return (
+          <TripsPage
+            highlightTripId={selectedTripId}
+            pendingRequestId={pendingTripRequest}
+            onTripViewed={() => setSelectedTripId(null)}
+            onRequestHandled={() => setPendingTripRequest(null)}
+          />
+        );
       case 'vehicles':
         return <VehiclesPage />;
       case 'drivers':
         return <DriversPage />;
+      case 'requests':
+        return (
+          <RequestsPage
+            onNavigateToTrip={handleNavigateToTrip}
+            onNavigateToCreateTrip={handleNavigateToCreateTrip}
+            onNavigateToDeliveries={() => setActiveTab('deliveries')}
+          />
+        );
+      case 'deliveries':
+        return <DeliveriesPage />;
       case 'users':
         return <UsersPage />;
       case 'notifications':
@@ -222,16 +254,20 @@ function App() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 ${
-                activeTab === tab.id
-                  ? 'bg-orange-500 text-white'
-                  : 'text-indigo-200 hover:bg-indigo-900 hover:text-white'
-              }`}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 ${activeTab === tab.id
+                ? 'bg-orange-500 text-white'
+                : 'text-indigo-200 hover:bg-indigo-900 hover:text-white'
+                }`}
             >
               <tab.icon className="w-5 h-5" />
               {tab.label}
               {tab.id === 'alerts' && (
                 <AlertBadge />
+              )}
+              {tab.id === 'deliveries' && pendingDeliveriesCount > 0 && (
+                <span className="ml-auto px-1.5 py-0.5 bg-orange-600 text-white text-[10px] font-medium rounded-full min-w-[18px] text-center">
+                  {pendingDeliveriesCount > 99 ? '99+' : pendingDeliveriesCount}
+                </span>
               )}
             </button>
           ))}
@@ -248,11 +284,10 @@ function App() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 ${
-                activeTab === tab.id
-                  ? 'bg-orange-500 text-white'
-                  : 'text-indigo-200 hover:bg-indigo-900 hover:text-white'
-              }`}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 ${activeTab === tab.id
+                ? 'bg-orange-500 text-white'
+                : 'text-indigo-200 hover:bg-indigo-900 hover:text-white'
+                }`}
             >
               <tab.icon className="w-5 h-5" />
               {tab.label}

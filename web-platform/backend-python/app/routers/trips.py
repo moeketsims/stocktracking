@@ -3,15 +3,20 @@ from uuid import uuid4
 from datetime import datetime
 from typing import Optional
 import json
+import logging
 from ..config import get_supabase_admin_client
+
+logger = logging.getLogger(__name__)
 from ..routers.auth import require_manager, get_current_user
 from ..models.requests import (
     CreateTripRequest,
     UpdateTripRequest,
     CompleteTripRequest,
     CreateMultiStopTripRequest,
-    CompleteStopRequest
+    CompleteStopRequest,
+    StartTripRequest
 )
+from ..email import send_trip_started_notification, send_trip_started_with_eta_notification
 
 router = APIRouter(prefix="/trips", tags=["Trips"])
 
@@ -43,7 +48,8 @@ async def list_trips(
 
     try:
         query = supabase.table("trips").select(
-            "*, vehicles(id, registration_number, make, model), "
+            "id, trip_number, status, vehicle_id, driver_id, driver_name, departure_time, completed_at, created_at, fuel_cost, toll_cost, other_cost, odometer_start, odometer_end, origin_description, destination_description, "
+            "vehicles(id, registration_number, make, model), "
             "from_location:locations!trips_from_location_id_fkey(id, name), "
             "to_location:locations!trips_to_location_id_fkey(id, name), "
             "suppliers(id, name), "
@@ -91,7 +97,7 @@ async def get_trip_summary(
     supabase = get_supabase_admin_client()
 
     try:
-        query = supabase.table("trips").select("*").eq("status", "completed")
+        query = supabase.table("trips").select("id, fuel_cost, toll_cost, other_cost, odometer_start, odometer_end, created_at").eq("status", "completed")
 
         if from_date:
             query = query.gte("created_at", from_date)
@@ -135,7 +141,8 @@ async def get_trip(trip_id: str, user_data: dict = Depends(get_current_user)):
 
     try:
         result = supabase.table("trips").select(
-            "*, vehicles(id, registration_number, make, model)"
+            "id, trip_number, status, vehicle_id, driver_id, driver_name, departure_time, completed_at, created_at, fuel_cost, toll_cost, other_cost, odometer_start, odometer_end, origin_description, destination_description, notes, estimated_arrival_time, "
+            "vehicles(id, registration_number, make, model)"
         ).eq("id", trip_id).single().execute()
 
         if not result.data:
@@ -176,19 +183,43 @@ async def create_trip(request: CreateTripRequest, user_data: dict = Depends(requ
         trip_number = generate_trip_number(supabase)
 
         # Get driver name if driver_id provided
+        # Only use driver_id if driver exists in drivers table (FK constraint)
         driver_name = request.driver_name
+        actual_driver_id = None  # Only set if driver exists in drivers table
         if request.driver_id:
-            driver_result = supabase.table("drivers").select("full_name").eq(
-                "id", request.driver_id
-            ).single().execute()
-            if driver_result.data:
-                driver_name = driver_result.data["full_name"]
+            try:
+                driver_result = supabase.table("drivers").select("full_name").eq(
+                    "id", request.driver_id
+                ).execute()
+                if driver_result.data and len(driver_result.data) > 0:
+                    driver_name = driver_result.data[0]["full_name"]
+                    actual_driver_id = request.driver_id  # Valid FK reference
+                else:
+                    # Fall back to profiles table - don't set driver_id (FK constraint)
+                    profile_result = supabase.table("profiles").select("full_name").eq(
+                        "id", request.driver_id
+                    ).execute()
+                    if profile_result.data and len(profile_result.data) > 0:
+                        driver_name = profile_result.data[0]["full_name"]
+                        
+                        # AUTO-REGISTER to satisfy FK
+                        try:
+                            supabase.table("drivers").insert({
+                                "id": request.driver_id,
+                                "full_name": driver_name,
+                                "is_active": True
+                            }).execute()
+                            actual_driver_id = request.driver_id
+                        except Exception:
+                            actual_driver_id = None
+            except Exception:
+                actual_driver_id = None
 
         trip_data = {
             "id": str(uuid4()),
             "trip_number": trip_number,
             "vehicle_id": request.vehicle_id,
-            "driver_id": request.driver_id,
+            "driver_id": actual_driver_id,  # None if driver is from profiles table
             "driver_name": driver_name,
             "status": "planned",
             "origin_description": request.origin_description,
@@ -206,7 +237,7 @@ async def create_trip(request: CreateTripRequest, user_data: dict = Depends(requ
             "supplier_id": request.supplier_id
         }
 
-        result = supabase.table("trips").insert(trip_data)
+        result = supabase.table("trips").insert(trip_data, returning="id, trip_number, status, vehicle_id, driver_id, driver_name")
 
         return {
             "success": True,
@@ -242,13 +273,36 @@ async def update_trip(
         # Build update data
         update_data = {}
         if request.driver_id is not None:
-            update_data["driver_id"] = request.driver_id
-            # Also update driver_name for display
-            driver_result = supabase.table("drivers").select("full_name").eq(
-                "id", request.driver_id
-            ).single().execute()
-            if driver_result.data:
-                update_data["driver_name"] = driver_result.data["full_name"]
+            try:
+                # Only set driver_id if driver exists in drivers table (FK constraint)
+                driver_result = supabase.table("drivers").select("full_name").eq(
+                    "id", request.driver_id
+                ).execute()
+                if driver_result.data and len(driver_result.data) > 0:
+                    update_data["driver_id"] = request.driver_id  # Valid FK reference
+                    update_data["driver_name"] = driver_result.data[0]["full_name"]
+                else:
+                    # Fall back to profiles table - don't set driver_id (FK constraint)
+                    profile_result = supabase.table("profiles").select("full_name").eq(
+                        "id", request.driver_id
+                    ).execute()
+                    if profile_result.data and len(profile_result.data) > 0:
+                        driver_name = profile_result.data[0]["full_name"]
+                        
+                        # AUTO-REGISTER to satisfy FK
+                        try:
+                            supabase.table("drivers").insert({
+                                "id": request.driver_id,
+                                "full_name": driver_name,
+                                "is_active": True
+                            }).execute()
+                            update_data["driver_id"] = request.driver_id
+                        except Exception:
+                            update_data["driver_id"] = None
+                        
+                        update_data["driver_name"] = driver_name
+            except Exception:
+                update_data["driver_id"] = None
         if request.driver_name is not None:
             update_data["driver_name"] = request.driver_name
         if request.origin_description is not None:
@@ -274,7 +328,7 @@ async def update_trip(
         if not update_data:
             raise HTTPException(status_code=400, detail="No fields to update")
 
-        result = supabase.table("trips").update(update_data).eq("id", trip_id).execute()
+        result = supabase.table("trips").eq("id", trip_id).update(update_data)
 
         return {
             "success": True,
@@ -289,12 +343,21 @@ async def update_trip(
 
 
 @router.post("/{trip_id}/start")
-async def start_trip(trip_id: str, user_data: dict = Depends(require_manager)):
-    """Mark a trip as in progress - managers only."""
+async def start_trip(
+    trip_id: str,
+    start_request: Optional[StartTripRequest] = None,
+    user_data: dict = Depends(require_manager)
+):
+    """Mark a trip as in progress with optional ETA - managers only."""
     supabase = get_supabase_admin_client()
 
     try:
-        existing = supabase.table("trips").select("id, status").eq("id", trip_id).single().execute()
+        # Fetch trip with full details for notifications
+        existing = supabase.table("trips").select(
+            "id, trip_number, status, vehicle_id, driver_id, driver_name, estimated_arrival_time, "
+            "vehicles(id, registration_number, make, model), "
+            "suppliers(id, name)"
+        ).eq("id", trip_id).single().execute()
 
         if not existing.data:
             raise HTTPException(status_code=404, detail="Trip not found")
@@ -302,15 +365,113 @@ async def start_trip(trip_id: str, user_data: dict = Depends(require_manager)):
         if existing.data["status"] != "planned":
             raise HTTPException(status_code=400, detail=f"Trip cannot be started from status '{existing.data['status']}'")
 
-        result = supabase.table("trips").update({
+        # Build update data
+        update_data = {
             "status": "in_progress",
             "departure_time": datetime.now().isoformat()
-        }).eq("id", trip_id).execute()
+        }
+
+        # Add ETA if provided
+        estimated_arrival_time = None
+        if start_request and start_request.estimated_arrival_time:
+            update_data["estimated_arrival_time"] = start_request.estimated_arrival_time
+            estimated_arrival_time = start_request.estimated_arrival_time
+
+        result = supabase.table("trips").eq("id", trip_id).update(update_data)
+
+        # Send email notifications to all linked stock request requesters
+        try:
+            trip = existing.data
+            vehicle = trip.get("vehicles") or {}
+            supplier = trip.get("suppliers") or {}
+            driver_name = trip.get("driver_name") or "Driver"
+            trip_number = trip.get("trip_number") or ""
+            vehicle_reg = vehicle.get("registration_number") or ""
+            vehicle_desc = f"{vehicle.get('make', '')} {vehicle.get('model', '')}".strip()
+            supplier_name = supplier.get("name") or "Supplier"
+
+            # Get all linked stock requests from junction table for multi-stop trips
+            request_ids = []
+
+            # Check trip_requests junction table
+            junction_result = supabase.table("trip_requests").select(
+                "request_id"
+            ).eq("trip_id", trip_id).execute()
+
+            if junction_result.data:
+                for jr in junction_result.data:
+                    if jr.get("request_id") and jr["request_id"] not in request_ids:
+                        request_ids.append(jr["request_id"])
+
+            # For each linked request, notify the requester
+            for request_id in request_ids:
+                try:
+                    # Get the stock request with location info
+                    req_result = supabase.table("stock_requests").select(
+                        "*, location:locations(id, name)"
+                    ).eq("id", request_id).single().execute()
+
+                    if req_result.data:
+                        req = req_result.data
+                        requester_id = req.get("requested_by")
+
+                        if requester_id:
+                            # Get requester email from profiles_with_email view
+                            requester_data = supabase.table("profiles_with_email").select(
+                                "email, full_name"
+                            ).eq("id", requester_id).execute()
+
+                            if requester_data.data and len(requester_data.data) > 0:
+                                requester = requester_data.data[0]
+                                if requester.get("email"):
+                                    # Use ETA-aware notification if ETA is provided
+                                    if estimated_arrival_time:
+                                        send_trip_started_with_eta_notification(
+                                            to_email=requester["email"],
+                                            manager_name=requester.get("full_name", "Store Manager"),
+                                            location_name=req.get("location", {}).get("name", "Your location"),
+                                            quantity_bags=req.get("quantity_bags", 0),
+                                            driver_name=driver_name,
+                                            vehicle_reg=vehicle_reg,
+                                            vehicle_desc=vehicle_desc,
+                                            supplier_name=supplier_name,
+                                            trip_number=trip_number,
+                                            trip_id=trip_id,
+                                            estimated_arrival_time=estimated_arrival_time
+                                        )
+                                    else:
+                                        send_trip_started_notification(
+                                            to_email=requester["email"],
+                                            manager_name=requester.get("full_name", "Store Manager"),
+                                            location_name=req.get("location", {}).get("name", "Your location"),
+                                            quantity_bags=req.get("quantity_bags", 0),
+                                            driver_name=driver_name,
+                                            vehicle_reg=vehicle_reg,
+                                            vehicle_desc=vehicle_desc,
+                                            supplier_name=supplier_name,
+                                            trip_number=trip_number,
+                                            trip_id=trip_id
+                                        )
+
+                        # Update stock request status to in_delivery
+                        supabase.table("stock_requests").update({
+                            "status": "in_delivery"
+                        }).eq("id", request_id).execute()
+
+                except Exception as req_err:
+                    print(f"[EMAIL ERROR] Failed to notify for request {request_id}: {req_err}")
+
+        except Exception as notify_err:
+            print(f"[NOTIFICATION ERROR] Failed to send trip started notifications: {notify_err}")
+
+        # Handle different response formats from Supabase client
+        trip_data = result.data if isinstance(result.data, dict) else result.data[0] if result.data else existing.data
 
         return {
             "success": True,
-            "message": "Trip started",
-            "trip": result.data[0]
+            "message": "Trip started" + (f" with ETA" if estimated_arrival_time else ""),
+            "trip": trip_data,
+            "estimated_arrival_time": estimated_arrival_time
         }
 
     except HTTPException:
@@ -325,11 +486,19 @@ async def complete_trip(
     request: CompleteTripRequest,
     user_data: dict = Depends(require_manager)
 ):
-    """Complete a trip with final costs - managers only."""
+    """Complete a trip with final costs - managers only.
+
+    For simple trips (non multi-stop), this also creates a pending delivery
+    that needs to be confirmed by the receiving location.
+    """
     supabase = get_supabase_admin_client()
 
     try:
-        existing = supabase.table("trips").select("id, status").eq("id", trip_id).single().execute()
+        # Fetch full trip details including destination and supplier
+        existing = supabase.table("trips").select(
+            "id, trip_number, status, vehicle_id, driver_id, driver_name, fuel_cost, toll_cost, other_cost, to_location_id, supplier_id, "
+            "to_location:locations!trips_to_location_id_fkey(id, name)"
+        ).eq("id", trip_id).single().execute()
 
         if not existing.data:
             raise HTTPException(status_code=404, detail="Trip not found")
@@ -363,9 +532,17 @@ async def complete_trip(
         if request.notes:
             update_data["notes"] = request.notes
 
-        result = supabase.table("trips").update(update_data).eq("id", trip_id).execute()
+        result = supabase.table("trips").eq("id", trip_id).update(update_data)
+        logger.info(f"[DEBUG] Trip update result type: {type(result.data)}")
 
-        trip = result.data[0]
+        # Handle both list and dict responses from Supabase
+        if isinstance(result.data, list) and len(result.data) > 0:
+            trip = result.data[0]
+        elif isinstance(result.data, dict):
+            trip = result.data
+        else:
+            trip = existing.data
+        logger.info(f"[DEBUG] Trip after update: status={trip.get('status')}")
         total_cost = (trip.get("fuel_cost") or 0) + (trip.get("toll_cost") or 0) + (trip.get("other_cost") or 0)
 
         # Calculate delivery cost per kg for linked batches
@@ -384,10 +561,70 @@ async def complete_trip(
                         "delivery_cost_per_kg": delivery_cost_per_kg
                     }).eq("trip_id", trip_id).execute()
 
+        # For simple trips with a destination, create a pending delivery
+        pending_delivery_id = None
+        to_location_id = existing.data.get("to_location_id")
+        supplier_id = existing.data.get("supplier_id")
+
+        logger.info(f"[DEBUG] to_location_id: {to_location_id}, supplier_id: {supplier_id}")
+
+        if to_location_id:
+            from .pending_deliveries import create_pending_delivery
+
+            # Get quantity from linked stock requests or use a default
+            quantity_kg = 500  # Default 50 bags
+            request_id = None
+
+            # Check for linked stock requests via trip_requests junction
+            trip_requests = supabase.table("trip_requests").select(
+                "request_id, planned_qty_bags"
+            ).eq("trip_id", trip_id).execute()
+
+            if trip_requests.data and len(trip_requests.data) > 0:
+                # Sum up all planned quantities
+                total_bags = sum(tr.get("planned_qty_bags") or 0 for tr in trip_requests.data)
+                if total_bags > 0:
+                    quantity_kg = total_bags * 10  # Convert bags to kg
+                request_id = trip_requests.data[0].get("request_id")
+
+            # Check direct trip_id link on stock_requests (fallback for simple trips)
+            if not request_id:
+                req_direct = supabase.table("stock_requests").select("id, quantity_bags").eq(
+                    "trip_id", trip_id
+                ).execute()
+                if req_direct.data and len(req_direct.data) > 0:
+                    request_id = req_direct.data[0]["id"]
+                    quantity_kg = req_direct.data[0].get("quantity_bags", 50) * 10
+            
+            # Use data from existing if still no request_id (unlikely with above checks)
+            if not request_id:
+                # We already checked request_id doesn't exist on trips table, 
+                # so we can't use existing.data.get("request_id")
+                pass
+
+            logger.info(f"[DEBUG] Creating pending delivery: trip_id={trip_id}, location_id={to_location_id}, supplier_id={supplier_id}, quantity_kg={quantity_kg}")
+            try:
+                pending_delivery = create_pending_delivery(
+                    supabase=supabase,
+                    trip_id=trip_id,
+                    trip_stop_id=None,  # Simple trip, no stop
+                    location_id=to_location_id,
+                    supplier_id=supplier_id,
+                    quantity_kg=quantity_kg,
+                    request_id=request_id
+                )
+                logger.info(f"[DEBUG] Pending delivery created: {pending_delivery}")
+
+                if pending_delivery:
+                    pending_delivery_id = pending_delivery["id"]
+            except Exception as pd_error:
+                logger.error(f"[ERROR] Failed to create pending delivery: {pd_error}", exc_info=True)
+
         return {
             "success": True,
             "message": f"Trip completed. Total cost: R{total_cost:.2f}",
-            "trip": trip
+            "trip": trip,
+            "pending_delivery_id": pending_delivery_id
         }
 
     except HTTPException:
@@ -479,14 +716,37 @@ async def create_multi_stop_trip(
             raise HTTPException(status_code=400, detail="Vehicle is not active")
 
         # Get driver name if driver_id provided
+        # Only use driver_id if driver exists in drivers table (FK constraint)
         driver_name = request.driver_name
+        actual_driver_id = None  # Only set if driver exists in drivers table
         if request.driver_id:
-            driver_result = supabase.table("drivers").select("full_name").eq(
-                "id", request.driver_id
-            ).single().execute()
-            if driver_result.data:
-                driver_name = driver_result.data["full_name"]
-
+            try:
+                driver_result = supabase.table("drivers").select("full_name").eq(
+                    "id", request.driver_id
+                ).execute()
+                if driver_result.data and len(driver_result.data) > 0:
+                    driver_name = driver_result.data[0]["full_name"]
+                    actual_driver_id = request.driver_id  # Valid FK reference
+                else:
+                    # Fall back to profiles table - don't set driver_id (FK constraint)
+                    profile_result = supabase.table("profiles").select("full_name").eq(
+                        "id", request.driver_id
+                    ).execute()
+                    if profile_result.data and len(profile_result.data) > 0:
+                        driver_name = profile_result.data[0]["full_name"]
+                        
+                        # AUTO-REGISTER to satisfy FK
+                        try:
+                            supabase.table("drivers").insert({
+                                "id": request.driver_id,
+                                "full_name": driver_name,
+                                "is_active": True
+                            }).execute()
+                            actual_driver_id = request.driver_id
+                        except Exception:
+                            actual_driver_id = None
+            except Exception:
+                actual_driver_id = None
         # Build stops array with location names
         stops_data = []
         for stop in request.stops:
@@ -519,7 +779,7 @@ async def create_multi_stop_trip(
         # Call the database function
         result = supabase.rpc("create_multi_stop_trip", {
             "p_vehicle_id": request.vehicle_id,
-            "p_driver_id": request.driver_id,
+            "p_driver_id": actual_driver_id,  # None if driver is from profiles table
             "p_driver_name": driver_name,
             "p_created_by": user.id,
             "p_notes": request.notes,
@@ -533,7 +793,8 @@ async def create_multi_stop_trip(
 
         # Fetch the created trip with details
         trip_result = supabase.table("trips").select(
-            "*, vehicles(id, registration_number, make, model)"
+            "id, trip_number, status, vehicle_id, driver_id, driver_name, "
+            "vehicles(id, registration_number, make, model)"
         ).eq("id", trip_id).single().execute()
 
         return {
@@ -630,6 +891,14 @@ async def complete_stop(
     supabase = get_supabase_admin_client()
 
     try:
+        # Get the stop first to check stop_type before completing
+        stop_check = supabase.table("trip_stops").select(
+            "*, trips(id, supplier_id)"
+        ).eq("id", stop_id).single().execute()
+
+        if not stop_check.data:
+            raise HTTPException(status_code=404, detail="Stop not found")
+
         # Use the database function
         result = supabase.rpc("complete_trip_stop", {
             "p_stop_id": stop_id,
@@ -648,6 +917,35 @@ async def complete_stop(
             "*, locations(id, name), suppliers(id, name)"
         ).eq("id", stop_id).single().execute()
 
+        pending_delivery_id = None
+
+        # If this is a dropoff stop, create a pending delivery
+        if stop_check.data.get("stop_type") == "dropoff" and stop_check.data.get("location_id"):
+            actual_qty = request.actual_qty_kg or stop_check.data.get("planned_qty_kg") or 0
+
+            if actual_qty > 0:
+                from ..routers.pending_deliveries import create_pending_delivery
+
+                trip = stop_check.data.get("trips", {})
+                pending_delivery = create_pending_delivery(
+                    supabase=supabase,
+                    trip_id=stop_check.data["trip_id"],
+                    trip_stop_id=stop_id,
+                    location_id=stop_check.data["location_id"],
+                    supplier_id=stop_check.data.get("supplier_id") or trip.get("supplier_id"),
+                    quantity_kg=actual_qty,
+                    request_id=trip.get("request_id")
+                )
+
+                if pending_delivery:
+                    pending_delivery_id = pending_delivery["id"]
+
+                    # Update the stock request status to in_delivery
+                    if trip.get("request_id"):
+                        supabase.table("stock_requests").eq("id", trip["request_id"]).update({
+                            "status": "in_delivery"
+                        })
+
         # Check if trip was auto-completed
         if stop_result.data:
             trip_id = stop_result.data["trip_id"]
@@ -659,12 +957,14 @@ async def complete_stop(
                 "success": True,
                 "message": "Stop completed",
                 "stop": stop_result.data,
-                "trip_completed": trip_result.data.get("status") == "completed" if trip_result.data else False
+                "trip_completed": trip_result.data.get("status") == "completed" if trip_result.data else False,
+                "pending_delivery_id": pending_delivery_id
             }
 
         return {
             "success": True,
-            "message": "Stop completed"
+            "message": "Stop completed",
+            "pending_delivery_id": pending_delivery_id
         }
 
     except HTTPException:

@@ -1,13 +1,17 @@
 import { useState, useEffect } from 'react';
-import { MapPin, AlertCircle, Truck, Package, User, Plus, Trash2, ArrowDown, GripVertical } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { MapPin, AlertCircle, Truck, Package, User, Plus, Trash2, CheckCircle, Clock } from 'lucide-react';
 import { Modal, Button, Select } from '../ui';
 import { useCreateTrip, useCreateMultiStopTrip, useVehicles, useDrivers, useLocations, useSuppliers } from '../../hooks/useData';
-import type { CreateTripForm, TripType, Location, Supplier, Driver } from '../../types';
+import { stockRequestsApi } from '../../lib/api';
+import { useAuthStore } from '../../stores/authStore';
+import type { CreateTripForm, TripType, Location, Supplier, Driver, StockRequest } from '../../types';
 
 interface TripModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  preSelectedRequestId?: string | null;
 }
 
 interface TripStop {
@@ -32,8 +36,12 @@ export default function TripModal({
   isOpen,
   onClose,
   onSuccess,
+  preSelectedRequestId,
 }: TripModalProps) {
+  const queryClient = useQueryClient();
+  const { user: currentUser } = useAuthStore();
   const [isMultiStop, setIsMultiStop] = useState(false);
+  const [selectedRequests, setSelectedRequests] = useState<StockRequest[]>([]);
   const [form, setForm] = useState<CreateTripForm>({
     vehicle_id: '',
     driver_id: undefined,
@@ -48,6 +56,8 @@ export default function TripModal({
   });
   const [stops, setStops] = useState<TripStop[]>([]);
   const [error, setError] = useState('');
+  const [includeEta, setIncludeEta] = useState(false);
+  const [etaTime, setEtaTime] = useState('');
 
   const createMutation = useCreateTrip();
   const createMultiStopMutation = useCreateMultiStopTrip();
@@ -55,6 +65,48 @@ export default function TripModal({
   const { data: driversData } = useDrivers(true);
   const { data: locationsData } = useLocations();
   const { data: suppliersData } = useSuppliers();
+
+  // Fetch accepted stock requests for the current user
+  const { data: myRequestsData } = useQuery({
+    queryKey: ['stock-requests', 'my'],
+    queryFn: () => stockRequestsApi.getMyRequests(undefined, 50).then(r => r.data),
+    enabled: isOpen,
+  });
+
+  // Get only accepted requests (not yet trip_created or fulfilled)
+  const acceptedRequests: StockRequest[] = (myRequestsData?.accepted || []).filter(
+    (r: StockRequest) => r.status === 'accepted'
+  );
+
+  // Mutation for creating trip from single request
+  const createTripFromRequestMutation = useMutation({
+    mutationFn: ({ requestId, data }: { requestId: string; data: any }) =>
+      stockRequestsApi.createTrip(requestId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stock-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['trips'] });
+      onSuccess();
+      onClose();
+    },
+    onError: (err: any) => {
+      setError(err.response?.data?.detail || 'Failed to create trip from request');
+    },
+  });
+
+  // Mutation for creating multi-stop trip from multiple requests
+  const createMultiTripMutation = useMutation({
+    mutationFn: (data: { request_ids: string[]; vehicle_id: string; driver_id?: string; supplier_id: string; notes?: string }) =>
+      stockRequestsApi.createMultiTrip(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stock-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['trips'] });
+      onSuccess();
+      onClose();
+    },
+    onError: (err: any) => {
+      setError(err.response?.data?.detail || 'Failed to create multi-stop trip');
+    },
+  });
 
   const drivers: Driver[] = driversData?.drivers || [];
   const locations: Location[] = locationsData || [];
@@ -66,20 +118,76 @@ export default function TripModal({
   const getSupplierName = (id?: string) => suppliers.find(s => s.id === id)?.name || '';
   const getLocationName = (id?: string) => locations.find(l => l.id === id)?.name || '';
 
+  // Track if we've initialized this modal session
+  const [hasInitialized, setHasInitialized] = useState(false);
+
+  // Reset state when modal closes
   useEffect(() => {
-    if (isOpen && vehiclesData?.vehicles?.length && drivers.length && suppliers.length && warehouses.length) {
-      setForm({
-        vehicle_id: vehiclesData.vehicles[0]?.id || '',
-        driver_id: drivers[0]?.id,
-        driver_name: '',
-        origin_description: '',
-        destination_description: '',
-        notes: '',
-        trip_type: 'supplier_to_warehouse',
-        from_location_id: undefined,
-        to_location_id: warehouses[0]?.id,
-        supplier_id: suppliers[0]?.id,
-      });
+    if (!isOpen) {
+      setHasInitialized(false);
+      setIncludeEta(false);
+      setEtaTime('');
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen && !hasInitialized && vehiclesData?.vehicles?.length && drivers.length && suppliers.length && warehouses.length) {
+      setHasInitialized(true);
+
+      // Check if a specific request is pre-selected (from RequestsPage navigation)
+      const preSelectedRequest = preSelectedRequestId
+        ? acceptedRequests.find((r: StockRequest) => r.id === preSelectedRequestId)
+        : null;
+
+      // If preSelectedRequestId is provided, select only that request
+      // Otherwise, auto-select all accepted requests
+      if (preSelectedRequest) {
+        setSelectedRequests([preSelectedRequest]);
+        setIsMultiStop(false);
+        setForm({
+          vehicle_id: vehiclesData.vehicles[0]?.id || '',
+          driver_id: currentUser?.id,
+          driver_name: '',
+          origin_description: '',
+          destination_description: '',
+          notes: '',
+          trip_type: 'supplier_to_shop',
+          from_location_id: undefined,
+          to_location_id: preSelectedRequest.location_id,
+          supplier_id: suppliers[0]?.id,
+        });
+      } else if (acceptedRequests.length > 0) {
+        setSelectedRequests(acceptedRequests);
+        setIsMultiStop(false);
+        setForm({
+          vehicle_id: vehiclesData.vehicles[0]?.id || '',
+          driver_id: currentUser?.id, // Driver is current user (who accepted)
+          driver_name: '',
+          origin_description: '',
+          destination_description: '',
+          notes: '',
+          trip_type: 'supplier_to_shop',
+          from_location_id: undefined,
+          to_location_id: acceptedRequests[0].location_id,
+          supplier_id: suppliers[0]?.id,
+        });
+      } else {
+        // Regular trip mode - no accepted requests
+        setSelectedRequests([]);
+        setForm({
+          vehicle_id: vehiclesData.vehicles[0]?.id || '',
+          driver_id: drivers[0]?.id,
+          driver_name: '',
+          origin_description: '',
+          destination_description: '',
+          notes: '',
+          trip_type: 'supplier_to_warehouse',
+          from_location_id: undefined,
+          to_location_id: warehouses[0]?.id,
+          supplier_id: suppliers[0]?.id,
+        });
+      }
+
       // Initialize with 2 stops for multi-stop mode
       setStops([
         { id: '1', supplier_id: suppliers[0]?.id, stop_type: 'pickup', location_name: suppliers[0]?.name },
@@ -88,7 +196,40 @@ export default function TripModal({
       setError('');
       setIsMultiStop(false);
     }
-  }, [isOpen, vehiclesData?.vehicles?.length, drivers.length, suppliers.length, warehouses.length]);
+  }, [isOpen, hasInitialized, vehiclesData?.vehicles?.length, drivers.length, suppliers.length, warehouses.length, acceptedRequests.length, currentUser?.id, preSelectedRequestId]);
+
+  // Handle toggling a stock request selection
+  const handleToggleRequest = (request: StockRequest) => {
+    setSelectedRequests((prev) => {
+      const isSelected = prev.some((r) => r.id === request.id);
+      if (isSelected) {
+        return prev.filter((r) => r.id !== request.id);
+      } else {
+        return [...prev, request];
+      }
+    });
+  };
+
+  // Select all requests
+  const handleSelectAll = () => {
+    setSelectedRequests(acceptedRequests);
+  };
+
+  // Clear all request selections
+  const handleClearAll = () => {
+    setSelectedRequests([]);
+  };
+
+  // Clear request selection (legacy - now using handleClearAll)
+  const handleClearRequest = () => {
+    setSelectedRequests([]);
+    setForm({
+      ...form,
+      trip_type: 'supplier_to_warehouse',
+      to_location_id: warehouses[0]?.id,
+      notes: '',
+    });
+  };
 
   // Get appropriate location options based on trip type
   const getFromLocationOptions = () => {
@@ -232,6 +373,54 @@ export default function TripModal({
     }
 
     try {
+      // If fulfilling stock requests, use the appropriate endpoint
+      if (selectedRequests.length > 0) {
+        if (!form.supplier_id) {
+          setError('Please select a supplier');
+          return;
+        }
+
+        // Calculate ETA if provided
+        let estimatedArrivalTime: string | undefined;
+        if (includeEta && etaTime) {
+          const today = new Date();
+          const [hours, minutes] = etaTime.split(':');
+          today.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+          // If time is earlier than now, assume it's for tomorrow
+          if (today < new Date()) {
+            today.setDate(today.getDate() + 1);
+          }
+          estimatedArrivalTime = today.toISOString();
+        }
+
+        if (selectedRequests.length === 1) {
+          // Single request - use original endpoint
+          await createTripFromRequestMutation.mutateAsync({
+            requestId: selectedRequests[0].id,
+            data: {
+              vehicle_id: form.vehicle_id,
+              driver_id: currentUser?.id,
+              supplier_id: form.supplier_id,
+              notes: form.notes || undefined,
+              auto_start: true,
+              estimated_arrival_time: estimatedArrivalTime,
+            },
+          });
+        } else {
+          // Multiple requests - use multi-trip endpoint
+          await createMultiTripMutation.mutateAsync({
+            request_ids: selectedRequests.map(r => r.id),
+            vehicle_id: form.vehicle_id,
+            driver_id: currentUser?.id,
+            supplier_id: form.supplier_id,
+            notes: form.notes || undefined,
+            auto_start: true,
+            estimated_arrival_time: estimatedArrivalTime,
+          });
+        }
+        return; // onSuccess/onClose handled by mutation
+      }
+
       if (isMultiStop) {
         // Validate stops
         if (stops.length < 2) {
@@ -331,31 +520,204 @@ export default function TripModal({
           </div>
         )}
 
-        {/* Trip Mode Toggle */}
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setIsMultiStop(false)}
-            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
-              !isMultiStop
-                ? 'bg-orange-500 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            Simple Trip
-          </button>
-          <button
-            type="button"
-            onClick={() => setIsMultiStop(true)}
-            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
-              isMultiStop
-                ? 'bg-orange-500 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            Multi-Stop Trip
-          </button>
-        </div>
+        {/* Accepted Stock Requests Section - Multi-select with checkboxes */}
+        {acceptedRequests.length > 0 && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Package className="w-5 h-5 text-emerald-600" />
+                <span className="text-sm font-semibold text-emerald-800">
+                  Pending Stock Requests ({acceptedRequests.length})
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleSelectAll}
+                  className="text-xs text-emerald-700 hover:text-emerald-900 underline"
+                >
+                  Select All
+                </button>
+                <span className="text-gray-300">|</span>
+                <button
+                  type="button"
+                  onClick={handleClearAll}
+                  className="text-xs text-gray-500 hover:text-gray-700 underline"
+                >
+                  Clear All
+                </button>
+              </div>
+            </div>
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {acceptedRequests.map((request) => {
+                const isSelected = selectedRequests.some((r) => r.id === request.id);
+                return (
+                  <label
+                    key={request.id}
+                    className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                      isSelected
+                        ? 'border-emerald-500 bg-emerald-100'
+                        : 'border-gray-200 bg-white hover:border-emerald-300'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => handleToggleRequest(request)}
+                      className="mt-1 w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-gray-900">
+                            {request.location?.name || 'Unknown Location'}
+                          </span>
+                          {request.urgency === 'urgent' && (
+                            <span className="px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700 rounded-full">
+                              URGENT
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-sm font-semibold text-emerald-700">
+                          {request.quantity_bags} bags
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {new Date(request.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+            {selectedRequests.length > 0 && (
+              <div className="mt-3 pt-2 border-t border-emerald-200">
+                <p className="text-sm text-emerald-800">
+                  <strong>{selectedRequests.length}</strong> request{selectedRequests.length > 1 ? 's' : ''} selected
+                  {' • '}
+                  <strong>{selectedRequests.reduce((sum, r) => sum + r.quantity_bags, 0)}</strong> bags total
+                  {selectedRequests.length > 1 && (
+                    <span className="ml-2 text-xs text-emerald-600">
+                      (Multi-stop trip)
+                    </span>
+                  )}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Show simplified form when fulfilling requests */}
+        {selectedRequests.length > 0 ? (
+          <>
+            {/* Request Info Banner */}
+            <div className="bg-emerald-100 border border-emerald-300 rounded-lg p-3">
+              {selectedRequests.length === 1 ? (
+                <p className="text-sm font-medium text-emerald-800">
+                  Creating trip to deliver <strong>{selectedRequests[0].quantity_bags} bags</strong> to{' '}
+                  <strong>{selectedRequests[0].location?.name}</strong>
+                </p>
+              ) : (
+                <div className="text-sm font-medium text-emerald-800">
+                  <p className="mb-2">
+                    Creating <strong>multi-stop trip</strong> to deliver{' '}
+                    <strong>{selectedRequests.reduce((sum, r) => sum + r.quantity_bags, 0)} bags</strong> to{' '}
+                    <strong>{selectedRequests.length} locations</strong>:
+                  </p>
+                  <ol className="list-decimal list-inside text-xs space-y-1 ml-2">
+                    {selectedRequests.map((r, idx) => (
+                      <li key={r.id}>
+                        {r.location?.name} ({r.quantity_bags} bags)
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+            </div>
+
+            {/* Supplier Selection */}
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <MapPin className="w-4 h-4 text-green-600" />
+                <span className="text-sm font-medium text-green-800">Pickup Location</span>
+              </div>
+              <Select
+                label="From (Supplier) *"
+                options={supplierOptions}
+                value={form.supplier_id || ''}
+                onChange={(e) => setForm({ ...form, supplier_id: e.target.value })}
+                placeholder="Select supplier"
+              />
+              <div className="mt-3 pt-2 border-t border-green-200">
+                <p className="text-sm text-green-700">
+                  📍 {getSupplierName(form.supplier_id) || 'Select supplier'} →{' '}
+                  {selectedRequests.length === 1
+                    ? selectedRequests[0].location?.name
+                    : selectedRequests.map((r) => r.location?.name).join(' → ')}
+                </p>
+              </div>
+            </div>
+
+            {/* ETA (Optional) */}
+            <div className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center space-x-3 mb-3">
+                <input
+                  type="checkbox"
+                  id="include-eta"
+                  checked={includeEta}
+                  onChange={(e) => setIncludeEta(e.target.checked)}
+                  className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500"
+                />
+                <label htmlFor="include-eta" className="flex items-center space-x-2 text-sm font-medium text-gray-700 cursor-pointer">
+                  <Clock className="w-4 h-4" />
+                  <span>Provide Estimated Arrival Time (ETA)</span>
+                </label>
+              </div>
+              {includeEta && (
+                <div className="ml-7">
+                  <input
+                    type="time"
+                    value={etaTime}
+                    onChange={(e) => setEtaTime(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Store manager will be notified of your expected arrival time.
+                  </p>
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Trip Mode Toggle */}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setIsMultiStop(false)}
+                className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
+                  !isMultiStop
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Simple Trip
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsMultiStop(true)}
+                className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
+                  isMultiStop
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Multi-Stop Trip
+              </button>
+            </div>
 
         {/* Simple Trip Mode */}
         {!isMultiStop && (
@@ -531,12 +893,16 @@ export default function TripModal({
             )}
           </div>
         )}
+          </>
+        )}
 
         {/* Vehicle and Driver */}
         <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-3">
           <div className="flex items-center gap-2">
             <Truck className="w-4 h-4 text-gray-600" />
-            <span className="text-sm font-medium text-gray-800">Vehicle & Driver</span>
+            <span className="text-sm font-medium text-gray-800">
+              {selectedRequests.length > 0 ? 'Vehicle' : 'Vehicle & Driver'}
+            </span>
           </div>
 
           {vehicleOptions.length === 0 ? (
@@ -553,7 +919,15 @@ export default function TripModal({
             />
           )}
 
-          {driverOptions.length === 0 ? (
+          {/* When fulfilling a stock request, driver is automatically the current user */}
+          {selectedRequests.length > 0 ? (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-emerald-800 text-sm flex items-center gap-2">
+              <User className="w-4 h-4" />
+              <span>
+                Driver: <strong>{currentUser?.full_name || 'You'}</strong> (you accepted this request)
+              </span>
+            </div>
+          ) : driverOptions.length === 0 ? (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-800 text-sm flex items-center gap-2">
               <User className="w-4 h-4" />
               No active drivers found. Please add a driver first.
@@ -587,11 +961,17 @@ export default function TripModal({
           </Button>
           <Button
             type="submit"
-            className="flex-1"
-            isLoading={createMutation.isPending || createMultiStopMutation.isPending}
-            disabled={vehicleOptions.length === 0 || driverOptions.length === 0}
+            className={`flex-1 ${selectedRequests.length > 0 ? 'bg-emerald-600 hover:bg-emerald-700' : ''}`}
+            isLoading={createMutation.isPending || createMultiStopMutation.isPending || createTripFromRequestMutation.isPending || createMultiTripMutation.isPending}
+            disabled={vehicleOptions.length === 0 || (selectedRequests.length === 0 && driverOptions.length === 0)}
           >
-            {isMultiStop ? 'Create Multi-Stop Trip' : 'Create Trip'}
+            {selectedRequests.length > 0
+              ? selectedRequests.length > 1
+                ? `Start Delivery (${selectedRequests.length} stops)`
+                : 'Start Delivery'
+              : isMultiStop
+              ? 'Create Multi-Stop Trip'
+              : 'Create Trip'}
           </Button>
         </div>
       </form>

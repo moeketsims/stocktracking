@@ -1,10 +1,10 @@
 // Enums
-export type UserRole = 'admin' | 'zone_manager' | 'location_manager' | 'staff';
+export type UserRole = 'admin' | 'zone_manager' | 'location_manager' | 'driver' | 'staff';
 export type LocationType = 'shop' | 'warehouse';
 export type TransactionType = 'receive' | 'issue' | 'transfer' | 'waste' | 'adjustment';
 export type NotificationType = 'bag_used' | 'threshold_alert' | 'daily_summary';
 export type QualityScore = 1 | 2 | 3;
-export type WasteReason = 'spoiled' | 'damaged' | 'expired' | 'trim_prep_loss' | 'contaminated' | 'other';
+export type WasteReason = 'spoiled' | 'damaged' | 'trim_prep_loss' | 'contaminated' | 'other';
 export type AlertType = 'low_stock' | 'reorder_now' | 'expiring_soon' | 'expired';
 
 // Auth Types
@@ -106,6 +106,30 @@ export interface StockScreenData {
   fifo_suggestion: FIFOSuggestion | null;
 }
 
+// Location-centric stock view (simplified)
+export interface RecentActivity {
+  id: string;
+  type: TransactionType;
+  qty: number;
+  created_at: string;
+  notes: string | null;
+}
+
+export interface LocationStockItem {
+  location_id: string;
+  location_name: string;
+  location_type: LocationType;
+  on_hand_qty: number;
+  status: 'in_stock' | 'low' | 'out';
+  last_activity: string | null;
+  recent_activity: RecentActivity[];
+}
+
+export interface LocationStockData {
+  locations: LocationStockItem[];
+  total_stock_kg: number;
+}
+
 // Transaction Types
 export interface TransactionItem {
   id: string;
@@ -177,7 +201,6 @@ export interface BatchesData {
   counts: {
     all: number;
     expiring_soon: number;
-    poor_quality: number;
   };
 }
 
@@ -336,30 +359,21 @@ export interface Zone {
   name: string;
 }
 
-// Form Types
+// Form Types (simplified - item_id is optional, auto-filled with default item)
 export interface ReceiveStockForm {
-  item_id: string;
   quantity: number;
   unit: 'kg' | 'bag';
   supplier_id: string;
-  quality_score: QualityScore;
-  defect_pct?: number;
-  quality_notes?: string;
-  expiry_date?: string;
-  photo_url?: string;
   notes?: string;
 }
 
 export interface IssueStockForm {
-  item_id: string;
   quantity: number;
   unit: 'kg' | 'bag';
-  batch_id?: string;
   notes?: string;
 }
 
 export interface TransferStockForm {
-  item_id: string;
   quantity: number;
   unit: 'kg' | 'bag';
   from_location_id: string;
@@ -368,7 +382,6 @@ export interface TransferStockForm {
 }
 
 export interface WasteStockForm {
-  item_id: string;
   quantity: number;
   unit: 'kg' | 'bag';
   reason: WasteReason;
@@ -434,10 +447,12 @@ export interface Trip {
   other_cost: number;
   total_cost: number;
   notes: string | null;
-  started_at: string | null;
+  departure_time: string | null;
   completed_at: string | null;
   created_at: string;
   is_multi_stop?: boolean;
+  // ETA field
+  estimated_arrival_time: string | null;
   // Relations
   vehicles?: {
     registration_number: string;
@@ -640,4 +655,151 @@ export interface InviteValidation {
 export interface AcceptInviteForm {
   token: string;
   password: string;
+}
+
+// Stock Request Types (Replenishment Workflow)
+export type StockRequestStatus = 'pending' | 'accepted' | 'trip_created' | 'in_delivery' | 'fulfilled' | 'cancelled' | 'partially_fulfilled' | 'expired';
+export type StockRequestUrgency = 'urgent' | 'normal';
+
+export interface StockRequest {
+  id: string;
+  location_id: string;
+  requested_by: string;
+  quantity_bags: number;
+  urgency: StockRequestUrgency;
+  status: StockRequestStatus;
+  accepted_by: string | null;
+  accepted_at: string | null;
+  trip_id: string | null;
+  notes: string | null;
+  current_stock_kg: number | null;
+  target_stock_kg: number | null;
+  created_at: string;
+  updated_at: string;
+  // Cancellation fields
+  cancelled_at: string | null;
+  cancelled_by: string | null;
+  cancellation_reason: string | null;
+  // Joined relations
+  location?: {
+    id: string;
+    name: string;
+    type: LocationType;
+  };
+  requester?: {
+    id: string;
+    full_name: string | null;
+    email: string;
+  };
+  acceptor?: {
+    id: string;
+    full_name: string | null;
+    email: string;
+  };
+  trips?: Trip;
+  capacity_percent?: number;
+}
+
+export interface StockRequestsData {
+  requests: StockRequest[];
+  total: number;
+}
+
+export interface CreateStockRequestForm {
+  location_id?: string;
+  quantity_bags: number;
+  urgency: StockRequestUrgency;
+  notes?: string;
+}
+
+export interface CreateTripFromRequestForm {
+  vehicle_id: string;
+  driver_id?: string;
+  supplier_id: string;
+  notes?: string;
+}
+
+export interface UpdateStockRequestForm {
+  quantity_bags?: number;
+  urgency?: StockRequestUrgency;
+  notes?: string;
+}
+
+export interface FulfillRemainingForm {
+  vehicle_id: string;
+  driver_id?: string;
+  supplier_id: string;
+  notes?: string;
+}
+
+// Pending Delivery Types
+export type PendingDeliveryStatus = 'pending' | 'confirmed' | 'rejected';
+
+export interface PendingDelivery {
+  id: string;
+  trip_id: string;
+  trip_stop_id: string | null;
+  request_id: string | null;
+  location_id: string;
+  supplier_id: string | null;
+  driver_claimed_qty_kg: number;
+  status: PendingDeliveryStatus;
+  confirmed_qty_kg: number | null;
+  confirmed_by: string | null;
+  confirmed_at: string | null;
+  discrepancy_notes: string | null;
+  created_at: string;
+  updated_at: string;
+  // Computed fields
+  driver_claimed_bags?: number;
+  confirmed_bags?: number;
+  // Joined relations
+  location?: {
+    id: string;
+    name: string;
+    type?: LocationType;
+  };
+  supplier?: {
+    id: string;
+    name: string;
+  };
+  trip?: {
+    id: string;
+    trip_number: string;
+    status?: TripStatus;
+    driver_name?: string;
+    driver_id?: string;
+    vehicles?: {
+      registration_number: string;
+      make?: string | null;
+      model?: string | null;
+    };
+    fuel_cost?: number;
+    toll_cost?: number;
+    other_cost?: number;
+  };
+  stock_request?: {
+    id: string;
+    quantity_bags: number;
+    urgency: StockRequestUrgency;
+    notes?: string;
+  };
+  confirmer?: {
+    id: string;
+    full_name: string | null;
+  };
+}
+
+export interface PendingDeliveriesData {
+  deliveries: PendingDelivery[];
+  total: number;
+}
+
+export interface ConfirmDeliveryForm {
+  confirmed_qty_kg: number;
+  notes?: string;
+}
+
+export interface RejectDeliveryForm {
+  reason: string;
 }

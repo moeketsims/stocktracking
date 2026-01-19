@@ -160,16 +160,20 @@ class TableQuery:
             print(f"[SUPABASE] {self.table_name}: {row_count} rows")
             return QueryResult(data=data, error=None)
 
-    def insert(self, data) -> "QueryResult":
-        """Insert one or more records. Accepts dict or list of dicts."""
+    def insert(self, data, returning: str = "*") -> "QueryResult":
+        """Insert one or more records. Accepts dict or list of dicts.
+        Use 'returning' to specify which columns to return (defaults to all).
+        """
         url = f"{self.client.url}/rest/v1/{self.table_name}"
+        params = {"select": returning}
         headers = self.client.headers.copy()
         headers["Prefer"] = "return=representation"
 
         with httpx.Client(timeout=60.0) as http:
-            response = http.post(url, headers=headers, json=data)
+            response = http.post(url, headers=headers, params=params, json=data)
 
             if response.status_code >= 400:
+                print(f"[SUPABASE ERROR] {self.table_name}: {response.status_code} - {response.text[:200]}")
                 return QueryResult(data=None, error=response.text)
 
             result = response.json()
@@ -193,6 +197,7 @@ class TableQuery:
             response = http.patch(url, headers=headers, params=params, json=data)
 
             if response.status_code >= 400:
+                print(f"[SUPABASE ERROR] {self.table_name}: {response.status_code} - {response.text[:200]}")
                 return QueryResult(data=None, error=response.text)
 
             result = response.json()

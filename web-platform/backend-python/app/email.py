@@ -56,6 +56,7 @@ def send_invitation_email(
         "admin": "Administrator",
         "zone_manager": "Zone Manager",
         "location_manager": "Location Manager",
+        "driver": "Driver",
         "staff": "Staff Member"
     }.get(role, role)
 
@@ -169,6 +170,1474 @@ We received a request to reset your password. Click the link below to set a new 
 This link will expire in 1 hour.
 
 If you didn't request this, you can safely ignore this email.
+
+---
+Potato Stock Tracking System
+    """
+
+    return send_email(to_email, subject, html_content, text_content)
+
+
+def send_stock_request_notification(
+    to_email: str,
+    recipient_name: str,
+    location_name: str,
+    quantity_bags: int,
+    urgency: str,
+    current_stock_pct: float,
+    request_id: str
+) -> bool:
+    """Send notification to drivers about a new stock request."""
+    settings = get_settings()
+    request_url = f"{settings.app_url}/requests?id={request_id}"
+
+    urgency_emoji = "🚨" if urgency == "urgent" else "📦"
+    urgency_text = "URGENT (needed today)" if urgency == "urgent" else "Normal (within 3 days)"
+    urgency_color = "#dc2626" if urgency == "urgent" else "#059669"
+
+    subject = f"{urgency_emoji} Stock Request - {location_name}" + (" (Urgent)" if urgency == "urgent" else "")
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+            .content {{ background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; }}
+            .button {{ display: inline-block; background: #f97316; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0; }}
+            .footer {{ text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px; }}
+            .info-box {{ background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin: 16px 0; }}
+            .info-row {{ display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }}
+            .info-row:last-child {{ border-bottom: none; }}
+            .urgency-badge {{ display: inline-block; background: {urgency_color}; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1 style="margin: 0;">Stock Request</h1>
+                <p style="margin: 10px 0 0 0; opacity: 0.9;">A shop needs stock replenishment</p>
+            </div>
+            <div class="content">
+                <h2>Hi {recipient_name}!</h2>
+                <p>A shop needs stock replenishment:</p>
+
+                <div class="info-box">
+                    <div class="info-row">
+                        <span>📍 Location</span>
+                        <strong>{location_name}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>📦 Quantity</span>
+                        <strong>{quantity_bags} bags</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>⏰ Urgency</span>
+                        <span class="urgency-badge">{urgency_text}</span>
+                    </div>
+                    <div class="info-row">
+                        <span>📊 Current stock</span>
+                        <strong>{current_stock_pct}% of target</strong>
+                    </div>
+                </div>
+
+                <p style="text-align: center;">
+                    <a href="{request_url}" class="button">Accept Request</a>
+                </p>
+
+                <p style="color: #6b7280; font-size: 14px;">If you can't fulfill this request, another driver will be notified.</p>
+            </div>
+            <div class="footer">
+                <p>Potato Stock Tracking System</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    text_content = f"""
+Hi {recipient_name}!
+
+A shop needs stock replenishment:
+
+📍 Location: {location_name}
+📦 Quantity: {quantity_bags} bags
+⏰ Urgency: {urgency_text}
+📊 Current stock: {current_stock_pct}% of target
+
+Click below to accept this request:
+{request_url}
+
+If you can't fulfill this, another driver will be notified.
+
+---
+Potato Stock Tracking System
+    """
+
+    return send_email(to_email, subject, html_content, text_content)
+
+
+def send_request_accepted_by_driver_notification(
+    to_email: str,
+    requester_name: str,
+    location_name: str,
+    quantity_bags: int,
+    driver_name: str,
+    request_id: str
+) -> bool:
+    """Send notification to store manager when a driver accepts their request."""
+    settings = get_settings()
+    request_url = f"{settings.app_url}/requests?id={request_id}"
+
+    subject = f"🚚 A driver has accepted your stock request"
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+            .content {{ background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; }}
+            .button {{ display: inline-block; background: #4f46e5; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0; }}
+            .footer {{ text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px; }}
+            .info-box {{ background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin: 16px 0; }}
+            .info-row {{ display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }}
+            .info-row:last-child {{ border-bottom: none; }}
+            .status-badge {{ display: inline-block; background: #dbeafe; color: #1d4ed8; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1 style="margin: 0;">Request Accepted!</h1>
+                <p style="margin: 10px 0 0 0; opacity: 0.9;">A driver is on it</p>
+            </div>
+            <div class="content">
+                <h2>Hi {requester_name}!</h2>
+                <p>Good news! A driver has accepted your stock request and will be creating a delivery trip soon.</p>
+
+                <div class="info-box">
+                    <div class="info-row">
+                        <span>📍 Location</span>
+                        <strong>{location_name}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>📦 Quantity</span>
+                        <strong>{quantity_bags} bags</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>👤 Accepted by</span>
+                        <strong>{driver_name}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>📋 Status</span>
+                        <span class="status-badge">ACCEPTED</span>
+                    </div>
+                </div>
+
+                <p style="text-align: center;">
+                    <a href="{request_url}" class="button">View Request</a>
+                </p>
+
+                <p style="color: #6b7280; font-size: 14px;">You'll receive another notification once the driver creates the delivery trip with vehicle and pickup details.</p>
+            </div>
+            <div class="footer">
+                <p>Potato Stock Tracking System</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    text_content = f"""
+Hi {requester_name}!
+
+Good news! A driver has accepted your stock request and will be creating a delivery trip soon.
+
+📍 Location: {location_name}
+📦 Quantity: {quantity_bags} bags
+👤 Accepted by: {driver_name}
+📋 Status: ACCEPTED
+
+View request: {request_url}
+
+You'll receive another notification once the driver creates the delivery trip with vehicle and pickup details.
+
+---
+Potato Stock Tracking System
+    """
+
+    return send_email(to_email, subject, html_content, text_content)
+
+
+def send_request_accepted_notification(
+    to_email: str,
+    requester_name: str,
+    location_name: str,
+    quantity_bags: int,
+    driver_name: str,
+    vehicle_reg: str,
+    vehicle_desc: str,
+    supplier_name: str,
+    trip_number: str,
+    trip_id: str
+) -> bool:
+    """Send notification to store manager when trip is created for their request."""
+    settings = get_settings()
+    trip_url = f"{settings.app_url}/trips?id={trip_id}"
+
+    subject = f"✅ Your stock request has been accepted"
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ background: linear-gradient(135deg, #059669 0%, #10b981 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+            .content {{ background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; }}
+            .button {{ display: inline-block; background: #4f46e5; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0; }}
+            .footer {{ text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px; }}
+            .info-box {{ background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin: 16px 0; }}
+            .info-row {{ display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }}
+            .info-row:last-child {{ border-bottom: none; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1 style="margin: 0;">Request Accepted!</h1>
+                <p style="margin: 10px 0 0 0; opacity: 0.9;">Your stock is on the way</p>
+            </div>
+            <div class="content">
+                <h2>Hi {requester_name}!</h2>
+                <p>Great news! Your stock request has been accepted.</p>
+
+                <div class="info-box">
+                    <div class="info-row">
+                        <span>📋 Request</span>
+                        <strong>{quantity_bags} bags for {location_name}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>👤 Driver</span>
+                        <strong>{driver_name}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>🚗 Vehicle</span>
+                        <strong>{vehicle_reg} ({vehicle_desc})</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>🏭 Picking up from</span>
+                        <strong>{supplier_name}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>🎫 Trip #</span>
+                        <strong>{trip_number}</strong>
+                    </div>
+                </div>
+
+                <p style="text-align: center;">
+                    <a href="{trip_url}" class="button">View Trip Details</a>
+                </p>
+
+                <p style="color: #6b7280; font-size: 14px;">You'll be notified when the delivery arrives.</p>
+            </div>
+            <div class="footer">
+                <p>Potato Stock Tracking System</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    text_content = f"""
+Hi {requester_name}!
+
+Great news! Your stock request has been accepted.
+
+📋 Request: {quantity_bags} bags for {location_name}
+👤 Driver: {driver_name}
+🚗 Vehicle: {vehicle_reg} ({vehicle_desc})
+🏭 Picking up from: {supplier_name}
+🎫 Trip #: {trip_number}
+
+View trip details: {trip_url}
+
+You'll be notified when the delivery arrives.
+
+---
+Potato Stock Tracking System
+    """
+
+    return send_email(to_email, subject, html_content, text_content)
+
+
+def send_delivery_arrived_notification(
+    to_email: str,
+    manager_name: str,
+    trip_number: str,
+    driver_name: str,
+    quantity_bags: float,
+    supplier_name: str,
+    delivery_id: str
+) -> bool:
+    """Send notification to store manager when delivery arrives."""
+    settings = get_settings()
+    confirm_url = f"{settings.app_url}/stock?confirm={delivery_id}"
+
+    subject = f"📦 Delivery arrived - Please confirm receipt"
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ background: linear-gradient(135deg, #f97316 0%, #fb923c 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+            .content {{ background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; }}
+            .button {{ display: inline-block; background: #059669; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0; }}
+            .footer {{ text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px; }}
+            .info-box {{ background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin: 16px 0; }}
+            .info-row {{ display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }}
+            .info-row:last-child {{ border-bottom: none; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1 style="margin: 0;">Delivery Arrived!</h1>
+                <p style="margin: 10px 0 0 0; opacity: 0.9;">Please confirm the stock receipt</p>
+            </div>
+            <div class="content">
+                <h2>Hi {manager_name}!</h2>
+                <p>A delivery has arrived at your location.</p>
+
+                <div class="info-box">
+                    <div class="info-row">
+                        <span>🎫 Trip</span>
+                        <strong>#{trip_number}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>👤 Driver</span>
+                        <strong>{driver_name}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>📦 Delivered</span>
+                        <strong>{quantity_bags} bags</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>🏭 From</span>
+                        <strong>{supplier_name}</strong>
+                    </div>
+                </div>
+
+                <p style="text-align: center;">
+                    <a href="{confirm_url}" class="button">Confirm Receipt</a>
+                </p>
+
+                <p style="color: #6b7280; font-size: 14px;">Please verify the quantity and confirm to add the stock to your inventory.</p>
+            </div>
+            <div class="footer">
+                <p>Potato Stock Tracking System</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    text_content = f"""
+Hi {manager_name}!
+
+A delivery has arrived at your location.
+
+🎫 Trip: #{trip_number}
+👤 Driver: {driver_name}
+📦 Delivered: {quantity_bags} bags
+🏭 From: {supplier_name}
+
+Please confirm you received the stock:
+{confirm_url}
+
+---
+Potato Stock Tracking System
+    """
+
+    return send_email(to_email, subject, html_content, text_content)
+
+
+def send_delivery_confirmed_notification(
+    to_email: str,
+    recipient_name: str,
+    recipient_type: str,  # "driver" or "manager"
+    location_name: str,
+    quantity_bags: float,
+    quantity_kg: float,
+    trip_number: str,
+    has_discrepancy: bool = False,
+    discrepancy_kg: float = 0,
+    confirmed_by_name: str = "Store Manager"
+) -> bool:
+    """Send notification when delivery is confirmed - to both driver and store manager."""
+    settings = get_settings()
+    
+    if recipient_type == "driver":
+        subject = f"✅ Delivery Confirmed - {location_name}"
+        intro = "Your delivery has been confirmed by the store."
+        action_text = "Great job on the delivery!"
+    else:
+        subject = f"✅ Stock Confirmed - {quantity_bags:.0f} bags received"
+        intro = "The delivery has been confirmed and added to your inventory."
+        action_text = "Stock has been added to inventory."
+
+    discrepancy_html = ""
+    discrepancy_text = ""
+    if has_discrepancy:
+        discrepancy_html = f"""
+                <div class="info-row" style="background: #fef3c7; border-radius: 4px; padding: 8px;">
+                    <span>⚠️ Discrepancy</span>
+                    <strong style="color: #d97706;">{discrepancy_kg:.1f} kg difference</strong>
+                </div>
+        """
+        discrepancy_text = f"\n⚠️ Discrepancy: {discrepancy_kg:.1f} kg difference"
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ background: linear-gradient(135deg, #059669 0%, #10b981 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+            .content {{ background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; }}
+            .footer {{ text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px; }}
+            .info-box {{ background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin: 16px 0; }}
+            .info-row {{ display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }}
+            .info-row:last-child {{ border-bottom: none; }}
+            .success-badge {{ background: #d1fae5; color: #059669; padding: 8px 16px; border-radius: 20px; display: inline-block; font-weight: bold; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1 style="margin: 0;">Delivery Confirmed! ✅</h1>
+                <p style="margin: 10px 0 0 0; opacity: 0.9;">{action_text}</p>
+            </div>
+            <div class="content">
+                <h2>Hi {recipient_name}!</h2>
+                <p>{intro}</p>
+
+                <div class="info-box">
+                    <div class="info-row">
+                        <span>📍 Location</span>
+                        <strong>{location_name}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>🎫 Trip</span>
+                        <strong>#{trip_number}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>📦 Confirmed</span>
+                        <strong>{quantity_bags:.0f} bags ({quantity_kg:.1f} kg)</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>✍️ Confirmed by</span>
+                        <strong>{confirmed_by_name}</strong>
+                    </div>
+                    {discrepancy_html}
+                </div>
+
+                <p style="text-align: center; margin-top: 20px;">
+                    <span class="success-badge">✓ Delivery Complete</span>
+                </p>
+            </div>
+            <div class="footer">
+                <p>Potato Stock Tracking System</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    text_content = f"""
+Hi {recipient_name}!
+
+{intro}
+
+📍 Location: {location_name}
+🎫 Trip: #{trip_number}
+📦 Confirmed: {quantity_bags:.0f} bags ({quantity_kg:.1f} kg)
+✍️ Confirmed by: {confirmed_by_name}{discrepancy_text}
+
+✓ Delivery Complete
+
+---
+Potato Stock Tracking System
+    """
+
+    return send_email(to_email, subject, html_content, text_content)
+
+
+def send_trip_started_notification(
+    to_email: str,
+    manager_name: str,
+    location_name: str,
+    quantity_bags: int,
+    driver_name: str,
+    vehicle_reg: str,
+    vehicle_desc: str,
+    supplier_name: str,
+    trip_number: str,
+    trip_id: str
+) -> bool:
+    """Send notification to store manager when driver starts the trip."""
+    settings = get_settings()
+    trip_url = f"{settings.app_url}/trips?id={trip_id}"
+
+    subject = f"🚚 Delivery on the way - Trip #{trip_number} started"
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ background: linear-gradient(135deg, #f97316 0%, #fb923c 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+            .content {{ background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; }}
+            .button {{ display: inline-block; background: #4f46e5; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0; }}
+            .footer {{ text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px; }}
+            .info-box {{ background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin: 16px 0; }}
+            .info-row {{ display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }}
+            .info-row:last-child {{ border-bottom: none; }}
+            .status-badge {{ display: inline-block; background: #fef3c7; color: #b45309; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1 style="margin: 0;">Delivery On The Way!</h1>
+                <p style="margin: 10px 0 0 0; opacity: 0.9;">Your stock is being delivered</p>
+            </div>
+            <div class="content">
+                <h2>Hi {manager_name}!</h2>
+                <p>Great news! The driver has started the delivery trip for your stock request.</p>
+
+                <div class="info-box">
+                    <div class="info-row">
+                        <span>📍 Destination</span>
+                        <strong>{location_name}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>📦 Quantity</span>
+                        <strong>{quantity_bags} bags</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>👤 Driver</span>
+                        <strong>{driver_name}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>🚗 Vehicle</span>
+                        <strong>{vehicle_reg} ({vehicle_desc})</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>🏭 Picking up from</span>
+                        <strong>{supplier_name}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>📋 Status</span>
+                        <span class="status-badge">IN PROGRESS</span>
+                    </div>
+                </div>
+
+                <p style="text-align: center;">
+                    <a href="{trip_url}" class="button">Track Trip</a>
+                </p>
+
+                <p style="color: #6b7280; font-size: 14px;">You'll be notified when the delivery arrives at your location.</p>
+            </div>
+            <div class="footer">
+                <p>Potato Stock Tracking System</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    text_content = f"""
+Hi {manager_name}!
+
+Great news! The driver has started the delivery trip for your stock request.
+
+📍 Destination: {location_name}
+📦 Quantity: {quantity_bags} bags
+👤 Driver: {driver_name}
+🚗 Vehicle: {vehicle_reg} ({vehicle_desc})
+🏭 Picking up from: {supplier_name}
+📋 Status: IN PROGRESS
+
+Track trip: {trip_url}
+
+You'll be notified when the delivery arrives at your location.
+
+---
+Potato Stock Tracking System
+    """
+
+    return send_email(to_email, subject, html_content, text_content)
+
+
+def send_request_reminder_notification(
+    to_email: str,
+    recipient_name: str,
+    location_name: str,
+    quantity_bags: int,
+    urgency: str,
+    hours_pending: int,
+    request_id: str
+) -> bool:
+    """Send reminder to drivers about a pending stock request."""
+    settings = get_settings()
+    request_url = f"{settings.app_url}/requests?id={request_id}"
+
+    urgency_emoji = "🚨" if urgency == "urgent" else "⏰"
+    urgency_text = "URGENT" if urgency == "urgent" else "Normal"
+    urgency_color = "#dc2626" if urgency == "urgent" else "#f59e0b"
+
+    subject = f"{urgency_emoji} Reminder: Stock request waiting {hours_pending}h - {location_name}"
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ background: linear-gradient(135deg, {urgency_color} 0%, #f97316 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+            .content {{ background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; }}
+            .button {{ display: inline-block; background: #4f46e5; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0; }}
+            .footer {{ text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px; }}
+            .info-box {{ background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin: 16px 0; }}
+            .info-row {{ display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }}
+            .info-row:last-child {{ border-bottom: none; }}
+            .alert-badge {{ display: inline-block; background: {urgency_color}; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1 style="margin: 0;">Reminder: Stock Request Waiting</h1>
+                <p style="margin: 10px 0 0 0; opacity: 0.9;">This request has been pending for {hours_pending} hours</p>
+            </div>
+            <div class="content">
+                <h2>Hi {recipient_name}!</h2>
+                <p>A stock request is still waiting for a driver:</p>
+
+                <div class="info-box">
+                    <div class="info-row">
+                        <span>📍 Location</span>
+                        <strong>{location_name}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>📦 Quantity</span>
+                        <strong>{quantity_bags} bags</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>⏰ Urgency</span>
+                        <span class="alert-badge">{urgency_text}</span>
+                    </div>
+                    <div class="info-row">
+                        <span>⏳ Waiting</span>
+                        <strong>{hours_pending} hours</strong>
+                    </div>
+                </div>
+
+                <p style="text-align: center;">
+                    <a href="{request_url}" class="button">Accept This Request</a>
+                </p>
+
+                <p style="color: #6b7280; font-size: 14px;">This request will be escalated to management if not accepted soon.</p>
+            </div>
+            <div class="footer">
+                <p>Potato Stock Tracking System</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    text_content = f"""
+Hi {recipient_name}!
+
+Reminder: A stock request is still waiting for a driver.
+
+📍 Location: {location_name}
+📦 Quantity: {quantity_bags} bags
+⏰ Urgency: {urgency_text}
+⏳ Waiting: {hours_pending} hours
+
+Accept this request: {request_url}
+
+This request will be escalated to management if not accepted soon.
+
+---
+Potato Stock Tracking System
+    """
+
+    return send_email(to_email, subject, html_content, text_content)
+
+
+def send_request_escalation_notification(
+    to_email: str,
+    manager_name: str,
+    location_name: str,
+    quantity_bags: int,
+    urgency: str,
+    hours_pending: int,
+    request_id: str
+) -> bool:
+    """Send escalation notification to zone manager about unaccepted request."""
+    settings = get_settings()
+    request_url = f"{settings.app_url}/requests?id={request_id}"
+
+    urgency_text = "URGENT" if urgency == "urgent" else "Normal"
+
+    subject = f"⚠️ ESCALATION: Stock request unaccepted for {hours_pending}h - {location_name}"
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+            .content {{ background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; }}
+            .button {{ display: inline-block; background: #4f46e5; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0; }}
+            .footer {{ text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px; }}
+            .info-box {{ background: white; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; margin: 16px 0; }}
+            .info-row {{ display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }}
+            .info-row:last-child {{ border-bottom: none; }}
+            .escalation-badge {{ display: inline-block; background: #dc2626; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1 style="margin: 0;">⚠️ Request Escalation</h1>
+                <p style="margin: 10px 0 0 0; opacity: 0.9;">No driver has accepted this request</p>
+            </div>
+            <div class="content">
+                <h2>Attention {manager_name}!</h2>
+                <p>A stock request has been waiting for {hours_pending} hours without being accepted by any driver. Please investigate and ensure delivery.</p>
+
+                <div class="info-box">
+                    <div class="info-row">
+                        <span>📍 Location</span>
+                        <strong>{location_name}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>📦 Quantity</span>
+                        <strong>{quantity_bags} bags</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>⏰ Urgency</span>
+                        <strong>{urgency_text}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>⏳ Waiting</span>
+                        <span class="escalation-badge">{hours_pending} HOURS</span>
+                    </div>
+                </div>
+
+                <p style="text-align: center;">
+                    <a href="{request_url}" class="button">View Request</a>
+                </p>
+
+                <p style="color: #6b7280; font-size: 14px;">This request will expire if not fulfilled soon. Please assign a driver or investigate driver availability.</p>
+            </div>
+            <div class="footer">
+                <p>Potato Stock Tracking System</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    text_content = f"""
+Attention {manager_name}!
+
+⚠️ REQUEST ESCALATION
+
+A stock request has been waiting for {hours_pending} hours without being accepted by any driver.
+
+📍 Location: {location_name}
+📦 Quantity: {quantity_bags} bags
+⏰ Urgency: {urgency_text}
+⏳ Waiting: {hours_pending} hours
+
+View request: {request_url}
+
+Please investigate and ensure delivery.
+
+---
+Potato Stock Tracking System
+    """
+
+    return send_email(to_email, subject, html_content, text_content)
+
+
+def send_request_expired_notification(
+    to_email: str,
+    requester_name: str,
+    location_name: str,
+    quantity_bags: int,
+    hours_pending: int,
+    request_id: str
+) -> bool:
+    """Send notification to requester when their request has expired."""
+    settings = get_settings()
+    request_url = f"{settings.app_url}/requests"
+
+    subject = f"❌ Stock request expired - {location_name}"
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ background: linear-gradient(135deg, #6b7280 0%, #9ca3af 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+            .content {{ background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; }}
+            .button {{ display: inline-block; background: #4f46e5; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0; }}
+            .footer {{ text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px; }}
+            .info-box {{ background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin: 16px 0; }}
+            .info-row {{ display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }}
+            .info-row:last-child {{ border-bottom: none; }}
+            .expired-badge {{ display: inline-block; background: #6b7280; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1 style="margin: 0;">Request Expired</h1>
+                <p style="margin: 10px 0 0 0; opacity: 0.9;">No driver was available to fulfill this request</p>
+            </div>
+            <div class="content">
+                <h2>Hi {requester_name},</h2>
+                <p>Unfortunately, your stock request has expired after {hours_pending} hours without being fulfilled.</p>
+
+                <div class="info-box">
+                    <div class="info-row">
+                        <span>📍 Location</span>
+                        <strong>{location_name}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>📦 Quantity</span>
+                        <strong>{quantity_bags} bags</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>📋 Status</span>
+                        <span class="expired-badge">EXPIRED</span>
+                    </div>
+                </div>
+
+                <p>You can create a new request if you still need stock replenishment.</p>
+
+                <p style="text-align: center;">
+                    <a href="{request_url}" class="button">Create New Request</a>
+                </p>
+
+                <p style="color: #6b7280; font-size: 14px;">If this is urgent, please contact your zone manager directly.</p>
+            </div>
+            <div class="footer">
+                <p>Potato Stock Tracking System</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    text_content = f"""
+Hi {requester_name},
+
+Your stock request has expired after {hours_pending} hours without being fulfilled.
+
+📍 Location: {location_name}
+📦 Quantity: {quantity_bags} bags
+📋 Status: EXPIRED
+
+You can create a new request if you still need stock replenishment:
+{request_url}
+
+If this is urgent, please contact your zone manager directly.
+
+---
+Potato Stock Tracking System
+    """
+
+    return send_email(to_email, subject, html_content, text_content)
+
+
+def send_request_cancelled_notification(
+    to_email: str,
+    driver_name: str,
+    location_name: str,
+    quantity_bags: int,
+    cancellation_reason: str,
+    cancelled_by_name: str,
+    request_id: str
+) -> bool:
+    """Send notification to driver when their accepted request is cancelled."""
+    settings = get_settings()
+    request_url = f"{settings.app_url}/requests"
+
+    subject = f"🚫 Stock request cancelled - {location_name}"
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+            .content {{ background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; }}
+            .button {{ display: inline-block; background: #4f46e5; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0; }}
+            .footer {{ text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px; }}
+            .info-box {{ background: white; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; margin: 16px 0; }}
+            .info-row {{ display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }}
+            .info-row:last-child {{ border-bottom: none; }}
+            .cancelled-badge {{ display: inline-block; background: #dc2626; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }}
+            .reason-box {{ background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px; margin: 16px 0; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1 style="margin: 0;">Request Cancelled</h1>
+                <p style="margin: 10px 0 0 0; opacity: 0.9;">A request you accepted has been cancelled</p>
+            </div>
+            <div class="content">
+                <h2>Hi {driver_name},</h2>
+                <p>A stock request you had accepted has been cancelled by {cancelled_by_name}.</p>
+
+                <div class="info-box">
+                    <div class="info-row">
+                        <span>📍 Location</span>
+                        <strong>{location_name}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>📦 Quantity</span>
+                        <strong>{quantity_bags} bags</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>📋 Status</span>
+                        <span class="cancelled-badge">CANCELLED</span>
+                    </div>
+                </div>
+
+                <div class="reason-box">
+                    <strong>Cancellation Reason:</strong>
+                    <p style="margin: 8px 0 0 0;">{cancellation_reason}</p>
+                </div>
+
+                <p>If you had already started preparations, please contact your manager.</p>
+
+                <p style="text-align: center;">
+                    <a href="{request_url}" class="button">View Other Requests</a>
+                </p>
+            </div>
+            <div class="footer">
+                <p>Potato Stock Tracking System</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    text_content = f"""
+Hi {driver_name},
+
+A stock request you had accepted has been cancelled by {cancelled_by_name}.
+
+📍 Location: {location_name}
+📦 Quantity: {quantity_bags} bags
+📋 Status: CANCELLED
+
+Cancellation Reason:
+{cancellation_reason}
+
+If you had already started preparations, please contact your manager.
+
+View other requests: {request_url}
+
+---
+Potato Stock Tracking System
+    """
+
+    return send_email(to_email, subject, html_content, text_content)
+
+
+def send_low_stock_alert(
+    to_email: str,
+    manager_name: str,
+    location_name: str,
+    item_name: str,
+    current_qty: float,
+    reorder_point: float,
+    escalation_level: int = 1
+) -> bool:
+    """Send low stock alert to location manager."""
+    settings = get_settings()
+    requests_url = f"{settings.app_url}/requests"
+
+    shortage_pct = round(((reorder_point - current_qty) / reorder_point) * 100, 1) if reorder_point > 0 else 0
+
+    subject = f"⚠️ Low Stock Alert - {location_name}"
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+            .content {{ background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; }}
+            .button {{ display: inline-block; background: #dc2626; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0; }}
+            .footer {{ text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px; }}
+            .info-box {{ background: white; border: 1px solid #fde68a; border-radius: 8px; padding: 16px; margin: 16px 0; }}
+            .info-row {{ display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }}
+            .info-row:last-child {{ border-bottom: none; }}
+            .alert-badge {{ display: inline-block; background: #f59e0b; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }}
+            .progress-bar {{ background: #e5e7eb; border-radius: 4px; height: 8px; margin-top: 8px; }}
+            .progress-fill {{ background: #dc2626; border-radius: 4px; height: 8px; width: {min(100 - shortage_pct, 100)}%; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1 style="margin: 0;">⚠️ Low Stock Alert</h1>
+                <p style="margin: 10px 0 0 0; opacity: 0.9;">Stock level below reorder point</p>
+            </div>
+            <div class="content">
+                <h2>Hi {manager_name}!</h2>
+                <p>Stock at your location has fallen below the reorder point. Please create a stock request.</p>
+
+                <div class="info-box">
+                    <div class="info-row">
+                        <span>📍 Location</span>
+                        <strong>{location_name}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>📦 Item</span>
+                        <strong>{item_name}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>📊 Current Stock</span>
+                        <strong>{current_qty:.0f} kg</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>⚠️ Reorder Point</span>
+                        <strong>{reorder_point:.0f} kg</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>📉 Below Threshold</span>
+                        <span class="alert-badge">{shortage_pct}%</span>
+                    </div>
+                </div>
+
+                <div class="progress-bar">
+                    <div class="progress-fill"></div>
+                </div>
+                <p style="text-align: center; color: #6b7280; font-size: 12px; margin-top: 4px;">Stock Level</p>
+
+                <p style="text-align: center;">
+                    <a href="{requests_url}" class="button">Create Stock Request</a>
+                </p>
+
+                <p style="color: #6b7280; font-size: 14px;">If no action is taken, this alert will be escalated to your zone manager.</p>
+            </div>
+            <div class="footer">
+                <p>Potato Stock Tracking System</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    text_content = f"""
+Hi {manager_name}!
+
+⚠️ LOW STOCK ALERT
+
+Stock at your location has fallen below the reorder point.
+
+📍 Location: {location_name}
+📦 Item: {item_name}
+📊 Current Stock: {current_qty:.0f} kg
+⚠️ Reorder Point: {reorder_point:.0f} kg
+📉 Below Threshold: {shortage_pct}%
+
+Create a stock request: {requests_url}
+
+If no action is taken, this alert will be escalated to your zone manager.
+
+---
+Potato Stock Tracking System
+    """
+
+    return send_email(to_email, subject, html_content, text_content)
+
+
+def send_low_stock_escalation(
+    to_email: str,
+    manager_name: str,
+    location_name: str,
+    item_name: str,
+    current_qty: float,
+    reorder_point: float,
+    escalation_level: int,
+    hours_unresolved: int,
+    is_repeat: bool = False
+) -> bool:
+    """Send low stock escalation to zone manager or admin."""
+    settings = get_settings()
+    requests_url = f"{settings.app_url}/requests"
+
+    level_text = "Zone Manager" if escalation_level == 2 else "Admin"
+    repeat_text = " (Daily Reminder)" if is_repeat else ""
+
+    subject = f"🚨 LOW STOCK ESCALATION{repeat_text} - {location_name}"
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+            .content {{ background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; }}
+            .button {{ display: inline-block; background: #4f46e5; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0; }}
+            .footer {{ text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px; }}
+            .info-box {{ background: white; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; margin: 16px 0; }}
+            .info-row {{ display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }}
+            .info-row:last-child {{ border-bottom: none; }}
+            .escalation-badge {{ display: inline-block; background: #dc2626; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1 style="margin: 0;">🚨 Low Stock Escalation</h1>
+                <p style="margin: 10px 0 0 0; opacity: 0.9;">Unresolved for {hours_unresolved}+ hours</p>
+            </div>
+            <div class="content">
+                <h2>Attention {manager_name}!</h2>
+                <p>A low stock situation at <strong>{location_name}</strong> has been unresolved for {hours_unresolved} hours. No stock request has been created.</p>
+
+                <div class="info-box">
+                    <div class="info-row">
+                        <span>📍 Location</span>
+                        <strong>{location_name}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>📦 Item</span>
+                        <strong>{item_name}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>📊 Current Stock</span>
+                        <strong>{current_qty:.0f} kg</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>⚠️ Reorder Point</span>
+                        <strong>{reorder_point:.0f} kg</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>⏳ Unresolved</span>
+                        <span class="escalation-badge">{hours_unresolved}+ HOURS</span>
+                    </div>
+                    <div class="info-row">
+                        <span>📋 Escalation Level</span>
+                        <strong>{level_text}</strong>
+                    </div>
+                </div>
+
+                <p style="text-align: center;">
+                    <a href="{requests_url}" class="button">Take Action</a>
+                </p>
+
+                <p style="color: #6b7280; font-size: 14px;">Please investigate why no stock request has been created and ensure stock is replenished.</p>
+            </div>
+            <div class="footer">
+                <p>Potato Stock Tracking System</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    text_content = f"""
+Attention {manager_name}!
+
+🚨 LOW STOCK ESCALATION{repeat_text}
+
+A low stock situation at {location_name} has been unresolved for {hours_unresolved} hours.
+
+📍 Location: {location_name}
+📦 Item: {item_name}
+📊 Current Stock: {current_qty:.0f} kg
+⚠️ Reorder Point: {reorder_point:.0f} kg
+⏳ Unresolved: {hours_unresolved}+ hours
+📋 Escalation Level: {level_text}
+
+Take action: {requests_url}
+
+---
+Potato Stock Tracking System
+    """
+
+    return send_email(to_email, subject, html_content, text_content)
+
+
+def send_request_updated_notification(
+    to_email: str,
+    recipient_name: str,
+    location_name: str,
+    old_quantity_bags: int,
+    new_quantity_bags: int,
+    old_urgency: str,
+    new_urgency: str,
+    updated_by_name: str,
+    request_id: str
+) -> bool:
+    """Send notification to drivers when a request they may be interested in is modified."""
+    settings = get_settings()
+    request_url = f"{settings.app_url}/requests?id={request_id}"
+
+    changes = []
+    if old_quantity_bags != new_quantity_bags:
+        changes.append(f"Quantity: {old_quantity_bags} → {new_quantity_bags} bags")
+    if old_urgency != new_urgency:
+        urgency_display = {"urgent": "Urgent", "normal": "Normal"}
+        changes.append(f"Urgency: {urgency_display.get(old_urgency, old_urgency)} → {urgency_display.get(new_urgency, new_urgency)}")
+
+    changes_text = "\n".join(f"• {c}" for c in changes)
+    changes_html = "".join(f"<li>{c}</li>" for c in changes)
+
+    new_urgency_color = "#dc2626" if new_urgency == "urgent" else "#059669"
+
+    subject = f"📝 Stock request updated - {location_name}"
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+            .content {{ background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; }}
+            .button {{ display: inline-block; background: #f97316; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0; }}
+            .footer {{ text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px; }}
+            .info-box {{ background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin: 16px 0; }}
+            .info-row {{ display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }}
+            .info-row:last-child {{ border-bottom: none; }}
+            .changes-box {{ background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px; margin: 16px 0; }}
+            .urgency-badge {{ display: inline-block; background: {new_urgency_color}; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1 style="margin: 0;">Request Updated</h1>
+                <p style="margin: 10px 0 0 0; opacity: 0.9;">A stock request has been modified</p>
+            </div>
+            <div class="content">
+                <h2>Hi {recipient_name}!</h2>
+                <p>A stock request has been updated by {updated_by_name}:</p>
+
+                <div class="info-box">
+                    <div class="info-row">
+                        <span>📍 Location</span>
+                        <strong>{location_name}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>📦 Quantity</span>
+                        <strong>{new_quantity_bags} bags</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>⏰ Urgency</span>
+                        <span class="urgency-badge">{new_urgency.upper()}</span>
+                    </div>
+                </div>
+
+                <div class="changes-box">
+                    <strong>Changes Made:</strong>
+                    <ul style="margin: 8px 0 0 0; padding-left: 20px;">
+                        {changes_html}
+                    </ul>
+                </div>
+
+                <p style="text-align: center;">
+                    <a href="{request_url}" class="button">View Request</a>
+                </p>
+            </div>
+            <div class="footer">
+                <p>Potato Stock Tracking System</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    text_content = f"""
+Hi {recipient_name}!
+
+A stock request has been updated by {updated_by_name}:
+
+📍 Location: {location_name}
+📦 Quantity: {new_quantity_bags} bags
+⏰ Urgency: {new_urgency.upper()}
+
+Changes Made:
+{changes_text}
+
+View request: {request_url}
+
+---
+Potato Stock Tracking System
+    """
+
+    return send_email(to_email, subject, html_content, text_content)
+
+
+def send_trip_started_with_eta_notification(
+    to_email: str,
+    manager_name: str,
+    location_name: str,
+    quantity_bags: int,
+    driver_name: str,
+    vehicle_reg: str,
+    vehicle_desc: str,
+    supplier_name: str,
+    trip_number: str,
+    trip_id: str,
+    estimated_arrival_time: str = None
+) -> bool:
+    """Send notification to store manager when driver starts trip with ETA."""
+    settings = get_settings()
+    trip_url = f"{settings.app_url}/trips?id={trip_id}"
+
+    eta_display = ""
+    eta_html = ""
+    if estimated_arrival_time:
+        try:
+            from datetime import datetime
+            eta_dt = datetime.fromisoformat(estimated_arrival_time.replace("Z", "+00:00"))
+            eta_display = eta_dt.strftime("%I:%M %p")
+            eta_html = f"""
+                    <div class="info-row">
+                        <span>🕐 Estimated Arrival</span>
+                        <strong style="color: #059669;">{eta_display}</strong>
+                    </div>"""
+        except:
+            pass
+
+    subject = f"🚚 Delivery on the way - Trip #{trip_number}" + (f" (ETA: {eta_display})" if eta_display else "")
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ background: linear-gradient(135deg, #f97316 0%, #fb923c 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+            .content {{ background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; }}
+            .button {{ display: inline-block; background: #4f46e5; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0; }}
+            .footer {{ text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px; }}
+            .info-box {{ background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin: 16px 0; }}
+            .info-row {{ display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }}
+            .info-row:last-child {{ border-bottom: none; }}
+            .status-badge {{ display: inline-block; background: #fef3c7; color: #b45309; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1 style="margin: 0;">Delivery On The Way!</h1>
+                <p style="margin: 10px 0 0 0; opacity: 0.9;">Your stock is being delivered</p>
+            </div>
+            <div class="content">
+                <h2>Hi {manager_name}!</h2>
+                <p>Great news! The driver has started the delivery trip for your stock request.</p>
+
+                <div class="info-box">
+                    <div class="info-row">
+                        <span>📍 Destination</span>
+                        <strong>{location_name}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>📦 Quantity</span>
+                        <strong>{quantity_bags} bags</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>👤 Driver</span>
+                        <strong>{driver_name}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>🚗 Vehicle</span>
+                        <strong>{vehicle_reg} ({vehicle_desc})</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>🏭 Picking up from</span>
+                        <strong>{supplier_name}</strong>
+                    </div>{eta_html}
+                    <div class="info-row">
+                        <span>📋 Status</span>
+                        <span class="status-badge">IN PROGRESS</span>
+                    </div>
+                </div>
+
+                <p style="text-align: center;">
+                    <a href="{trip_url}" class="button">Track Trip</a>
+                </p>
+
+                <p style="color: #6b7280; font-size: 14px;">You'll be notified when the delivery arrives at your location.</p>
+            </div>
+            <div class="footer">
+                <p>Potato Stock Tracking System</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    text_content = f"""
+Hi {manager_name}!
+
+Great news! The driver has started the delivery trip for your stock request.
+
+📍 Destination: {location_name}
+📦 Quantity: {quantity_bags} bags
+👤 Driver: {driver_name}
+🚗 Vehicle: {vehicle_reg} ({vehicle_desc})
+🏭 Picking up from: {supplier_name}
+{"🕐 Estimated Arrival: " + eta_display if eta_display else ""}
+📋 Status: IN PROGRESS
+
+Track trip: {trip_url}
+
+You'll be notified when the delivery arrives at your location.
 
 ---
 Potato Stock Tracking System

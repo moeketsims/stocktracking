@@ -1,8 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Edit3, History, AlertCircle } from 'lucide-react';
 import { Modal, Button, Input, Select } from '../ui';
-import { useEditBatch, useBatchDetails, useBatchEditHistory, useBatchStatuses, useQualityScores } from '../../hooks/useData';
-import type { BatchEditForm, QualityScore, BatchEditHistoryItem } from '../../types';
+import { useEditBatch, useBatchDetails, useBatchEditHistory, useBatchStatuses } from '../../hooks/useData';
+import type { BatchEditHistoryItem } from '../../types';
+
+interface BatchEditForm {
+  expiry_date?: string;
+  status?: 'available' | 'quarantine' | 'hold';
+  edit_reason: string;
+}
 
 interface BatchEditModalProps {
   isOpen: boolean;
@@ -19,8 +25,6 @@ export default function BatchEditModal({
 }: BatchEditModalProps) {
   const [form, setForm] = useState<BatchEditForm>({
     expiry_date: undefined,
-    quality_notes: undefined,
-    quality_score: undefined,
     status: undefined,
     edit_reason: '',
   });
@@ -31,14 +35,11 @@ export default function BatchEditModal({
   const { data: batch, isLoading: batchLoading } = useBatchDetails(batchId);
   const { data: history } = useBatchEditHistory(batchId);
   const { data: statuses } = useBatchStatuses();
-  const { data: qualityScores } = useQualityScores();
 
   useEffect(() => {
     if (isOpen && batch) {
       setForm({
         expiry_date: batch.expiry_date || undefined,
-        quality_notes: batch.quality_notes || undefined,
-        quality_score: batch.quality_score || undefined,
         status: batch.status || undefined,
         edit_reason: '',
       });
@@ -71,11 +72,6 @@ export default function BatchEditModal({
       value: status.value,
       label: status.label,
     }));
-
-  const qualityOptions = (qualityScores || []).map((score: any) => ({
-    value: String(score.value),
-    label: `${score.value} - ${score.label}`,
-  }));
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -223,31 +219,6 @@ export default function BatchEditModal({
               value={form.expiry_date || ''}
               onChange={(e) => setForm({ ...form, expiry_date: e.target.value || undefined })}
             />
-
-            <Select
-              label="Quality Score"
-              options={[{ value: '', label: 'No change' }, ...qualityOptions]}
-              value={String(form.quality_score || '')}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  quality_score: e.target.value ? (parseInt(e.target.value) as QualityScore) : undefined,
-                })
-              }
-            />
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Quality Notes
-              </label>
-              <textarea
-                className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                rows={2}
-                value={form.quality_notes || ''}
-                onChange={(e) => setForm({ ...form, quality_notes: e.target.value || undefined })}
-                placeholder="Notes about quality..."
-              />
-            </div>
 
             <Select
               label="Status"

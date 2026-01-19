@@ -15,13 +15,19 @@ def generate_alerts(supabase, location_id: str = None) -> list:
     alerts = []
     now = datetime.now()
 
-    # Get stock balance
-    balance_query = supabase.table("stock_balance").select(
-        "*, items(id, name), locations(id, name)"
-    )
+    # Get stock balance (without locations embed - views don't support FK embedding)
+    balance_query = supabase.table("stock_balance").select("*")
     if location_id:
         balance_query = balance_query.eq("location_id", location_id)
     balance = balance_query.execute()
+
+    # Get items for names
+    items_result = supabase.table("items").select("id, name").execute()
+    items_map = {i["id"]: i["name"] for i in (items_result.data or [])}
+
+    # Get locations for names
+    locations_result = supabase.table("locations").select("id, name").execute()
+    locations_map = {l["id"]: l["name"] for l in (locations_result.data or [])}
 
     # Get reorder policies
     policies_query = supabase.table("reorder_policies").select("*")
@@ -37,8 +43,8 @@ def generate_alerts(supabase, location_id: str = None) -> list:
 
     # Check each stock item for alerts
     for item in (balance.data or []):
-        location = item.get("locations", {})
-        item_data = item.get("items", {})
+        loc_name = locations_map.get(item.get("location_id"), "Unknown")
+        item_name = items_map.get(item.get("item_id"), "Unknown")
         on_hand = item.get("on_hand_qty", 0)
 
         policy_key = f"{item['location_id']}_{item['item_id']}"
@@ -46,9 +52,6 @@ def generate_alerts(supabase, location_id: str = None) -> list:
 
         safety_stock = policy.get("safety_stock_qty", 20)
         reorder_point = policy.get("reorder_point_qty", 50)
-
-        loc_name = location.get("name", "Unknown") if location else "Unknown"
-        item_name = item_data.get("name", "Unknown") if item_data else "Unknown"
 
         # Low stock alert
         if on_hand < safety_stock:

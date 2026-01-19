@@ -12,14 +12,14 @@ router = APIRouter(prefix="/users", tags=["User Management"])
 # Request Models
 class InviteUserRequest(BaseModel):
     email: EmailStr
-    role: str = Field(..., pattern="^(admin|zone_manager|location_manager|staff)$")
+    role: str = Field(..., pattern="^(admin|zone_manager|location_manager|driver|staff)$")
     zone_id: Optional[str] = None
     location_id: Optional[str] = None
     full_name: Optional[str] = None
 
 
 class UpdateUserRequest(BaseModel):
-    role: Optional[str] = Field(None, pattern="^(admin|zone_manager|location_manager|staff)$")
+    role: Optional[str] = Field(None, pattern="^(admin|zone_manager|location_manager|driver|staff)$")
     zone_id: Optional[str] = None
     location_id: Optional[str] = None
     full_name: Optional[str] = None
@@ -62,7 +62,7 @@ def can_manage_role(actor_role: str, target_role: str) -> bool:
     if actor_role == "admin":
         return True  # Admin can manage any role
     if actor_role == "zone_manager":
-        return target_role in ["location_manager", "staff"]
+        return target_role in ["location_manager", "driver", "staff"]
     return False
 
 
@@ -274,7 +274,7 @@ async def update_user(
         if request.phone is not None:
             update_data["phone"] = request.phone if request.phone else None
 
-        result = supabase.table("profiles").update(update_data).eq("id", user_id).execute()
+        result = supabase.table("profiles").eq("id", user_id).update(update_data)
 
         return {
             "success": True,

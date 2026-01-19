@@ -354,7 +354,7 @@ async def seed_demo_data(user_data: dict = Depends(require_auth)):
         # STEP 6: Complete some trips
         # ============================================
         # Get in_progress trips and complete a couple
-        trips_result = supabase.table("trips").select("*").eq("status", "in_progress").limit(2).execute()
+        trips_result = supabase.table("trips").select("id, status").eq("status", "in_progress").limit(2).execute()
         trips_to_complete = trips_result.data or []
 
         for trip in trips_to_complete:

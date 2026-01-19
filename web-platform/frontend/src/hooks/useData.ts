@@ -17,10 +17,12 @@ import {
   ownerDashboardApi,
   usersApi,
   invitationsApi,
+  pendingDeliveriesApi,
 } from '../lib/api';
 import type {
   DashboardData,
   StockScreenData,
+  LocationStockData,
   TransactionsData,
   AlertsData,
   BatchesData,
@@ -68,6 +70,16 @@ export function useStockOverview() {
   });
 }
 
+export function useStockByLocation() {
+  return useQuery<LocationStockData>({
+    queryKey: ['stock-by-location'],
+    queryFn: async () => {
+      const response = await stockApi.getByLocation();
+      return response.data;
+    },
+  });
+}
+
 export function useReceiveStock() {
   const queryClient = useQueryClient();
 
@@ -79,6 +91,7 @@ export function useReceiveStock() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['stock-overview'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-by-location'] });
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['batches'] });
     },
@@ -96,6 +109,7 @@ export function useIssueStock() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['stock-overview'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-by-location'] });
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['batches'] });
     },
@@ -113,6 +127,7 @@ export function useTransferStock() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['stock-overview'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-by-location'] });
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['zone-overview'] });
     },
@@ -130,6 +145,7 @@ export function useWasteStock() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['stock-overview'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-by-location'] });
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
     },
   });
@@ -815,5 +831,25 @@ export function useZones() {
       return response.data.zones;
     },
     staleTime: 10 * 60 * 1000,
+  });
+}
+
+// Pending Deliveries Count (for sidebar badge)
+// Includes both en-route trips and pending deliveries awaiting confirmation
+export function usePendingDeliveriesCount() {
+  return useQuery({
+    queryKey: ['deliveries', 'tracking-count'],
+    queryFn: async () => {
+      // Fetch both in parallel
+      const [pendingRes, tripsRes] = await Promise.all([
+        pendingDeliveriesApi.getPending(undefined, 100),
+        tripsApi.list({ status: 'in_progress', limit: 100 }),
+      ]);
+      const pendingCount = pendingRes.data?.deliveries?.length || 0;
+      const inProgressCount = tripsRes.data?.trips?.length || 0;
+      return pendingCount + inProgressCount;
+    },
+    refetchInterval: 30 * 1000, // Refetch every 30 seconds
+    staleTime: 15 * 1000, // Consider stale after 15 seconds
   });
 }

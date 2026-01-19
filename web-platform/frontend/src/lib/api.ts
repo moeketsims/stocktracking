@@ -58,6 +58,7 @@ export const dashboardApi = {
 export const stockApi = {
   getOverview: (viewLocationId?: string) =>
     api.get('/api/stock', { params: viewLocationId ? { view_location_id: viewLocationId } : undefined }),
+  getByLocation: () => api.get('/api/stock/by-location'),
   getBalance: (viewLocationId?: string) =>
     api.get('/api/stock/balance', { params: viewLocationId ? { view_location_id: viewLocationId } : undefined }),
   receive: (data: any) => api.post('/api/stock/receive', data),
@@ -206,7 +207,8 @@ export const tripsApi = {
   get: (id: string) => api.get(`/api/trips/${id}`),
   create: (data: any) => api.post('/api/trips', data),
   update: (id: string, data: any) => api.patch(`/api/trips/${id}`, data),
-  start: (id: string) => api.post(`/api/trips/${id}/start`),
+  start: (id: string, estimatedArrivalTime?: string) =>
+    api.post(`/api/trips/${id}/start`, estimatedArrivalTime ? { estimated_arrival_time: estimatedArrivalTime } : {}),
   complete: (id: string, data: any) => api.post(`/api/trips/${id}/complete`, data),
   cancel: (id: string) => api.post(`/api/trips/${id}/cancel`),
   getSummary: (params?: { from_date?: string; to_date?: string; vehicle_id?: string }) =>
@@ -255,6 +257,40 @@ export const authExtApi = {
   forgotPassword: (email: string) => api.post('/api/auth/forgot-password', { email }),
   resetPassword: (data: { token: string; password: string }) =>
     api.post('/api/auth/reset-password', data),
+};
+
+// Stock Requests API (Replenishment Workflow)
+export const stockRequestsApi = {
+  list: (params?: { status?: string; location_id?: string; urgency?: string; limit?: number }) =>
+    api.get('/api/stock-requests', { params }),
+  getAvailable: (limit?: number) =>
+    api.get('/api/stock-requests/available', { params: { limit } }),
+  get: (id: string) => api.get(`/api/stock-requests/${id}`),
+  create: (data: any) => api.post('/api/stock-requests', data),
+  update: (id: string, data: { quantity_bags?: number; urgency?: string; notes?: string }) =>
+    api.patch(`/api/stock-requests/${id}`, data),
+  accept: (id: string) => api.post(`/api/stock-requests/${id}/accept`),
+  createTrip: (id: string, data: any) => api.post(`/api/stock-requests/${id}/create-trip`, data),
+  createMultiTrip: (data: { request_ids: string[]; vehicle_id: string; driver_id?: string; supplier_id: string; notes?: string }) =>
+    api.post('/api/stock-requests/create-multi-trip', data),
+  cancel: (id: string, reason: string) => api.post(`/api/stock-requests/${id}/cancel`, { reason }),
+  fulfillRemaining: (id: string, data: { vehicle_id: string; driver_id?: string; supplier_id: string; notes?: string }) =>
+    api.post(`/api/stock-requests/${id}/fulfill-remaining`, data),
+  getMyRequests: (status?: string, limit?: number) =>
+    api.get('/api/stock-requests/my/requests', { params: { status, limit } }),
+};
+
+// Pending Deliveries API
+export const pendingDeliveriesApi = {
+  list: (params?: { status?: string; location_id?: string; limit?: number }) =>
+    api.get('/api/pending-deliveries', { params }),
+  getPending: (locationId?: string, limit?: number) =>
+    api.get('/api/pending-deliveries/pending', { params: { location_id: locationId, limit } }),
+  get: (id: string) => api.get(`/api/pending-deliveries/${id}`),
+  confirm: (id: string, data: { confirmed_qty_kg: number; notes?: string }) =>
+    api.post(`/api/pending-deliveries/${id}/confirm`, data),
+  reject: (id: string, data: { reason: string }) =>
+    api.post(`/api/pending-deliveries/${id}/reject`, data),
 };
 
 // Barcode Scanning API

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   MapPin,
   Plus,
@@ -14,14 +15,17 @@ import {
   ChevronRight,
   MoreVertical,
   Search,
+  Package,
 } from 'lucide-react';
 import { Card, Button } from '../components/ui';
 import TripModal from '../components/modals/TripModal';
 import CompleteTripModal from '../components/modals/CompleteTripModal';
+import { StartTripModal } from '../components/modals/StartTripModal';
 import TripStopsDetail from '../components/trips/TripStopsDetail';
 import { useTrips, useTripSummary, useStartTrip, useCancelTrip } from '../hooks/useData';
 import { useAuthStore } from '../stores/authStore';
-import type { Trip, TripStatus, TripType } from '../types';
+import { stockRequestsApi } from '../lib/api';
+import type { Trip, TripStatus, TripType, StockRequest } from '../types';
 
 // Status colors for BADGES ONLY - muted/pastel, never same saturation as buttons
 // Rule: Orange is reserved for primary actions. Status chips use neutral/distinct colors.
@@ -37,13 +41,47 @@ const formatCurrency = (value: number): string => {
   return 'R' + value.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 };
 
-export default function TripsPage() {
+interface TripsPageProps {
+  highlightTripId?: string | null;
+  pendingRequestId?: string | null;
+  onTripViewed?: () => void;
+  onRequestHandled?: () => void;
+}
+
+export default function TripsPage({ highlightTripId, pendingRequestId, onTripViewed, onRequestHandled }: TripsPageProps = {}) {
+  const queryClient = useQueryClient();
   const [showTripModal, setShowTripModal] = useState(false);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
+  const [showStartModal, setShowStartModal] = useState(false);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
   const [expandedTripId, setExpandedTripId] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [preSelectedRequestId, setPreSelectedRequestId] = useState<string | null>(null);
+
+  // Auto-expand highlighted trip when navigating from Requests page
+  useEffect(() => {
+    if (highlightTripId) {
+      setExpandedTripId(highlightTripId);
+      // Scroll to the trip after a short delay to allow rendering
+      setTimeout(() => {
+        const tripElement = document.getElementById(`trip-${highlightTripId}`);
+        if (tripElement) {
+          tripElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
+      // Clear the highlight after viewing
+      onTripViewed?.();
+    }
+  }, [highlightTripId, onTripViewed]);
+
+  // Auto-open TripModal when navigating from RequestsPage with a request to fulfill
+  useEffect(() => {
+    if (pendingRequestId) {
+      setPreSelectedRequestId(pendingRequestId);
+      setShowTripModal(true);
+    }
+  }, [pendingRequestId]);
 
   // Collapsed sections - Completed collapsed by default
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
@@ -56,6 +94,23 @@ export default function TripsPage() {
 
   const user = useAuthStore((state) => state.user);
   const isManager = user?.role && ['admin', 'zone_manager', 'location_manager'].includes(user.role);
+  const isDriver = user?.role === 'driver';
+
+  // Fetch accepted stock requests for driver users
+  const { data: myRequestsData } = useQuery({
+    queryKey: ['stock-requests', 'my'],
+    queryFn: () => stockRequestsApi.getMyRequests(undefined, 50).then(r => r.data),
+    enabled: isDriver, // Only fetch for driver users
+  });
+
+  // Get accepted requests count for drivers
+  const acceptedRequests: StockRequest[] = (myRequestsData?.accepted || []).filter(
+    (r: StockRequest) => r.status === 'accepted'
+  );
+  const hasAcceptedRequests = acceptedRequests.length > 0;
+
+  // Show New Trip button for managers OR drivers with accepted requests
+  const canCreateTrip = isManager || hasAcceptedRequests;
 
   const { data: tripsData, isLoading, error, refetch } = useTrips();
   const { data: summary } = useTripSummary();
@@ -73,13 +128,10 @@ export default function TripsPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleStartTrip = async (trip: Trip) => {
-    try {
-      await startMutation.mutateAsync(trip.id);
-      setOpenMenuId(null);
-    } catch (err) {
-      console.error('Failed to start trip:', err);
-    }
+  const handleStartTrip = (trip: Trip) => {
+    setSelectedTrip(trip);
+    setShowStartModal(true);
+    setOpenMenuId(null);
   };
 
   const handleCompleteTrip = (trip: Trip) => {
@@ -180,9 +232,9 @@ export default function TripsPage() {
     const route = getRouteString(trip);
 
     return (
-      <div key={trip.id}>
+      <div key={trip.id} id={`trip-${trip.id}`}>
         <div
-          className={`grid grid-cols-12 gap-4 px-4 py-3 items-center hover:bg-gray-50 transition-colors border-b border-gray-100 ${isMultiStop ? 'cursor-pointer' : ''}`}
+          className={`grid grid-cols-12 gap-4 px-4 py-3 items-center hover:bg-gray-50 transition-colors border-b border-gray-100 ${isMultiStop ? 'cursor-pointer' : ''} ${highlightTripId === trip.id ? 'bg-orange-50 ring-2 ring-orange-200' : ''}`}
           onClick={() => isMultiStop && setExpandedTripId(isExpanded ? null : trip.id)}
         >
           {/* Trip ID + Route (col-span-4) */}
@@ -323,10 +375,22 @@ export default function TripsPage() {
               className="pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg w-64 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
             />
           </div>
-          {isManager && (
-            <Button onClick={() => setShowTripModal(true)} className="bg-orange-500 hover:bg-orange-600">
-              <Plus className="w-4 h-4 mr-1" />
-              New Trip
+          {canCreateTrip && (
+            <Button
+              onClick={() => setShowTripModal(true)}
+              className={hasAcceptedRequests && !isManager ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-orange-500 hover:bg-orange-600'}
+            >
+              {hasAcceptedRequests && !isManager ? (
+                <>
+                  <Package className="w-4 h-4 mr-1" />
+                  Fulfill Request ({acceptedRequests.length})
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4 mr-1" />
+                  New Trip
+                </>
+              )}
             </Button>
           )}
         </div>
@@ -424,11 +488,19 @@ export default function TripsPage() {
       {/* Modals */}
       <TripModal
         isOpen={showTripModal}
-        onClose={() => setShowTripModal(false)}
+        onClose={() => {
+          setShowTripModal(false);
+          setPreSelectedRequestId(null);
+          onRequestHandled?.();
+        }}
         onSuccess={() => {
           refetch();
+          queryClient.invalidateQueries({ queryKey: ['stock-requests'] });
           setShowTripModal(false);
+          setPreSelectedRequestId(null);
+          onRequestHandled?.();
         }}
+        preSelectedRequestId={preSelectedRequestId}
       />
 
       <CompleteTripModal
@@ -443,6 +515,20 @@ export default function TripsPage() {
           setSelectedTrip(null);
         }}
         trip={selectedTrip}
+      />
+
+      <StartTripModal
+        isOpen={showStartModal}
+        onClose={() => {
+          setShowStartModal(false);
+          setSelectedTrip(null);
+        }}
+        trip={selectedTrip}
+        onSuccess={() => {
+          refetch();
+          setShowStartModal(false);
+          setSelectedTrip(null);
+        }}
       />
     </div>
   );

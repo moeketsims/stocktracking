@@ -10,7 +10,7 @@ router = APIRouter(prefix="/batches", tags=["Batch Management"])
 
 @router.get("")
 async def get_batches(
-    filter_type: Optional[Literal["all", "expiring_soon", "poor_quality"]] = "all",
+    filter_type: Optional[Literal["all", "expiring_soon"]] = "all",
     item_id: Optional[str] = None,
     view_location_id: Optional[str] = Query(None, description="Location ID to view (location_manager can view other shops read-only)"),
     limit: int = Query(50, ge=1, le=200),
@@ -44,8 +44,6 @@ async def get_batches(
         if filter_type == "expiring_soon":
             expiry_threshold = (datetime.now() + timedelta(days=7)).date().isoformat()
             query = query.lte("expiry_date", expiry_threshold)
-        elif filter_type == "poor_quality":
-            query = query.eq("quality_score", 3)
 
         # Order by received_at for FIFO
         query = query.order("received_at", desc=False).limit(limit)
@@ -67,14 +65,6 @@ async def get_batches(
             expiring_count_query = expiring_count_query.eq("location_id", location_id)
         expiring_count_result = expiring_count_query.execute()
         expiring_count = len(expiring_count_result.data or [])
-
-        poor_count_query = supabase.table("stock_batches").select(
-            "id"
-        ).gt("remaining_qty", 0).eq("quality_score", 3)
-        if location_id:
-            poor_count_query = poor_count_query.eq("location_id", location_id)
-        poor_count_result = poor_count_query.execute()
-        poor_count = len(poor_count_result.data or [])
 
         # Format batches
         batches = []
@@ -113,8 +103,7 @@ async def get_batches(
             "batches": batches,
             "counts": {
                 "all": all_count,
-                "expiring_soon": expiring_count,
-                "poor_quality": poor_count
+                "expiring_soon": expiring_count
             }
         }
 

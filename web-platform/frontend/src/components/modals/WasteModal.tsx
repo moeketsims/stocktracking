@@ -1,48 +1,44 @@
 import { useState, useEffect } from 'react';
 import { Modal, Button, Input, Select } from '../ui';
-import { useWasteStock, useItems, useWasteReasons } from '../../hooks/useData';
+import { useWasteStock, useWasteReasons } from '../../hooks/useData';
 import type { WasteStockForm, WasteReason } from '../../types';
 
 interface WasteModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  preselectedItemId?: string;
 }
 
-export default function WasteModal({ isOpen, onClose, onSuccess, preselectedItemId }: WasteModalProps) {
+export default function WasteModal({ isOpen, onClose, onSuccess }: WasteModalProps) {
   const [form, setForm] = useState<WasteStockForm>({
-    item_id: '',
     quantity: 0,
-    unit: 'kg',
+    unit: 'bag',  // Default to bags
     reason: 'spoiled',
     notes: '',
   });
   const [error, setError] = useState('');
 
   const wasteMutation = useWasteStock();
-  const { data: items } = useItems();
   const { data: wasteReasons } = useWasteReasons();
 
   useEffect(() => {
     if (isOpen) {
       setForm({
-        item_id: preselectedItemId || items?.[0]?.id || '',
         quantity: 0,
-        unit: 'kg',
+        unit: 'bag',  // Default to bags
         reason: 'spoiled',
         notes: '',
       });
       setError('');
     }
-  }, [isOpen, items, preselectedItemId]);
+  }, [isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    if (!form.item_id || form.quantity <= 0 || !form.reason) {
-      setError('Please fill in all required fields');
+    if (form.quantity <= 0 || !form.reason) {
+      setError('Please fill in quantity and reason');
       return;
     }
 
@@ -55,17 +51,13 @@ export default function WasteModal({ isOpen, onClose, onSuccess, preselectedItem
     }
   };
 
-  const itemOptions = (items || []).map((item: any) => ({
-    value: item.id,
-    label: item.name,
-  }));
-
   const reasonOptions = (wasteReasons || []).map((reason: any) => ({
     value: reason.value,
     label: reason.label,
   }));
 
-  const selectedItem = items?.find((item: any) => item.id === form.item_id);
+  // Conversion factor for potatoes (10kg per bag)
+  const CONVERSION_FACTOR = 10;
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Record Waste" size="md">
@@ -75,14 +67,6 @@ export default function WasteModal({ isOpen, onClose, onSuccess, preselectedItem
             {error}
           </div>
         )}
-
-        <Select
-          label="Item *"
-          options={itemOptions}
-          value={form.item_id}
-          onChange={(e) => setForm({ ...form, item_id: e.target.value })}
-          placeholder="Select an item"
-        />
 
         <div className="grid grid-cols-2 gap-4">
           <Input
@@ -96,21 +80,21 @@ export default function WasteModal({ isOpen, onClose, onSuccess, preselectedItem
           <Select
             label="Unit"
             options={[
-              { value: 'kg', label: 'Kilograms (kg)' },
-              { value: 'bag', label: 'Bags' },
+              { value: 'bag', label: 'Bags (10 kg each)' },
+              { value: 'kg', label: 'Kilograms' },
             ]}
             value={form.unit}
             onChange={(e) => setForm({ ...form, unit: e.target.value as 'kg' | 'bag' })}
           />
         </div>
 
-        {form.unit === 'bag' && selectedItem && (
+        {form.unit === 'bag' && (
           <p className="text-sm text-gray-500">
-            1 bag = {selectedItem.conversion_factor} kg
+            1 bag = {CONVERSION_FACTOR} kg
             {form.quantity > 0 && (
               <span className="font-medium">
                 {' '}
-                ({(form.quantity * selectedItem.conversion_factor).toFixed(1)} kg total)
+                ({(form.quantity * CONVERSION_FACTOR).toFixed(1)} kg total)
               </span>
             )}
           </p>
