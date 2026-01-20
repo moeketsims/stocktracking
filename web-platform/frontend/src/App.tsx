@@ -5,13 +5,9 @@ import {
   AlertTriangle,
   Settings,
   Boxes,
-  BarChart3,
-  FileText,
-  MapPin,
   Bell,
   Truck,
   Users,
-  LayoutGrid,
   UserCog,
   ClipboardList,
   PackageCheck,
@@ -24,10 +20,6 @@ import {
   StockPage,
   AlertsPage,
   BatchesPage,
-  AnalyticsPage,
-  ReportsPage,
-  ZoneOverviewPage,
-  OwnerDashboardPage,
   NotificationsPage,
   SettingsPage,
   UsersPage,
@@ -53,10 +45,6 @@ type TabId =
   | 'drivers'
   | 'requests'
   | 'deliveries'
-  | 'analytics'
-  | 'reports'
-  | 'zone'
-  | 'owner_dashboard'
   | 'users'
   | 'notifications'
   | 'settings';
@@ -154,21 +142,17 @@ function App() {
   const mainTabs = [
     { id: 'stock' as const, label: 'Stock', icon: Package },
     { id: 'requests' as const, label: 'Requests', icon: ClipboardList },
-    { id: 'deliveries' as const, label: 'Deliveries', icon: PackageCheck },
     { id: 'vehicles' as const, label: 'Vehicles', icon: Truck },
-    { id: 'drivers' as const, label: 'Drivers', icon: Users },
     { id: 'alerts' as const, label: 'Alerts', icon: AlertTriangle },
     { id: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard },
   ];
 
   const moreTabs = [
-    { id: 'batches' as const, label: 'Batches', icon: Boxes },
-    { id: 'analytics' as const, label: 'Analytics', icon: BarChart3 },
+    { id: 'deliveries' as const, label: 'Verification', icon: PackageCheck },
     ...(isManager()
       ? [
-        { id: 'reports' as const, label: 'Reports', icon: FileText },
-        { id: 'zone' as const, label: 'Zone Overview', icon: MapPin },
-        { id: 'owner_dashboard' as const, label: 'Owner Dashboard', icon: LayoutGrid },
+        { id: 'drivers' as const, label: 'Drivers', icon: Users },
+        { id: 'batches' as const, label: 'Batches', icon: Boxes },
         { id: 'users' as const, label: 'User Management', icon: UserCog },
       ]
       : []),
@@ -190,14 +174,6 @@ function App() {
         return <AlertsPage />;
       case 'batches':
         return <BatchesPage />;
-      case 'analytics':
-        return <AnalyticsPage />;
-      case 'reports':
-        return <ReportsPage />;
-      case 'zone':
-        return <ZoneOverviewPage />;
-      case 'owner_dashboard':
-        return <OwnerDashboardPage />;
       case 'trips':
         return (
           <TripsPage
@@ -264,11 +240,6 @@ function App() {
               {tab.id === 'alerts' && (
                 <AlertBadge />
               )}
-              {tab.id === 'deliveries' && pendingDeliveriesCount > 0 && (
-                <span className="ml-auto px-1.5 py-0.5 bg-orange-600 text-white text-[10px] font-medium rounded-full min-w-[18px] text-center">
-                  {pendingDeliveriesCount > 99 ? '99+' : pendingDeliveriesCount}
-                </span>
-              )}
             </button>
           ))}
 
@@ -294,6 +265,11 @@ function App() {
               {tab.id === 'notifications' && unreadCount > 0 && (
                 <span className="ml-auto px-2 py-0.5 bg-red-500 text-white text-xs font-medium rounded-full">
                   {unreadCount}
+                </span>
+              )}
+              {tab.id === 'deliveries' && pendingDeliveriesCount > 0 && (
+                <span className="ml-auto px-1.5 py-0.5 bg-orange-600 text-white text-[10px] font-medium rounded-full min-w-[18px] text-center">
+                  {pendingDeliveriesCount > 99 ? '99+' : pendingDeliveriesCount}
                 </span>
               )}
             </button>

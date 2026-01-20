@@ -491,14 +491,21 @@ async def create_trip_from_request(
         if not existing.data:
             raise HTTPException(status_code=404, detail="Stock request not found")
 
-        # Check permission: must be a manager OR the driver who accepted this request
-        is_manager = profile.data["role"] in ("admin", "zone_manager", "location_manager")
+        # Permission check:
+        # 1. Managers (admin, zone_manager, location_manager) can create trips for any request
+        # 2. Drivers can create trips if:
+        #    - The request is PENDING (they are effectively accepting it now)
+        #    - OR They are the one who already ACCEPTED it
+        role = profile.data["role"]
+        is_manager = role in ("admin", "zone_manager", "location_manager")
+        is_driver = role == "driver"
+        is_pending = existing.data["status"] == "pending"
         is_acceptor = existing.data.get("accepted_by") == profile.data["id"]
 
-        if not (is_manager or is_acceptor):
+        if not (is_manager or (is_driver and (is_pending or is_acceptor))):
             raise HTTPException(
                 status_code=403,
-                detail="You must be a manager or the driver who accepted this request"
+                detail="You must be a manager or an authorized driver to create a trip for this request"
             )
 
         if existing.data["status"] not in ("pending", "accepted"):
