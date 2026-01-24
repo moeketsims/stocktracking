@@ -18,7 +18,7 @@ import {
     Scale,
     X,
 } from 'lucide-react';
-import { stockApi, referenceApi, pendingDeliveriesApi, stockRequestsApi } from '../lib/api';
+import { stockApi, referenceApi, pendingDeliveriesApi, stockRequestsApi, transactionsApi } from '../lib/api';
 import { useAuthStore } from '../stores/authStore';
 
 type Mode = 'withdraw' | 'return';
@@ -124,8 +124,28 @@ export default function KitchenPage() {
         enabled: !!user?.location_id,
     });
 
+    // Fetch transaction history (withdrawals and returns)
+    const { data: transactionsData } = useQuery({
+        queryKey: ['transactions', 'kitchen', user?.location_id],
+        queryFn: () => transactionsApi.getAll({
+            view_location_id: user?.location_id,
+            limit: 50
+        }).then(r => r.data),
+        enabled: !!user?.location_id,
+    });
+
     const pendingDeliveries = pendingData?.deliveries || [];
     const myRequests = requestsData?.requests || [];
+
+    // Filter for issue (withdraw) and return transactions only
+    const allTransactions = transactionsData?.transactions || [];
+    const kitchenTransactions = allTransactions.filter(
+        (t: any) => t.type === 'issue' || t.type === 'return'
+    );
+
+    // Count totals
+    const withdrawCount = kitchenTransactions.filter((t: any) => t.type === 'issue').length;
+    const returnCount = kitchenTransactions.filter((t: any) => t.type === 'return').length;
 
     // Withdraw mutation (existing consume logic)
     const withdrawMutation = useMutation({
@@ -256,9 +276,8 @@ export default function KitchenPage() {
     const statusStyle = STATUS_CONFIG[stockStatus];
     const capacityPercent = getCapacityPercent(currentKg);
 
-    // Calculate alerts count for badge
+    // Calculate status
     const hasLowStock = stockStatus !== 'healthy';
-    const alertCount = (hasLowStock ? 1 : 0) + pendingDeliveries.length + myRequests.length;
 
     if (isLoading) {
         return (
@@ -501,9 +520,9 @@ export default function KitchenPage() {
                     <span className="font-medium text-gray-900">Activity</span>
                 </div>
                 <div className="flex items-center gap-2">
-                    {alertCount > 0 && (
-                        <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-medium rounded-full">
-                            {alertCount}
+                    {kitchenTransactions.length > 0 && (
+                        <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs font-medium rounded-full">
+                            {kitchenTransactions.length}
                         </span>
                     )}
                     <ChevronRight className="w-5 h-5 text-gray-400" />
@@ -548,104 +567,75 @@ export default function KitchenPage() {
 
                         {/* Content */}
                         <div className="p-5 space-y-6">
-                            {/* Alerts Section */}
-                            <div>
-                                <h3 className="text-xs uppercase tracking-wide text-gray-500 font-medium mb-3">Alerts</h3>
-                                <div className="space-y-2">
-                                    {hasLowStock && (
-                                        <div className={`p-3 rounded-xl ${statusStyle.bgColor} border ${stockStatus === 'critical' ? 'border-red-200' : 'border-amber-200'}`}>
-                                            <div className="flex items-center gap-2">
-                                                <AlertTriangle className={`w-4 h-4 ${statusStyle.textColor}`} />
-                                                <span className={`text-sm font-medium ${statusStyle.textColor}`}>
-                                                    {stockStatus === 'critical' ? 'Critical: Stock below 65%' : 'Warning: Stock below 85%'}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {!hasLowStock && pendingDeliveries.length === 0 && myRequests.length === 0 && (
-                                        <div className="text-center py-6">
-                                            <Check className="w-8 h-8 mx-auto mb-2 text-emerald-400" />
-                                            <p className="text-sm text-gray-500">All clear - no alerts</p>
-                                        </div>
-                                    )}
+                            {/* Summary Stats */}
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="bg-amber-50 rounded-xl p-4 text-center">
+                                    <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center mx-auto mb-2">
+                                        <ArrowUpFromLine className="w-5 h-5 text-amber-600" />
+                                    </div>
+                                    <p className="text-2xl font-bold text-amber-700 tabular-nums">{withdrawCount}</p>
+                                    <p className="text-xs text-amber-600 font-medium">Withdrawals</p>
+                                </div>
+                                <div className="bg-teal-50 rounded-xl p-4 text-center">
+                                    <div className="w-10 h-10 rounded-xl bg-teal-100 flex items-center justify-center mx-auto mb-2">
+                                        <ArrowDownToLine className="w-5 h-5 text-teal-600" />
+                                    </div>
+                                    <p className="text-2xl font-bold text-teal-700 tabular-nums">{returnCount}</p>
+                                    <p className="text-xs text-teal-600 font-medium">Returns</p>
                                 </div>
                             </div>
 
-                            {/* Pending Deliveries */}
-                            {pendingDeliveries.length > 0 && (
-                                <div>
-                                    <h3 className="text-xs uppercase tracking-wide text-gray-500 font-medium mb-3">
-                                        Pending Deliveries ({pendingDeliveries.length})
-                                    </h3>
-                                    <div className="space-y-2">
-                                        {pendingDeliveries.map((d: any) => (
-                                            <div key={d.id} className="p-3 bg-orange-50 rounded-xl border border-orange-100 flex items-center justify-between">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center">
-                                                        <Truck className="w-4 h-4 text-orange-600" />
-                                                    </div>
-                                                    <div>
-                                                        <span className="text-sm font-medium text-gray-800">
-                                                            {d.driver_claimed_bags || Math.round(d.driver_claimed_qty_kg / 10)} bags
-                                                        </span>
-                                                        <p className="text-xs text-gray-500">from {d.supplier?.name || 'Supplier'}</p>
-                                                    </div>
-                                                </div>
-                                                <span className="text-xs text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full font-medium">
-                                                    Awaiting
-                                                </span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Stock Requests */}
-                            {myRequests.length > 0 && (
-                                <div>
-                                    <h3 className="text-xs uppercase tracking-wide text-gray-500 font-medium mb-3">
-                                        Open Requests ({myRequests.length})
-                                    </h3>
-                                    <div className="space-y-2">
-                                        {myRequests.map((r: any) => (
-                                            <div key={r.id} className="p-3 bg-blue-50 rounded-xl border border-blue-100 flex items-center justify-between">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
-                                                        <Package className="w-4 h-4 text-blue-600" />
-                                                    </div>
-                                                    <div>
-                                                        <span className="text-sm font-medium text-gray-800">{r.quantity_bags} bags</span>
-                                                        <p className="text-xs text-gray-500">requested</p>
-                                                    </div>
-                                                </div>
-                                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.status === 'in_delivery' ? 'text-blue-600 bg-blue-100' :
-                                                    r.status === 'accepted' ? 'text-emerald-600 bg-emerald-100' :
-                                                        'text-gray-600 bg-gray-200'
-                                                    }`}>{r.status}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Stock Level Details */}
+                            {/* Transaction History */}
                             <div>
-                                <h3 className="text-xs uppercase tracking-wide text-gray-500 font-medium mb-3">Stock Level</h3>
-                                <div className="bg-gray-50 rounded-xl p-4">
-                                    <div className="flex items-baseline gap-2 mb-3">
-                                        <span className="text-2xl font-bold text-gray-900 tabular-nums">{formatNumber(currentBags)}</span>
-                                        <span className="text-sm text-gray-400">/ {formatNumber(Math.floor(TARGET_STOCK_KG / 10))} bags</span>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <div className="flex items-center justify-between text-sm">
-                                            <span className={`font-medium ${statusStyle.textColor}`}>{capacityPercent}% of target</span>
-                                            <span className="text-gray-400">{formatNumber(currentKg)} / {formatNumber(TARGET_STOCK_KG)} kg</span>
+                                <h3 className="text-xs uppercase tracking-wide text-gray-500 font-medium mb-3">
+                                    History ({kitchenTransactions.length})
+                                </h3>
+                                <div className="space-y-2">
+                                    {kitchenTransactions.length === 0 ? (
+                                        <div className="text-center py-8">
+                                            <Activity className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                                            <p className="text-sm text-gray-400">No transactions yet</p>
                                         </div>
-                                        <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                                            <div className={`h-full rounded-full transition-all ${statusStyle.barColor}`} style={{ width: `${capacityPercent}%` }} />
-                                        </div>
-                                    </div>
+                                    ) : (
+                                        kitchenTransactions.map((t: any) => {
+                                            const isWithdraw = t.type === 'issue';
+                                            const bags = Math.round(t.qty / 10);
+                                            const date = new Date(t.created_at);
+                                            const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                            const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+
+                                            return (
+                                                <div
+                                                    key={t.id}
+                                                    className={`p-3 rounded-xl border flex items-center justify-between ${isWithdraw
+                                                        ? 'bg-amber-50 border-amber-100'
+                                                        : 'bg-teal-50 border-teal-100'
+                                                        }`}
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isWithdraw ? 'bg-amber-100' : 'bg-teal-100'
+                                                            }`}>
+                                                            {isWithdraw ? (
+                                                                <ArrowUpFromLine className="w-4 h-4 text-amber-600" />
+                                                            ) : (
+                                                                <ArrowDownToLine className="w-4 h-4 text-teal-600" />
+                                                            )}
+                                                        </div>
+                                                        <div>
+                                                            <span className={`text-sm font-medium ${isWithdraw ? 'text-amber-800' : 'text-teal-800'}`}>
+                                                                {isWithdraw ? 'Withdrew' : 'Returned'} {bags} bag{bags !== 1 ? 's' : ''}
+                                                            </span>
+                                                            <p className="text-xs text-gray-500">{t.notes || 'Kitchen operation'}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="text-xs font-medium text-gray-700">{timeStr}</p>
+                                                        <p className="text-xs text-gray-400">{dateStr}</p>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })
+                                    )}
                                 </div>
                             </div>
                         </div>
