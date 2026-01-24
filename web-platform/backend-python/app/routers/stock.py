@@ -518,7 +518,7 @@ async def issue_stock(request: IssueStockRequest, user_data: dict = Depends(requ
                 print(f"[ISSUE] Batch {batch_id}: {old_remaining} - {qty_kg} = {new_remaining}")
                 update_result = supabase.table("stock_batches").eq("id", batch_id).update({
                     "remaining_qty": new_remaining
-                })
+                }).execute()
                 print(f"[ISSUE] Update result: {update_result.data}")
 
         # Create transaction
@@ -538,12 +538,12 @@ async def issue_stock(request: IssueStockRequest, user_data: dict = Depends(requ
             }
         }
 
-        transaction = supabase.table("stock_transactions").insert(transaction_data)
+        transaction = supabase.table("stock_transactions").insert(transaction_data).execute()
 
         return {
             "success": True,
             "message": f"Issued {qty_kg:.2f} kg",
-            "transaction_id": transaction.data["id"],
+            "transaction_id": transaction.data[0]["id"] if transaction.data else None,
             "batch_id": batch_id
         }
 
@@ -603,12 +603,12 @@ async def transfer_stock(request: TransferStockRequest, user_data: dict = Depend
             }
         }
 
-        transaction = supabase.table("stock_transactions").insert(transaction_data)
+        transaction = supabase.table("stock_transactions").insert(transaction_data).execute()
 
         return {
             "success": True,
             "message": f"Transferred {qty_kg:.2f} kg",
-            "transaction_id": transaction.data["id"]
+            "transaction_id": transaction.data[0]["id"] if transaction.data else None
         }
 
     except HTTPException:
@@ -663,12 +663,12 @@ async def record_waste(request: WasteStockRequest, user_data: dict = Depends(req
             }
         }
 
-        transaction = supabase.table("stock_transactions").insert(transaction_data)
+        transaction = supabase.table("stock_transactions").insert(transaction_data).execute()
 
         return {
             "success": True,
             "message": f"Recorded {qty_kg:.2f} kg waste",
-            "transaction_id": transaction.data["id"]
+            "transaction_id": transaction.data[0]["id"] if transaction.data else None
         }
 
     except HTTPException:
@@ -726,7 +726,7 @@ async def return_stock(request: IssueStockRequest, user_data: dict = Depends(req
             print(f"[RETURN] Batch {batch_id}: {old_remaining} + {qty_kg} = {new_remaining}")
             update_result = supabase.table("stock_batches").eq("id", batch_id).update({
                 "remaining_qty": new_remaining
-            })
+            }).execute()
             print(f"[RETURN] Update result: {update_result.data}")
         else:
             # No existing batch, create a new one for the return
@@ -742,7 +742,7 @@ async def return_stock(request: IssueStockRequest, user_data: dict = Depends(req
                 "status": "available",
                 "last_edited_by": user.id
             }
-            supabase.table("stock_batches").insert(batch_data)
+            supabase.table("stock_batches").insert(batch_data).execute()
 
         # Create return transaction
         transaction_data = {
@@ -761,12 +761,12 @@ async def return_stock(request: IssueStockRequest, user_data: dict = Depends(req
             }
         }
 
-        transaction = supabase.table("stock_transactions").insert(transaction_data)
+        transaction = supabase.table("stock_transactions").insert(transaction_data).execute()
 
         return {
             "success": True,
             "message": f"Returned {qty_kg:.2f} kg to stock",
-            "transaction_id": transaction.data["id"],
+            "transaction_id": transaction.data[0]["id"] if transaction.data else None,
             "batch_id": batch_id
         }
 
