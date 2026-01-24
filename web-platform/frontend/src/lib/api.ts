@@ -63,6 +63,7 @@ export const stockApi = {
     api.get('/api/stock/balance', { params: viewLocationId ? { view_location_id: viewLocationId } : undefined }),
   receive: (data: any) => api.post('/api/stock/receive', data),
   issue: (data: any) => api.post('/api/stock/issue', data),
+  returnStock: (data: any) => api.post('/api/stock/return', data),
   transfer: (data: any) => api.post('/api/stock/transfer', data),
   waste: (data: any) => api.post('/api/stock/waste', data),
 };

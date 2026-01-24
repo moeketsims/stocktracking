@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { Modal, Button, Input, Select } from '../ui';
 import { useCreateInvitation, useZones, useLocations } from '../../hooks/useData';
@@ -48,10 +48,13 @@ export default function InviteUserModal({
     return false;
   });
 
-  // Filter locations based on selected zone
-  const filteredLocations = locations?.filter(
-    (loc: any) => !form.zone_id || loc.zone_id === form.zone_id
-  );
+  // Filter locations based on selected zone - memoized to prevent unnecessary re-renders
+  const filteredLocations = useMemo(() => {
+    if (!locations) return [];
+    return locations.filter(
+      (loc: any) => !form.zone_id || loc.zone_id === form.zone_id
+    );
+  }, [locations, form.zone_id]);
 
   useEffect(() => {
     if (isOpen) {
@@ -66,17 +69,22 @@ export default function InviteUserModal({
     }
   }, [isOpen, isZoneManager, user?.zone_id]);
 
-  // Reset location when zone changes
+  // Reset location only when zone changes (not when location changes)
+  const [prevZoneId, setPrevZoneId] = useState(form.zone_id);
   useEffect(() => {
-    if (form.zone_id) {
-      const locationInZone = filteredLocations?.find(
-        (loc: any) => loc.id === form.location_id
-      );
-      if (!locationInZone) {
-        setForm((prev) => ({ ...prev, location_id: '' }));
+    if (form.zone_id !== prevZoneId) {
+      setPrevZoneId(form.zone_id);
+      // Check if current location is still valid for the new zone
+      if (form.location_id && form.zone_id) {
+        const locationInZone = filteredLocations.find(
+          (loc: any) => loc.id === form.location_id
+        );
+        if (!locationInZone) {
+          setForm((prev) => ({ ...prev, location_id: '' }));
+        }
       }
     }
-  }, [form.zone_id, filteredLocations, form.location_id]);
+  }, [form.zone_id, form.location_id, filteredLocations, prevZoneId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -25,6 +25,96 @@ class ResetPasswordRequest(BaseModel):
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
+@router.post("/create-test-admin")
+async def create_test_admin():
+    """Create a test admin user for development. Email: test@admin.com, Password: password123"""
+    supabase = get_supabase_admin_client()
+
+    test_email = "test@admin.com"
+    test_password = "password123"
+
+    try:
+        # Try to sign in first to check if user exists with correct password
+        client = get_supabase_client()
+        auth = client.auth.sign_in_with_password({
+            "email": test_email,
+            "password": test_password
+        })
+        if auth.session and auth.session.access_token:
+            return {
+                "success": True,
+                "message": "Test admin already exists",
+                "email": test_email,
+                "password": test_password,
+                "access_token": auth.session.access_token
+            }
+    except Exception:
+        pass  # User doesn't exist or wrong password
+
+    try:
+        # Try to create new auth user
+        auth_response = supabase.auth.admin.create_user({
+            "email": test_email,
+            "password": test_password,
+            "email_confirm": True
+        })
+
+        if auth_response.user:
+            new_user_id = auth_response.user.id
+
+            # Get first location for assignment
+            locations = supabase.table("locations").select("id").limit(1).execute()
+            location_id = locations.data[0]["id"] if locations.data else None
+
+            # Create admin profile
+            profile_data = {
+                "id": str(uuid4()),
+                "user_id": new_user_id,
+                "role": "admin",
+                "location_id": location_id,
+                "full_name": "Test Admin",
+                "is_active": True,
+                "created_at": datetime.utcnow().isoformat(),
+            }
+
+            supabase.table("profiles").insert(profile_data).execute()
+
+            return {
+                "success": True,
+                "message": "Test admin created successfully",
+                "email": test_email,
+                "password": test_password,
+                "user_id": new_user_id
+            }
+    except Exception:
+        pass  # User might already exist, try to update password
+
+    # User exists but with different password - update the password
+    try:
+        # Find existing user by email in profiles
+        profiles = supabase.table("profiles").select("user_id").execute()
+
+        # Get all auth users and find the one with matching email
+        for profile in profiles.data or []:
+            user_id = profile.get("user_id")
+            if user_id:
+                user_response = supabase.auth.admin.get_user_by_id(user_id)
+                if user_response.user and user_response.user.email == test_email:
+                    # Update password
+                    supabase.auth.admin.update_user(user_id, {"password": test_password})
+                    return {
+                        "success": True,
+                        "message": "Test admin password reset",
+                        "email": test_email,
+                        "password": test_password,
+                        "user_id": user_id
+                    }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to reset password: {str(e)}")
+
+    raise HTTPException(status_code=500, detail="Failed to create or update test admin")
+
+
 async def get_current_user(authorization: Optional[str] = Header(None)) -> Optional[dict]:
     """Extract and verify user from Authorization header."""
     if not authorization or not authorization.startswith("Bearer "):

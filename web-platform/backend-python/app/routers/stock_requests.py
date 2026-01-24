@@ -429,25 +429,47 @@ async def accept_stock_request(
         # Send email notification to the requester (store manager)
         try:
             requester_id = existing.data.get("requested_by")
+            print(f"[ACCEPT NOTIFICATION] Requester ID: {requester_id}")
+
             if requester_id:
                 # Get requester email from profiles_with_email view
                 requester_data = supabase.table("profiles_with_email").select(
                     "email, full_name"
                 ).eq("id", requester_id).execute()
 
+                print(f"[ACCEPT NOTIFICATION] Requester data query result: {requester_data.data}")
+
                 if requester_data.data and len(requester_data.data) > 0:
                     requester = requester_data.data[0]
-                    if requester.get("email"):
-                        send_request_accepted_by_driver_notification(
-                            to_email=requester["email"],
+                    requester_email = requester.get("email")
+                    print(f"[ACCEPT NOTIFICATION] Requester email: {requester_email}")
+
+                    if requester_email:
+                        location_name = existing.data.get("location", {}).get("name", "Your location")
+                        quantity_bags = existing.data.get("quantity_bags", 0)
+                        driver_name = profile.data.get("full_name", "A driver")
+
+                        print(f"[ACCEPT NOTIFICATION] Sending email to {requester_email} - Driver: {driver_name}, Location: {location_name}, Qty: {quantity_bags}")
+
+                        email_sent = send_request_accepted_by_driver_notification(
+                            to_email=requester_email,
                             requester_name=requester.get("full_name", "Store Manager"),
-                            location_name=existing.data.get("location", {}).get("name", "Your location"),
-                            quantity_bags=existing.data.get("quantity_bags", 0),
-                            driver_name=profile.data.get("full_name", "A driver"),
+                            location_name=location_name,
+                            quantity_bags=quantity_bags,
+                            driver_name=driver_name,
                             request_id=request_id
                         )
+                        print(f"[ACCEPT NOTIFICATION] Email send result: {email_sent}")
+                    else:
+                        print(f"[ACCEPT NOTIFICATION] No email found for requester {requester_id}")
+                else:
+                    print(f"[ACCEPT NOTIFICATION] No data returned from profiles_with_email for {requester_id}")
+            else:
+                print(f"[ACCEPT NOTIFICATION] No requester_id found in request data")
         except Exception as email_err:
+            import traceback
             print(f"[EMAIL ERROR] Failed to notify requester: {email_err}")
+            traceback.print_exc()
 
         # result.data is already the object (not a list) from our custom client
         request_data = result.data if isinstance(result.data, dict) else result.data[0] if result.data else existing.data
