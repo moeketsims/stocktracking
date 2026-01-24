@@ -9,7 +9,7 @@ router = APIRouter(prefix="/transactions", tags=["Transactions"])
 
 @router.get("", response_model=TransactionsResponse)
 async def get_transactions(
-    type_filter: Optional[Literal["all", "receive", "issue", "transfer", "waste"]] = "all",
+    type_filter: Optional[Literal["all", "receive", "issue", "return", "transfer", "waste"]] = "all",
     view_location_id: Optional[str] = Query(None, description="Location ID to view (location_manager can view other shops read-only)"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -65,7 +65,6 @@ async def get_transactions(
 
         # Manual pagination (offset)
         paginated_data = all_data[offset:offset + limit] if offset > 0 else all_data[:limit]
-        result.data = paginated_data
 
         # Get location names
         locations = supabase.table("locations").select("id, name").execute()
@@ -73,7 +72,7 @@ async def get_transactions(
 
         # Format transactions
         transactions = []
-        for t in (result.data or []):
+        for t in paginated_data:
             item_name = t.get("items", {}).get("name", "Unknown") if t.get("items") else "Unknown"
             created_by_name = "Unknown"
             if t.get("profiles"):
