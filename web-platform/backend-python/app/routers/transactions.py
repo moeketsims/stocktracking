@@ -37,9 +37,9 @@ async def get_transactions(
         if type_filter and type_filter != "all":
             query = query.eq("type", type_filter)
 
-        # Apply location filter - get both from and to
+        # Apply location filter - get transactions where location is either from or to
         if location_id:
-            query = query.eq("location_id_from", location_id)
+            query = query.or_(f"location_id_from.eq.{location_id},location_id_to.eq.{location_id}")
 
         # Apply ordering and limit
         query = query.order("created_at", desc=True).limit(limit)

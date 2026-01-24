@@ -165,6 +165,7 @@ export default function KitchenPage() {
             setStockAdjustmentKg(prev => prev - (qty * 10));
 
             queryClient.invalidateQueries({ queryKey: ['stock'] });
+            queryClient.invalidateQueries({ queryKey: ['transactions'] });
             refetch();
             setLastAction(`Withdrew ${qty} bag${qty > 1 ? 's' : ''} from stock`);
             setErrorMessage(null);
@@ -197,6 +198,7 @@ export default function KitchenPage() {
             setStockAdjustmentKg(prev => prev + (qty * 10));
 
             queryClient.invalidateQueries({ queryKey: ['stock'] });
+            queryClient.invalidateQueries({ queryKey: ['transactions'] });
             refetch();
             setLastAction(`Returned ${qty} bag${qty > 1 ? 's' : ''} to stock`);
             setErrorMessage(null);
