@@ -14,6 +14,7 @@ import {
   Activity,
   Trophy,
   Medal,
+  UtensilsCrossed,
 } from 'lucide-react';
 import {
   Line,
@@ -121,7 +122,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
-export default function DashboardPage() {
+export default function DashboardPage({ onNavigate }: { onNavigate?: (tab: any) => void }) {
   const [viewLocationId, setViewLocationId] = useState<string | undefined>();
   const [selectedPeriod, setSelectedPeriod] = useState<7 | 30 | 90>(30);
   const { data, isLoading, error } = useDashboard(viewLocationId);
@@ -262,6 +263,19 @@ export default function DashboardPage() {
               {Math.min(forecast.days_of_cover, 99).toFixed(0)}
             </p>
           </div>
+          {/* Kitchen Quick Link */}
+          <div
+            onClick={() => window.location.hash = '#kitchen'} // Simple way if we don't use React Router
+            className="group cursor-pointer bg-white border border-emerald-200 hover:border-emerald-500 rounded-card p-3 transition-all flex items-center gap-3 shadow-sm hover:shadow-md"
+          >
+            <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 group-hover:bg-emerald-500 group-hover:text-white transition-all">
+              <UtensilsCrossed size={20} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Kitchen Mode</p>
+              <p className="text-xs text-gray-400">Tally your bags</p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -351,8 +365,8 @@ export default function DashboardPage() {
                 <AreaChart data={dailyUsageData}>
                   <defs>
                     <linearGradient id="colorUsage" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={COLORS.primary} stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor={COLORS.primary} stopOpacity={0}/>
+                      <stop offset="5%" stopColor={COLORS.primary} stopOpacity={0.3} />
+                      <stop offset="95%" stopColor={COLORS.primary} stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -433,11 +447,10 @@ export default function DashboardPage() {
               <button
                 key={period}
                 onClick={() => setSelectedPeriod(period as 7 | 30 | 90)}
-                className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
-                  selectedPeriod === period
-                    ? 'bg-orange-500 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
+                className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${selectedPeriod === period
+                  ? 'bg-orange-500 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
               >
                 {period}D
               </button>
@@ -540,9 +553,8 @@ export default function DashboardPage() {
                 {efficiencyData.locations.map((loc) => (
                   <tr
                     key={loc.location_id}
-                    className={`border-b border-gray-100 hover:bg-gray-50 ${
-                      loc.rank === 1 ? 'bg-green-50' : loc.rank === efficiencyData.locations.length ? 'bg-red-50' : ''
-                    }`}
+                    className={`border-b border-gray-100 hover:bg-gray-50 ${loc.rank === 1 ? 'bg-green-50' : loc.rank === efficiencyData.locations.length ? 'bg-red-50' : ''
+                      }`}
                   >
                     <td className="py-3 px-2">
                       <div className="flex items-center gap-2">
@@ -573,10 +585,9 @@ export default function DashboardPage() {
                       <div className="flex items-center justify-end gap-2">
                         <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
                           <div
-                            className={`h-full rounded-full ${
-                              loc.efficiency_score >= 70 ? 'bg-green-500' :
+                            className={`h-full rounded-full ${loc.efficiency_score >= 70 ? 'bg-green-500' :
                               loc.efficiency_score >= 40 ? 'bg-amber-500' : 'bg-red-500'
-                            }`}
+                              }`}
                             style={{ width: `${loc.efficiency_score}%` }}
                           />
                         </div>
@@ -650,11 +661,10 @@ export default function DashboardPage() {
                   {/* Enterprise-style header - neutral with icon accent */}
                   <div className="px-4 py-3 flex items-center justify-between bg-gray-50 border-b border-gray-100">
                     <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-chip flex items-center justify-center ${
-                        location.location_type === 'warehouse'
-                          ? 'bg-slate-100 text-slate-600'
-                          : 'bg-orange-50 text-orange-600'
-                      }`}>
+                      <div className={`w-8 h-8 rounded-chip flex items-center justify-center ${location.location_type === 'warehouse'
+                        ? 'bg-slate-100 text-slate-600'
+                        : 'bg-orange-50 text-orange-600'
+                        }`}>
                         {location.location_type === 'warehouse' ? (
                           <Warehouse className="w-4 h-4" />
                         ) : (
@@ -691,9 +701,8 @@ export default function DashboardPage() {
                               <span className="font-medium text-gray-900">
                                 {formatQty(getPreferredValue(item.on_hand_qty, item.on_hand_bags, defaultUnit))}
                               </span>
-                              <div className={`w-2 h-2 rounded-full ${
-                                status === 'low' ? 'bg-red-500' : status === 'reorder' ? 'bg-amber-500' : 'bg-emerald-500'
-                              }`} />
+                              <div className={`w-2 h-2 rounded-full ${status === 'low' ? 'bg-red-500' : status === 'reorder' ? 'bg-amber-500' : 'bg-emerald-500'
+                                }`} />
                             </div>
                           </div>
                         );

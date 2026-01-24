@@ -11,6 +11,7 @@ import {
   UserCog,
   ClipboardList,
   PackageCheck,
+  UtensilsCrossed,
 } from 'lucide-react';
 import { useAuthStore } from './stores/authStore';
 import { useNotifications, useAlerts, usePendingDeliveriesCount } from './hooks/useData';
@@ -23,6 +24,7 @@ import {
   NotificationsPage,
   SettingsPage,
   UsersPage,
+  KitchenPage,
 } from './pages';
 import TripsPage from './pages/TripsPage';
 import VehiclesPage from './pages/VehiclesPage';
@@ -47,6 +49,7 @@ type TabId =
   | 'deliveries'
   | 'users'
   | 'notifications'
+  | 'kitchen'
   | 'settings';
 
 function App() {
@@ -141,6 +144,7 @@ function App() {
 
   const mainTabs = [
     { id: 'stock' as const, label: 'Stock', icon: Package },
+    { id: 'kitchen' as const, label: 'Kitchen', icon: UtensilsCrossed },
     { id: 'requests' as const, label: 'Requests', icon: ClipboardList },
     { id: 'vehicles' as const, label: 'Vehicles', icon: Truck },
     { id: 'alerts' as const, label: 'Alerts', icon: AlertTriangle },
@@ -167,7 +171,7 @@ function App() {
   const renderPage = () => {
     switch (activeTab) {
       case 'dashboard':
-        return <DashboardPage />;
+        return <DashboardPage onNavigate={setActiveTab} />;
       case 'stock':
         return <StockPage />;
       case 'alerts':
@@ -203,6 +207,8 @@ function App() {
         return <NotificationsPage />;
       case 'settings':
         return <SettingsPage />;
+      case 'kitchen':
+        return <KitchenPage />;
       default:
         return <DashboardPage />;
     }

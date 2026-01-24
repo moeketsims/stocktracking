@@ -14,3 +14,4 @@ export { default as UsersPage } from './UsersPage';
 export { default as AcceptInvitePage } from './AcceptInvitePage';
 export { default as ForgotPasswordPage } from './ForgotPasswordPage';
 export { default as ResetPasswordPage } from './ResetPasswordPage';
+export { default as KitchenPage } from './KitchenPage';
