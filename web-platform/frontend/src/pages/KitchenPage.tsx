@@ -91,6 +91,9 @@ export default function KitchenPage() {
     // This ensures the UI updates instantly without waiting for DB view refresh
     const [stockAdjustmentKg, setStockAdjustmentKg] = useState(0);
 
+    // Confirmation modal state
+    const [showConfirmModal, setShowConfirmModal] = useState(false);
+
     // Fetch current stock for this location
     const { data: stockData, isLoading: isStockLoading, refetch } = useQuery({
         queryKey: ['stock', 'balance', user?.location_id],
@@ -190,15 +193,20 @@ export default function KitchenPage() {
 
     const handleSubmit = () => {
         if (quantity <= 0) return;
+        setShowConfirmModal(true);
+    };
 
-        const actionText = mode === 'withdraw' ? 'withdraw' : 'return';
-        if (window.confirm(`${actionText.charAt(0).toUpperCase() + actionText.slice(1)} ${quantity} bag${quantity > 1 ? 's' : ''}?`)) {
-            if (mode === 'withdraw') {
-                withdrawMutation.mutate(quantity);
-            } else {
-                returnMutation.mutate(quantity);
-            }
+    const handleConfirm = () => {
+        setShowConfirmModal(false);
+        if (mode === 'withdraw') {
+            withdrawMutation.mutate(quantity);
+        } else {
+            returnMutation.mutate(quantity);
         }
+    };
+
+    const handleCancel = () => {
+        setShowConfirmModal(false);
     };
 
     const handleQuickSelect = (amount: number) => {
@@ -639,6 +647,82 @@ export default function KitchenPage() {
                                         </div>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </>
+            )}
+
+            {/* Confirmation Modal */}
+            {showConfirmModal && (
+                <>
+                    {/* Backdrop */}
+                    <div
+                        className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50"
+                        onClick={handleCancel}
+                    />
+
+                    {/* Modal */}
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full overflow-hidden">
+                            {/* Header */}
+                            <div className={`p-5 ${mode === 'withdraw' ? 'bg-amber-50' : 'bg-teal-50'}`}>
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${mode === 'withdraw' ? 'bg-amber-500' : 'bg-teal-500'}`}>
+                                        {mode === 'withdraw' ? (
+                                            <ArrowUpFromLine className="w-6 h-6 text-white" />
+                                        ) : (
+                                            <ArrowDownToLine className="w-6 h-6 text-white" />
+                                        )}
+                                    </div>
+                                    <div>
+                                        <h3 className="font-semibold text-gray-900">
+                                            Confirm {mode === 'withdraw' ? 'Withdrawal' : 'Return'}
+                                        </h3>
+                                        <p className="text-sm text-gray-500">Please review before proceeding</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Content */}
+                            <div className="p-5">
+                                <p className="text-center text-gray-700 text-lg">
+                                    Are you sure you want to {mode} <span className="font-bold">{quantity} bag{quantity !== 1 ? 's' : ''}</span>?
+                                </p>
+
+                                {/* Preview */}
+                                <div className={`mt-4 p-3 rounded-xl text-center ${mode === 'withdraw' ? 'bg-amber-50' : 'bg-teal-50'}`}>
+                                    <p className="text-sm text-gray-600">
+                                        Stock will change from <span className="font-semibold">{formatNumber(currentBags)}</span> to{' '}
+                                        <span className={`font-bold ${mode === 'withdraw' ? 'text-amber-700' : 'text-teal-700'}`}>
+                                            {formatNumber(newBags)} bags
+                                        </span>
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Actions */}
+                            <div className="p-5 pt-0 flex gap-3">
+                                <button
+                                    onClick={handleCancel}
+                                    className="flex-1 py-3 px-4 rounded-xl font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors"
+                                >
+                                    No
+                                </button>
+                                <button
+                                    onClick={handleConfirm}
+                                    disabled={isPending}
+                                    className={`flex-1 py-3 px-4 rounded-xl font-medium text-white transition-colors flex items-center justify-center gap-2 ${mode === 'withdraw'
+                                        ? 'bg-amber-500 hover:bg-amber-600'
+                                        : 'bg-teal-500 hover:bg-teal-600'
+                                        }`}
+                                >
+                                    {isPending ? (
+                                        <RefreshCw className="animate-spin w-4 h-4" />
+                                    ) : (
+                                        'Yes'
+                                    )}
+                                </button>
                             </div>
                         </div>
                     </div>
