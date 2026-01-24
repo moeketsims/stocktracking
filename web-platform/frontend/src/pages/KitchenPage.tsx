@@ -689,16 +689,6 @@ export default function KitchenPage() {
                                 <p className="text-center text-gray-700 text-lg">
                                     Are you sure you want to {mode} <span className="font-bold">{quantity} bag{quantity !== 1 ? 's' : ''}</span>?
                                 </p>
-
-                                {/* Preview */}
-                                <div className={`mt-4 p-3 rounded-xl text-center ${mode === 'withdraw' ? 'bg-amber-50' : 'bg-teal-50'}`}>
-                                    <p className="text-sm text-gray-600">
-                                        Stock will change from <span className="font-semibold">{formatNumber(currentBags)}</span> to{' '}
-                                        <span className={`font-bold ${mode === 'withdraw' ? 'text-amber-700' : 'text-teal-700'}`}>
-                                            {formatNumber(newBags)} bags
-                                        </span>
-                                    </p>
-                                </div>
                             </div>
 
                             {/* Actions */}
