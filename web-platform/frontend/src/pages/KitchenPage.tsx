@@ -125,13 +125,14 @@ export default function KitchenPage() {
     });
 
     // Fetch transaction history (withdrawals and returns)
-    const { data: transactionsData } = useQuery({
+    const { data: transactionsData, refetch: refetchTransactions } = useQuery({
         queryKey: ['transactions', 'kitchen', user?.location_id],
         queryFn: () => transactionsApi.getAll({
             view_location_id: user?.location_id,
             limit: 50
         }).then(r => r.data),
         enabled: !!user?.location_id,
+        staleTime: 0, // Always refetch when invalidated
     });
 
     const pendingDeliveries = pendingData?.deliveries || [];
@@ -167,6 +168,7 @@ export default function KitchenPage() {
             queryClient.invalidateQueries({ queryKey: ['stock'] });
             queryClient.invalidateQueries({ queryKey: ['transactions'] });
             refetch();
+            refetchTransactions();
             setLastAction(`Withdrew ${qty} bag${qty > 1 ? 's' : ''} from stock`);
             setErrorMessage(null);
             setQuantity(1);
@@ -200,6 +202,7 @@ export default function KitchenPage() {
             queryClient.invalidateQueries({ queryKey: ['stock'] });
             queryClient.invalidateQueries({ queryKey: ['transactions'] });
             refetch();
+            refetchTransactions();
             setLastAction(`Returned ${qty} bag${qty > 1 ? 's' : ''} to stock`);
             setErrorMessage(null);
             setQuantity(1);
@@ -512,7 +515,10 @@ export default function KitchenPage() {
 
             {/* Activity Button */}
             <button
-                onClick={() => setShowActivityDrawer(true)}
+                onClick={() => {
+                    refetchTransactions();
+                    setShowActivityDrawer(true);
+                }}
                 className="w-full py-3 px-4 bg-white rounded-xl border border-gray-100 flex items-center justify-between hover:bg-gray-50 transition-colors"
             >
                 <div className="flex items-center gap-3">

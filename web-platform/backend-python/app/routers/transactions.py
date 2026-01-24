@@ -28,24 +28,40 @@ async def get_transactions(
         # Get effective location for viewing (location_manager can view other shops)
         location_id = get_view_location_id(profile.data, view_location_id) if profile.data else None
 
-        # Build query
-        query = supabase.table("stock_transactions").select(
-            "*, items(name), profiles!stock_transactions_created_by_fkey(full_name)"
-        )
+        # Build base query
+        select_fields = "*, items(name), profiles!stock_transactions_created_by_fkey(full_name)"
 
-        # Apply type filter
-        if type_filter and type_filter != "all":
-            query = query.eq("type", type_filter)
-
-        # Apply location filter - get transactions where location is either from or to
+        # Apply location filter - fetch both from and to transactions
         if location_id:
-            query = query.or_(f"location_id_from.eq.{location_id},location_id_to.eq.{location_id}")
+            # Fetch transactions FROM this location (issues, waste, transfers out)
+            query_from = supabase.table("stock_transactions").select(select_fields)
+            if type_filter and type_filter != "all":
+                query_from = query_from.eq("type", type_filter)
+            query_from = query_from.eq("location_id_from", location_id)
+            result_from = query_from.order("created_at", desc=True).limit(limit).execute()
 
-        # Apply ordering and limit
-        query = query.order("created_at", desc=True).limit(limit)
+            # Fetch transactions TO this location (receives, returns, transfers in)
+            query_to = supabase.table("stock_transactions").select(select_fields)
+            if type_filter and type_filter != "all":
+                query_to = query_to.eq("type", type_filter)
+            query_to = query_to.eq("location_id_to", location_id)
+            result_to = query_to.order("created_at", desc=True).limit(limit).execute()
 
-        result = query.execute()
-        all_data = result.data or []
+            # Combine and deduplicate by id
+            combined = {t["id"]: t for t in (result_from.data or [])}
+            for t in (result_to.data or []):
+                combined[t["id"]] = t
+            all_data = list(combined.values())
+
+            # Sort by created_at descending
+            all_data.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        else:
+            query = supabase.table("stock_transactions").select(select_fields)
+            if type_filter and type_filter != "all":
+                query = query.eq("type", type_filter)
+            query = query.order("created_at", desc=True).limit(limit)
+            result = query.execute()
+            all_data = result.data or []
 
         # Manual pagination (offset)
         paginated_data = all_data[offset:offset + limit] if offset > 0 else all_data[:limit]
