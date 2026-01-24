@@ -87,6 +87,10 @@ export default function KitchenPage() {
     const [quantity, setQuantity] = useState<number>(1);
     const [showCustomInput, setShowCustomInput] = useState(false);
 
+    // Local adjustment to track stock changes immediately (in kg)
+    // This ensures the UI updates instantly without waiting for DB view refresh
+    const [stockAdjustmentKg, setStockAdjustmentKg] = useState(0);
+
     // Fetch current stock for this location
     const { data: stockData, isLoading: isStockLoading, refetch } = useQuery({
         queryKey: ['stock', 'balance', user?.location_id],
@@ -133,10 +137,13 @@ export default function KitchenPage() {
                 item_id: itemId
             });
         },
-        onSuccess: () => {
+        onSuccess: (_data, qty) => {
+            // Immediately adjust local stock (subtract bags * 10kg)
+            setStockAdjustmentKg(prev => prev - (qty * 10));
+
             queryClient.invalidateQueries({ queryKey: ['stock'] });
             refetch();
-            setLastAction(`Withdrew ${quantity} bag${quantity > 1 ? 's' : ''} from stock`);
+            setLastAction(`Withdrew ${qty} bag${qty > 1 ? 's' : ''} from stock`);
             setErrorMessage(null);
             setQuantity(1);
             setShowCustomInput(false);
@@ -162,10 +169,13 @@ export default function KitchenPage() {
                 item_id: itemId
             });
         },
-        onSuccess: () => {
+        onSuccess: (_data, qty) => {
+            // Immediately adjust local stock (add bags * 10kg)
+            setStockAdjustmentKg(prev => prev + (qty * 10));
+
             queryClient.invalidateQueries({ queryKey: ['stock'] });
             refetch();
-            setLastAction(`Returned ${quantity} bag${quantity > 1 ? 's' : ''} to stock`);
+            setLastAction(`Returned ${qty} bag${qty > 1 ? 's' : ''} to stock`);
             setErrorMessage(null);
             setQuantity(1);
             setShowCustomInput(false);
@@ -220,8 +230,11 @@ export default function KitchenPage() {
         balanceData.find((b: any) => b.item_name?.toLowerCase().includes('potato')) ||
         balanceData[0];
 
-    const currentBags = potatoStock ? Math.floor(potatoStock.on_hand_qty / 10) : 0;
-    const currentKg = potatoStock?.on_hand_qty || 0;
+    // Apply local adjustment to get accurate current stock
+    // This ensures immediate UI updates after withdraw/return operations
+    const baseKg = potatoStock?.on_hand_qty || 0;
+    const currentKg = baseKg + stockAdjustmentKg;
+    const currentBags = Math.floor(currentKg / 10);
     const isLoading = isStockLoading || isItemsLoading;
     const isPending = withdrawMutation.isPending || returnMutation.isPending;
 
