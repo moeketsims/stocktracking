@@ -89,6 +89,34 @@ async def debug_all_transactions():
     return {"count": len(result.data or []), "transactions": result.data}
 
 
+@app.get("/debug/test-query/{location_id}", tags=["Debug"])
+async def debug_test_query(location_id: str):
+    """Debug: Test the exact query used by transactions API."""
+    from app.config import get_supabase_admin_client
+    print(f"[DEBUG-TEST] Testing query for location: {location_id}", flush=True)
+    supabase = get_supabase_admin_client()
+
+    # Query FROM this location
+    result_from = supabase.table("stock_transactions").select("*").eq(
+        "location_id_from", location_id
+    ).order("created_at", desc=True).limit(10).execute()
+
+    # Query TO this location
+    result_to = supabase.table("stock_transactions").select("*").eq(
+        "location_id_to", location_id
+    ).order("created_at", desc=True).limit(10).execute()
+
+    print(f"[DEBUG-TEST] FROM: {len(result_from.data or [])}, TO: {len(result_to.data or [])}", flush=True)
+
+    return {
+        "location_id": location_id,
+        "from_count": len(result_from.data or []),
+        "to_count": len(result_to.data or []),
+        "from_transactions": result_from.data[:3] if result_from.data else [],
+        "to_transactions": result_to.data[:3] if result_to.data else []
+    }
+
+
 @app.get("/debug/transactions/{location_id}", tags=["Debug"])
 async def debug_location_transactions(location_id: str):
     """Debug: Check transactions for a specific location (mimics the API query)."""

@@ -30,8 +30,8 @@ async def get_transactions(
 
         print(f"[TRANSACTIONS] Fetching transactions for user {user.id}, location_id={location_id}, view_location_id={view_location_id}, type_filter={type_filter}")
 
-        # Build base query
-        select_fields = "*, items(name), profiles!stock_transactions_created_by_fkey(full_name)"
+        # Build base query - use simple select without joins that might fail
+        select_fields = "*"
 
         # Apply location filter - fetch both from and to transactions
         if location_id:
@@ -74,13 +74,25 @@ async def get_transactions(
         locations = supabase.table("locations").select("id, name").execute()
         location_map = {loc["id"]: loc["name"] for loc in (locations.data or [])}
 
+        # Get unique item IDs and lookup their names
+        item_ids = list(set(t.get("item_id") for t in paginated_data if t.get("item_id")))
+        item_map = {}
+        if item_ids:
+            items = supabase.table("items").select("id, name").in_("id", item_ids).execute()
+            item_map = {i["id"]: i.get("name") or "Unknown" for i in (items.data or [])}
+
+        # Get unique creator IDs and lookup their names
+        creator_ids = list(set(t.get("created_by") for t in paginated_data if t.get("created_by")))
+        creator_map = {}
+        if creator_ids:
+            profiles = supabase.table("profiles").select("user_id, full_name").in_("user_id", creator_ids).execute()
+            creator_map = {p["user_id"]: p.get("full_name") or "Unknown" for p in (profiles.data or [])}
+
         # Format transactions
         transactions = []
         for t in paginated_data:
-            item_name = t.get("items", {}).get("name", "Unknown") if t.get("items") else "Unknown"
-            created_by_name = "Unknown"
-            if t.get("profiles"):
-                created_by_name = t["profiles"].get("full_name") or "Unknown"
+            item_name = item_map.get(t.get("item_id"), "Unknown")
+            created_by_name = creator_map.get(t.get("created_by"), "Unknown")
 
             location_from = location_map.get(t.get("location_id_from")) if t.get("location_id_from") else None
             location_to = location_map.get(t.get("location_id_to")) if t.get("location_id_to") else None
@@ -99,6 +111,7 @@ async def get_transactions(
                 created_by_name=created_by_name
             ))
 
+        print(f"[TRANSACTIONS] Returning {len(transactions)} transactions (v2 - simple query)")
         return TransactionsResponse(
             transactions=transactions,
             total=len(all_data)
