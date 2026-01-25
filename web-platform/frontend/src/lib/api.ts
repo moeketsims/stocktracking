@@ -159,6 +159,12 @@ export const referenceApi = {
     api.get(`/api/reference/locations-by-zone/${zoneId}`),
   getWasteReasons: () => api.get('/api/reference/waste-reasons'),
   getQualityScores: () => api.get('/api/reference/quality-scores'),
+  // Location management (admin only)
+  createLocation: (data: { name: string; zone_id: string; type: 'shop' | 'warehouse'; address?: string }) =>
+    api.post('/api/reference/locations', data),
+  updateLocation: (id: string, data: { name?: string; address?: string }) =>
+    api.patch(`/api/reference/locations/${id}`, data),
+  deleteLocation: (id: string) => api.delete(`/api/reference/locations/${id}`),
 };
 
 // Adjustments API (managers only)

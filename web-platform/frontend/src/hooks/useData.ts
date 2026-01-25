@@ -835,6 +835,49 @@ export function useZones() {
   });
 }
 
+// Location Management (Admin only)
+export function useCreateLocation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: { name: string; zone_id: string; type: 'shop' | 'warehouse'; address?: string }) => {
+      const response = await referenceApi.createLocation(data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['locations'] });
+    },
+  });
+}
+
+export function useUpdateLocation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: { name?: string; address?: string } }) => {
+      const response = await referenceApi.updateLocation(id, data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['locations'] });
+    },
+  });
+}
+
+export function useDeleteLocation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const response = await referenceApi.deleteLocation(id);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['locations'] });
+    },
+  });
+}
+
 // Pending Deliveries Count (for sidebar badge)
 // Includes both en-route trips and pending deliveries awaiting confirmation
 export function usePendingDeliveriesCount() {

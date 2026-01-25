@@ -17,9 +17,13 @@ import {
     ChevronRight,
     Scale,
     X,
+    MapPin,
+    Building2,
+    Eye,
 } from 'lucide-react';
 import { stockApi, referenceApi, pendingDeliveriesApi, stockRequestsApi, transactionsApi } from '../lib/api';
 import { useAuthStore } from '../stores/authStore';
+import { useLocations } from '../hooks/useData';
 
 type Mode = 'withdraw' | 'return';
 
@@ -90,12 +94,30 @@ export default function KitchenPage() {
     // Confirmation modal state
     const [showConfirmModal, setShowConfirmModal] = useState(false);
 
+    // Admin-specific state for location selection
+    const isAdmin = user?.role === 'admin';
+    const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
+
+    // Fetch all locations for admin dropdown
+    const { data: allLocations, isLoading: isLocationsLoading } = useLocations();
+
+    // Filter to only show shops (not warehouses) for kitchen monitoring
+    const shopLocations = (allLocations || []).filter((loc: any) => loc.type === 'shop');
+
+    // Determine which location to use for queries
+    const activeLocationId = isAdmin ? selectedLocationId : user?.location_id;
+    const isViewingOtherLocation = isAdmin && selectedLocationId && selectedLocationId !== user?.location_id;
+
+    // Get the selected location details for display
+    const selectedLocation = shopLocations.find((loc: any) => loc.id === selectedLocationId);
+
     // Fetch current stock for this location
     const { data: stockData, isLoading: isStockLoading, refetch } = useQuery({
-        queryKey: ['stock', 'balance', user?.location_id],
-        queryFn: () => stockApi.getBalance(user?.location_id).then(r => r.data),
-        enabled: !!user?.location_id,
+        queryKey: ['stock', 'balance', activeLocationId],
+        queryFn: () => stockApi.getBalance(activeLocationId!).then(r => r.data),
+        enabled: !!activeLocationId,
         staleTime: 0, // Always refetch for fresh data
+        refetchInterval: isAdmin ? 30000 : false, // Auto-refresh every 30s for admin
     });
 
     // Fetch items to find Potatoes if balance is zero
@@ -109,25 +131,27 @@ export default function KitchenPage() {
 
     // Fetch pending deliveries for this location
     const { data: pendingData } = useQuery({
-        queryKey: ['pending-deliveries', 'pending', user?.location_id],
-        queryFn: () => pendingDeliveriesApi.getPending(user?.location_id, 5).then(r => r.data),
-        enabled: !!user?.location_id,
+        queryKey: ['pending-deliveries', 'pending', activeLocationId],
+        queryFn: () => pendingDeliveriesApi.getPending(activeLocationId!, 5).then(r => r.data),
+        enabled: !!activeLocationId,
+        refetchInterval: isAdmin ? 30000 : false,
     });
 
     // Fetch my stock requests
     const { data: requestsData } = useQuery({
-        queryKey: ['stock-requests', 'my', user?.location_id],
+        queryKey: ['stock-requests', 'my', activeLocationId],
         queryFn: () => stockRequestsApi.getMyRequests('pending', 5).then(r => r.data),
-        enabled: !!user?.location_id,
+        enabled: !!activeLocationId,
+        refetchInterval: isAdmin ? 30000 : false,
     });
 
     // Fetch transaction history (withdrawals and returns) - today only for consistency
     const { data: transactionsData, refetch: refetchTransactions } = useQuery({
-        queryKey: ['transactions', 'kitchen', user?.location_id, 'today'],
+        queryKey: ['transactions', 'kitchen', activeLocationId, 'today'],
         queryFn: async () => {
-            console.log('[KitchenPage] Fetching today\'s transactions for location:', user?.location_id);
+            console.log('[KitchenPage] Fetching today\'s transactions for location:', activeLocationId);
             const response = await transactionsApi.getAll({
-                view_location_id: user?.location_id,
+                view_location_id: activeLocationId,
                 limit: 100,
                 days: 1  // Only today's transactions
             });
@@ -135,8 +159,9 @@ export default function KitchenPage() {
             console.log('[KitchenPage] Response data:', response.data);
             return response.data;
         },
-        enabled: !!user?.location_id,
+        enabled: !!activeLocationId,
         staleTime: 0, // Always refetch when invalidated
+        refetchInterval: isAdmin ? 30000 : false, // Auto-refresh every 30s for admin
     });
 
     const pendingDeliveries = pendingData?.deliveries || [];
@@ -314,6 +339,66 @@ export default function KitchenPage() {
     // Calculate status
     const hasLowStock = stockStatus !== 'healthy';
 
+    // Admin location selector - show first before any kitchen data
+    if (isAdmin && !selectedLocationId) {
+        return (
+            <div className="space-y-6 max-w-2xl mx-auto px-4">
+                {/* Header */}
+                <div className="text-center py-8">
+                    <div className="w-20 h-20 bg-indigo-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                        <Eye className="w-10 h-10 text-indigo-600" />
+                    </div>
+                    <h1 className="text-2xl font-bold text-gray-900 mb-2">Kitchen Monitoring</h1>
+                    <p className="text-gray-500">Select a location to monitor kitchen activity</p>
+                </div>
+
+                {/* Location Selection */}
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                    <div className="p-4 bg-gray-50 border-b border-gray-100">
+                        <p className="text-sm font-medium text-gray-600 uppercase tracking-wide">Select a Kitchen</p>
+                    </div>
+
+                    {isLocationsLoading ? (
+                        <div className="p-8 space-y-3">
+                            {[1, 2, 3].map(i => (
+                                <div key={i} className="h-16 bg-gray-100 rounded-xl animate-pulse" />
+                            ))}
+                        </div>
+                    ) : shopLocations.length === 0 ? (
+                        <div className="p-12 text-center">
+                            <Building2 className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                            <p className="text-gray-500">No shop locations found</p>
+                        </div>
+                    ) : (
+                        <div className="divide-y divide-gray-100">
+                            {shopLocations.map((loc: any) => (
+                                <button
+                                    key={loc.id}
+                                    onClick={() => setSelectedLocationId(loc.id)}
+                                    className="w-full p-4 flex items-center gap-4 hover:bg-gray-50 transition-colors text-left"
+                                >
+                                    <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                                        <Building2 className="w-6 h-6 text-green-600" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="font-semibold text-gray-900">{loc.name}</p>
+                                        {loc.zone_name && (
+                                            <p className="text-sm text-gray-500 flex items-center gap-1">
+                                                <MapPin className="w-3 h-3" />
+                                                {loc.zone_name}
+                                            </p>
+                                        )}
+                                    </div>
+                                    <ChevronRight className="w-5 h-5 text-gray-400" />
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
     if (isLoading) {
         return (
             <div className="space-y-6 max-w-4xl mx-auto px-4">
@@ -328,6 +413,37 @@ export default function KitchenPage() {
 
     return (
         <div className="space-y-6 max-w-4xl mx-auto px-4">
+            {/* Admin Location Header */}
+            {isAdmin && selectedLocation && (
+                <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center">
+                            <Eye className="w-6 h-6 text-indigo-600" />
+                        </div>
+                        <div>
+                            <p className="text-sm text-indigo-600 font-medium">Monitoring</p>
+                            <p className="font-bold text-gray-900">{selectedLocation.name}</p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => setSelectedLocationId(null)}
+                        className="px-4 py-2 bg-white border border-indigo-200 rounded-xl text-sm font-medium text-indigo-700 hover:bg-indigo-50 transition-colors"
+                    >
+                        Change Location
+                    </button>
+                </div>
+            )}
+
+            {/* Read-only Notice for Admin */}
+            {isViewingOtherLocation && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center gap-3">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                    <p className="text-sm text-amber-800">
+                        <span className="font-medium">Read-only view.</span> You are monitoring this kitchen's activity. Withdraw and return actions are disabled.
+                    </p>
+                </div>
+            )}
+
             {/* Top Section: Stock Summary + Quick Stats */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Main Stock Card - Takes 2 columns on large screens */}
@@ -553,7 +669,7 @@ export default function KitchenPage() {
                     {/* Confirm Button */}
                     <button
                         onClick={handleSubmit}
-                        disabled={!isValidQuantity || isPending}
+                        disabled={!isValidQuantity || isPending || isViewingOtherLocation}
                         className={`w-full max-w-lg mx-auto block py-5 rounded-xl font-bold text-xl text-white transition-all shadow-md hover:shadow-lg active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 ${mode === 'withdraw'
                             ? 'bg-amber-500 hover:bg-amber-600'
                             : 'bg-teal-500 hover:bg-teal-600'
@@ -561,6 +677,11 @@ export default function KitchenPage() {
                     >
                         {isPending ? (
                             <RefreshCw className="animate-spin w-6 h-6" />
+                        ) : isViewingOtherLocation ? (
+                            <>
+                                <Eye className="w-6 h-6" />
+                                Monitoring Only
+                            </>
                         ) : mode === 'withdraw' ? (
                             <>
                                 <ArrowDownToLine className="w-6 h-6" />

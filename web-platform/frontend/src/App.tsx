@@ -13,6 +13,7 @@ import {
   PackageCheck,
   UtensilsCrossed,
   LogOut,
+  MapPin,
 } from 'lucide-react';
 import { useAuthStore } from './stores/authStore';
 import { useLogout } from './hooks/useAuth';
@@ -36,6 +37,7 @@ import DeliveriesPage from './pages/DeliveriesPage';
 import AcceptInvitePage from './pages/AcceptInvitePage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
+import LocationsPage from './pages/LocationsPage';
 
 type PublicPage = 'login' | 'forgot-password' | 'accept-invite' | 'reset-password';
 
@@ -50,6 +52,7 @@ type TabId =
   | 'requests'
   | 'deliveries'
   | 'users'
+  | 'locations'
   | 'notifications'
   | 'kitchen'
   | 'settings';
@@ -152,9 +155,10 @@ function App() {
   }
 
   // Filter main tabs based on role - drivers have limited access
+  const isAdmin = user?.role === 'admin';
   const mainTabs = [
     { id: 'stock' as const, label: 'Stock', icon: Package },
-    ...(!isDriver() ? [{ id: 'kitchen' as const, label: 'Kitchen', icon: UtensilsCrossed }] : []),
+    ...(!isDriver() ? [{ id: 'kitchen' as const, label: isAdmin ? 'Kitchens' : 'Kitchen', icon: UtensilsCrossed }] : []),
     { id: 'requests' as const, label: 'Requests', icon: ClipboardList },
     { id: 'vehicles' as const, label: 'Vehicles', icon: Truck },
     ...(!isDriver() ? [{ id: 'alerts' as const, label: 'Alerts', icon: AlertTriangle }] : []),
@@ -171,6 +175,7 @@ function App() {
         { id: 'users' as const, label: 'User Management', icon: UserCog },
       ]
       : []),
+    ...(isAdmin ? [{ id: 'locations' as const, label: 'Locations', icon: MapPin }] : []),
     { id: 'notifications' as const, label: 'Notifications', icon: Bell },
     { id: 'settings' as const, label: 'Settings', icon: Settings },
   ];
@@ -214,6 +219,8 @@ function App() {
         return <DeliveriesPage />;
       case 'users':
         return <UsersPage />;
+      case 'locations':
+        return <LocationsPage />;
       case 'notifications':
         return <NotificationsPage />;
       case 'settings':
