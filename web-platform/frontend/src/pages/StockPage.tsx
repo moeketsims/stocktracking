@@ -2,7 +2,6 @@ import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Search,
-  ArrowDownToLine,
   ArrowUpFromLine,
   ArrowLeftRight,
   Trash2,
@@ -21,12 +20,12 @@ import {
   Check,
   Truck,
   ClipboardList,
+  ArrowDownToLine,
 } from 'lucide-react';
 import { Button } from '../components/ui';
 import { useStockByLocation } from '../hooks/useData';
 import { useAuthStore } from '../stores/authStore';
 import { pendingDeliveriesApi } from '../lib/api';
-import ReceiveModal from '../components/modals/ReceiveModal';
 import IssueModal from '../components/modals/IssueModal';
 import TransferModal from '../components/modals/TransferModal';
 import WasteModal from '../components/modals/WasteModal';
@@ -139,7 +138,6 @@ export default function StockPage() {
   const [selectedLocation, setSelectedLocation] = useState<LocationStockItem | null>(null);
 
   // Modal state
-  const [showReceiveModal, setShowReceiveModal] = useState(false);
   const [showIssueModal, setShowIssueModal] = useState(false);
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [showWasteModal, setShowWasteModal] = useState(false);
@@ -241,11 +239,8 @@ export default function StockPage() {
     setSelectedDelivery(null);
   };
 
-  const openModal = (modal: 'receive' | 'issue' | 'transfer' | 'waste') => {
+  const openModal = (modal: 'issue' | 'transfer' | 'waste') => {
     switch (modal) {
-      case 'receive':
-        setShowReceiveModal(true);
-        break;
       case 'issue':
         setShowIssueModal(true);
         break;
@@ -406,15 +401,10 @@ export default function StockPage() {
         <div className="flex items-center gap-2 shrink-0">
           <Button
             onClick={() => setShowRequestModal(true)}
-            variant="secondary"
-            className="gap-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+            className="gap-2 bg-orange-500 hover:bg-orange-600 text-white"
           >
             <ClipboardList className="w-4 h-4" />
             Request Stock
-          </Button>
-          <Button onClick={() => setShowReceiveModal(true)} className="gap-2">
-            <ArrowDownToLine className="w-4 h-4" />
-            Receive Stock
           </Button>
         </div>
       </div>
@@ -495,11 +485,6 @@ export default function StockPage() {
       />
 
       {/* Modals */}
-      <ReceiveModal
-        isOpen={showReceiveModal}
-        onClose={() => setShowReceiveModal(false)}
-        onSuccess={handleSuccess}
-      />
       <IssueModal
         isOpen={showIssueModal}
         onClose={() => setShowIssueModal(false)}
@@ -716,7 +701,7 @@ function DetailsDrawer({
 }: {
   location: LocationStockItem | null;
   onClose: () => void;
-  onAction: (action: 'receive' | 'issue' | 'transfer' | 'waste') => void;
+  onAction: (action: 'issue' | 'transfer' | 'waste') => void;
   isManager: boolean;
 }) {
   if (!location) return null;
@@ -849,13 +834,6 @@ function DetailsDrawer({
                   color="violet"
                 />
               )}
-              <ActionButton
-                icon={ArrowDownToLine}
-                label="Receive"
-                description="Add new stock"
-                onClick={() => onAction('receive')}
-                color="emerald"
-              />
               <ActionButton
                 icon={Trash2}
                 label="Record Waste"
