@@ -206,6 +206,8 @@ export const tripsApi = {
   list: (params?: { status?: string; vehicle_id?: string; from_date?: string; to_date?: string; limit?: number }) =>
     api.get('/api/trips', { params }),
   get: (id: string) => api.get(`/api/trips/${id}`),
+  getMyDeliveries: (locationId: string, limit?: number) =>
+    api.get(`/api/trips/my-deliveries/${locationId}`, { params: { limit } }),
   create: (data: any) => api.post('/api/trips', data),
   update: (id: string, data: any) => api.patch(`/api/trips/${id}`, data),
   start: (id: string, estimatedArrivalTime?: string) =>

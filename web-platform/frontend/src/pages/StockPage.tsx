@@ -25,7 +25,7 @@ import {
 import { Button } from '../components/ui';
 import { useStockByLocation } from '../hooks/useData';
 import { useAuthStore } from '../stores/authStore';
-import { pendingDeliveriesApi } from '../lib/api';
+import { pendingDeliveriesApi, tripsApi, stockRequestsApi } from '../lib/api';
 import IssueModal from '../components/modals/IssueModal';
 import TransferModal from '../components/modals/TransferModal';
 import WasteModal from '../components/modals/WasteModal';
@@ -484,6 +484,7 @@ export default function StockPage() {
         onClose={() => setSelectedLocation(null)}
         onAction={openModal}
         isManager={isManager()}
+        isDriver={isDriver()}
       />
 
       {/* Modals */}
@@ -700,12 +701,28 @@ function DetailsDrawer({
   onClose,
   onAction,
   isManager,
+  isDriver,
 }: {
   location: LocationStockItem | null;
   onClose: () => void;
   onAction: (action: 'issue' | 'transfer' | 'waste') => void;
   isManager: boolean;
+  isDriver: boolean;
 }) {
+  // Fetch driver's deliveries to this location
+  const { data: myDeliveriesData, isLoading: isLoadingDeliveries } = useQuery({
+    queryKey: ['my-deliveries', location?.location_id],
+    queryFn: () => tripsApi.getMyDeliveries(location!.location_id, 5).then(r => r.data),
+    enabled: isDriver && !!location?.location_id,
+  });
+
+  // Fetch pending requests for this location
+  const { data: pendingRequestsData, isLoading: isLoadingRequests } = useQuery({
+    queryKey: ['stock-requests', 'location', location?.location_id],
+    queryFn: () => stockRequestsApi.list({ location_id: location!.location_id, status: 'pending' }).then(r => r.data),
+    enabled: isDriver && !!location?.location_id,
+  });
+
   if (!location) return null;
 
   const status = getStockStatus(location.on_hand_qty, location.location_type as 'warehouse' | 'shop');
@@ -816,55 +833,140 @@ function DetailsDrawer({
             </div>
           </div>
 
-          {/* Quick Actions */}
-          <div>
-            <h3 className="text-sm font-medium text-gray-700 mb-3">Quick Actions</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <ActionButton
-                icon={ArrowUpFromLine}
-                label="Issue Stock"
-                description="Record usage"
-                onClick={() => onAction('issue')}
-                color="slate"
-              />
-              {isManager && (
-                <ActionButton
-                  icon={ArrowLeftRight}
-                  label="Transfer"
-                  description="Move to location"
-                  onClick={() => onAction('transfer')}
-                  color="violet"
-                />
-              )}
-              <ActionButton
-                icon={Trash2}
-                label="Record Waste"
-                description="Log spoilage"
-                onClick={() => onAction('waste')}
-                color="red"
-              />
-            </div>
-          </div>
+          {/* Driver View - My Deliveries & Pending Requests */}
+          {isDriver ? (
+            <>
+              {/* Pending Requests for this location */}
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <ClipboardList className="w-4 h-4 text-orange-500" />
+                  <h3 className="text-sm font-medium text-gray-700">Pending Requests</h3>
+                </div>
+                {isLoadingRequests ? (
+                  <div className="animate-pulse space-y-2">
+                    <div className="h-16 bg-gray-100 rounded-xl" />
+                  </div>
+                ) : (pendingRequestsData?.requests || []).length > 0 ? (
+                  <div className="space-y-2">
+                    {(pendingRequestsData?.requests || []).slice(0, 3).map((request: any) => (
+                      <div key={request.id} className="p-3 bg-orange-50 border border-orange-100 rounded-xl">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-medium text-gray-900">
+                            {request.quantity_bags} bags requested
+                          </span>
+                          <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
+                            request.urgency === 'critical' ? 'bg-red-100 text-red-700' :
+                            request.urgency === 'high' ? 'bg-orange-100 text-orange-700' :
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {request.urgency || 'normal'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          Requested {getRelativeTime(request.created_at)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-6 bg-gray-50 rounded-xl">
+                    <ClipboardList className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                    <p className="text-sm text-gray-400">No pending requests</p>
+                  </div>
+                )}
+              </div>
 
-          {/* Recent Activity */}
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <Activity className="w-4 h-4 text-gray-400" />
-              <h3 className="text-sm font-medium text-gray-700">Recent Activity</h3>
-            </div>
-            {location.recent_activity.length > 0 ? (
-              <div className="space-y-2">
-                {location.recent_activity.map((activity) => (
-                  <ActivityItem key={activity.id} activity={activity} />
-                ))}
+              {/* My Deliveries to this location */}
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Truck className="w-4 h-4 text-emerald-500" />
+                  <h3 className="text-sm font-medium text-gray-700">My Deliveries</h3>
+                </div>
+                {isLoadingDeliveries ? (
+                  <div className="animate-pulse space-y-2">
+                    <div className="h-16 bg-gray-100 rounded-xl" />
+                    <div className="h-16 bg-gray-100 rounded-xl" />
+                  </div>
+                ) : (myDeliveriesData?.deliveries || []).length > 0 ? (
+                  <div className="space-y-2">
+                    {(myDeliveriesData?.deliveries || []).map((delivery: any) => (
+                      <div key={delivery.trip_id} className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-medium text-gray-900">
+                            {delivery.trip_number}
+                          </span>
+                          <span className="text-sm font-semibold text-emerald-600">
+                            {delivery.qty_bags ? `${delivery.qty_bags} bags` : 'Qty N/A'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-gray-500">
+                          <span>{delivery.supplier_name || 'Unknown supplier'}</span>
+                          <span>{getRelativeTime(delivery.completed_at)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-6 bg-gray-50 rounded-xl">
+                    <Truck className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                    <p className="text-sm text-gray-400">You haven't delivered to this store yet</p>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="text-center py-8 bg-gray-50 rounded-xl">
-                <Activity className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                <p className="text-sm text-gray-400">No recent activity</p>
+            </>
+          ) : (
+            <>
+              {/* Quick Actions - Non-driver view */}
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 mb-3">Quick Actions</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <ActionButton
+                    icon={ArrowUpFromLine}
+                    label="Issue Stock"
+                    description="Record usage"
+                    onClick={() => onAction('issue')}
+                    color="slate"
+                  />
+                  {isManager && (
+                    <ActionButton
+                      icon={ArrowLeftRight}
+                      label="Transfer"
+                      description="Move to location"
+                      onClick={() => onAction('transfer')}
+                      color="violet"
+                    />
+                  )}
+                  <ActionButton
+                    icon={Trash2}
+                    label="Record Waste"
+                    description="Log spoilage"
+                    onClick={() => onAction('waste')}
+                    color="red"
+                  />
+                </div>
               </div>
-            )}
-          </div>
+
+              {/* Recent Activity - Non-driver view */}
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Activity className="w-4 h-4 text-gray-400" />
+                  <h3 className="text-sm font-medium text-gray-700">Recent Activity</h3>
+                </div>
+                {location.recent_activity.length > 0 ? (
+                  <div className="space-y-2">
+                    {location.recent_activity.map((activity) => (
+                      <ActivityItem key={activity.id} activity={activity} />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 bg-gray-50 rounded-xl">
+                    <Activity className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                    <p className="text-sm text-gray-400">No recent activity</p>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </>

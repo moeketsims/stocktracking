@@ -134,6 +134,81 @@ async def get_trip_summary(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/my-deliveries/{location_id}")
+async def get_my_deliveries_to_location(
+    location_id: str,
+    limit: int = Query(5, ge=1, le=20),
+    user_data: dict = Depends(get_current_user)
+):
+    """Get the current driver's delivery history to a specific location."""
+    supabase = get_supabase_admin_client()
+    user = user_data["user"]
+
+    try:
+        # Get the driver record linked to this user
+        driver = supabase.table("drivers").select("id").eq(
+            "user_id", user.id
+        ).single().execute()
+
+        if not driver.data:
+            # User is not a driver, return empty list
+            return {
+                "deliveries": [],
+                "total": 0,
+                "message": "No driver profile found for this user"
+            }
+
+        driver_id = driver.data["id"]
+
+        # Get completed trips to this location by this driver
+        result = supabase.table("trips").select(
+            "id, trip_number, status, completed_at, created_at, "
+            "to_location:locations!trips_to_location_id_fkey(id, name), "
+            "suppliers(id, name)"
+        ).eq("driver_id", driver_id).eq(
+            "to_location_id", location_id
+        ).eq("status", "completed").order(
+            "completed_at", desc=True
+        ).limit(limit).execute()
+
+        trips = result.data or []
+
+        # Get cargo/quantity for each trip from pending_deliveries or trip_requests
+        deliveries = []
+        for trip in trips:
+            # Try to get delivery quantity from pending_deliveries
+            delivery_info = supabase.table("pending_deliveries").select(
+                "confirmed_qty_kg, driver_claimed_bags"
+            ).eq("trip_id", trip["id"]).limit(1).execute()
+
+            qty_bags = None
+            qty_kg = None
+            if delivery_info.data:
+                qty_kg = delivery_info.data[0].get("confirmed_qty_kg")
+                qty_bags = delivery_info.data[0].get("driver_claimed_bags")
+                if qty_kg and not qty_bags:
+                    qty_bags = int(qty_kg / 10)
+
+            deliveries.append({
+                "trip_id": trip["id"],
+                "trip_number": trip["trip_number"],
+                "completed_at": trip["completed_at"],
+                "created_at": trip["created_at"],
+                "location_name": trip.get("to_location", {}).get("name") if trip.get("to_location") else None,
+                "supplier_name": trip.get("suppliers", {}).get("name") if trip.get("suppliers") else None,
+                "qty_bags": qty_bags,
+                "qty_kg": qty_kg
+            })
+
+        return {
+            "deliveries": deliveries,
+            "total": len(deliveries)
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{trip_id}")
 async def get_trip(trip_id: str, user_data: dict = Depends(get_current_user)):
     """Get trip details."""
