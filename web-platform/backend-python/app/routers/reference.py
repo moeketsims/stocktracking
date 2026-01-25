@@ -28,12 +28,12 @@ async def require_admin(user_data: dict = Depends(require_auth)) -> dict:
 
     profile = supabase.table("profiles").select("*").eq(
         "user_id", user_data["user"].id
-    ).single().execute()
+    ).execute()
 
-    if not profile.data or profile.data["role"] != "admin":
+    if not profile.data or len(profile.data) == 0 or profile.data[0]["role"] != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
 
-    user_data["profile"] = profile.data
+    user_data["profile"] = profile.data[0]
     return user_data
 
 
@@ -149,8 +149,8 @@ async def create_location(
 
     try:
         # Validate zone exists
-        zone = supabase.table("zones").select("id").eq("id", data.zone_id).single().execute()
-        if not zone.data:
+        zone = supabase.table("zones").select("id").eq("id", data.zone_id).execute()
+        if not zone.data or len(zone.data) == 0:
             raise HTTPException(status_code=400, detail="Zone not found")
 
         # Create location
@@ -161,22 +161,24 @@ async def create_location(
             "address": data.address,
             "created_at": datetime.utcnow().isoformat(),
             "updated_at": datetime.utcnow().isoformat()
-        }).execute()
+        })
 
         if not result.data:
             raise HTTPException(status_code=500, detail="Failed to create location")
 
-        location = result.data[0]
+        # insert() returns single object for single dict, not array
+        location = result.data if isinstance(result.data, dict) else result.data[0]
 
         # Get zone name for response
-        zone_result = supabase.table("zones").select("name").eq("id", data.zone_id).single().execute()
+        zone_result = supabase.table("zones").select("name").eq("id", data.zone_id).execute()
+        zone_name = zone_result.data[0].get("name") if zone_result.data else None
 
         return {
             "success": True,
             "message": f"Location '{data.name}' created successfully",
             "location": {
                 **location,
-                "zone_name": zone_result.data.get("name") if zone_result.data else None
+                "zone_name": zone_name
             }
         }
 
@@ -197,8 +199,8 @@ async def update_location(
 
     try:
         # Check location exists
-        existing = supabase.table("locations").select("*").eq("id", location_id).single().execute()
-        if not existing.data:
+        existing = supabase.table("locations").select("*").eq("id", location_id).execute()
+        if not existing.data or len(existing.data) == 0:
             raise HTTPException(status_code=404, detail="Location not found")
 
         # Build update data
@@ -209,23 +211,25 @@ async def update_location(
         if data.address is not None:
             update_data["address"] = data.address if data.address else None
 
-        # Update location
-        result = supabase.table("locations").update(update_data).eq("id", location_id).execute()
+        # Update location - must call .eq() before .update() (update executes immediately)
+        result = supabase.table("locations").eq("id", location_id).update(update_data)
 
         if not result.data:
             raise HTTPException(status_code=500, detail="Failed to update location")
 
-        location = result.data[0]
+        # update() returns single object, not array
+        location = result.data if isinstance(result.data, dict) else result.data[0]
 
         # Get zone name for response
-        zone_result = supabase.table("zones").select("name").eq("id", location["zone_id"]).single().execute()
+        zone_result = supabase.table("zones").select("name").eq("id", location["zone_id"]).execute()
+        zone_name = zone_result.data[0].get("name") if zone_result.data else None
 
         return {
             "success": True,
             "message": f"Location updated successfully",
             "location": {
                 **location,
-                "zone_name": zone_result.data.get("name") if zone_result.data else None
+                "zone_name": zone_name
             }
         }
 
@@ -245,11 +249,11 @@ async def delete_location(
 
     try:
         # Check location exists
-        existing = supabase.table("locations").select("*").eq("id", location_id).single().execute()
-        if not existing.data:
+        existing = supabase.table("locations").select("*").eq("id", location_id).execute()
+        if not existing.data or len(existing.data) == 0:
             raise HTTPException(status_code=404, detail="Location not found")
 
-        location_name = existing.data.get("name", "Unknown")
+        location_name = existing.data[0].get("name", "Unknown")
 
         # Check for assigned users
         users = supabase.table("profiles").select("id").eq("location_id", location_id).execute()

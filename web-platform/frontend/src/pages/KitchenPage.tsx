@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
     Package,
@@ -9,19 +9,19 @@ import {
     RefreshCw,
     ArrowDownToLine,
     ArrowUpFromLine,
-    Truck,
     Activity,
     Clock,
     AlertTriangle,
-    TrendingDown,
     ChevronRight,
     Scale,
     X,
     MapPin,
     Building2,
     Eye,
+    Search,
+    Filter,
 } from 'lucide-react';
-import { stockApi, referenceApi, pendingDeliveriesApi, stockRequestsApi, transactionsApi } from '../lib/api';
+import { stockApi, referenceApi, transactionsApi } from '../lib/api';
 import { useAuthStore } from '../stores/authStore';
 import { useLocations } from '../hooks/useData';
 
@@ -74,17 +74,73 @@ const formatNumber = (value: number, decimals: number = 0): string => {
 
 // Status configuration
 const STATUS_CONFIG = {
-    healthy: { label: 'Healthy', textColor: 'text-emerald-700', bgColor: 'bg-emerald-50', barColor: 'bg-emerald-500', accentColor: 'bg-emerald-400' },
-    low: { label: 'Low Stock', textColor: 'text-amber-700', bgColor: 'bg-amber-50', barColor: 'bg-amber-500', accentColor: 'bg-amber-400' },
-    critical: { label: 'Critical', textColor: 'text-red-700', bgColor: 'bg-red-50', barColor: 'bg-red-500', accentColor: 'bg-red-400' },
+    healthy: { label: 'Healthy', textColor: 'text-emerald-700', bgColor: 'bg-emerald-50', barColor: 'bg-emerald-500', dotColor: 'bg-emerald-500', borderColor: 'border-emerald-200' },
+    low: { label: 'Low Stock', textColor: 'text-amber-700', bgColor: 'bg-amber-50', barColor: 'bg-amber-500', dotColor: 'bg-amber-500', borderColor: 'border-amber-200' },
+    critical: { label: 'Critical', textColor: 'text-red-700', bgColor: 'bg-red-50', barColor: 'bg-red-500', dotColor: 'bg-red-500', borderColor: 'border-red-200' },
 };
+
+// Kitchen list item component for the left panel
+interface KitchenListItemProps {
+    location: any;
+    isSelected: boolean;
+    onClick: () => void;
+    stockData?: any;
+}
+
+function KitchenListItem({ location, isSelected, onClick, stockData }: KitchenListItemProps) {
+    const stockStatus = stockData ? getStockStatus(stockData.totalKg) : 'healthy';
+    const statusStyle = STATUS_CONFIG[stockStatus];
+    const bags = stockData ? Math.floor(stockData.totalKg / 10) : 0;
+
+    return (
+        <button
+            onClick={onClick}
+            className={`w-full p-3 flex items-center gap-3 rounded-lg transition-all text-left group ${
+                isSelected
+                    ? 'bg-indigo-50 border border-indigo-200'
+                    : 'hover:bg-gray-50 border border-transparent'
+            }`}
+        >
+            {/* Icon */}
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                isSelected ? 'bg-indigo-100' : 'bg-gray-100 group-hover:bg-gray-200'
+            }`}>
+                <Building2 className={`w-5 h-5 ${isSelected ? 'text-indigo-600' : 'text-gray-500'}`} />
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                    <span className={`font-medium truncate ${isSelected ? 'text-indigo-900' : 'text-gray-900'}`}>
+                        {location.name}
+                    </span>
+                    {/* Status dot */}
+                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusStyle.dotColor}`} />
+                </div>
+                <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500">
+                    {location.zone_name && (
+                        <span className="flex items-center gap-1">
+                            <MapPin className="w-3 h-3" />
+                            {location.zone_name}
+                        </span>
+                    )}
+                    <span>{bags} bags</span>
+                </div>
+            </div>
+
+            {/* Arrow */}
+            <ChevronRight className={`w-4 h-4 flex-shrink-0 transition-transform ${
+                isSelected ? 'text-indigo-400 translate-x-0.5' : 'text-gray-300 group-hover:text-gray-400'
+            }`} />
+        </button>
+    );
+}
 
 export default function KitchenPage() {
     const queryClient = useQueryClient();
     const { user } = useAuthStore();
     const [lastAction, setLastAction] = useState<string | null>(null);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
-    const [showActivityDrawer, setShowActivityDrawer] = useState(false);
 
     // State for the UI
     const [mode, setMode] = useState<Mode>('withdraw');
@@ -94,15 +150,22 @@ export default function KitchenPage() {
     // Confirmation modal state
     const [showConfirmModal, setShowConfirmModal] = useState(false);
 
-    // Admin-specific state for location selection
+    // Admin-specific state
     const isAdmin = user?.role === 'admin';
     const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
 
-    // Fetch all locations for admin dropdown
+    // Search and filter state for kitchen list
+    const [searchQuery, setSearchQuery] = useState('');
+    const [statusFilter, setStatusFilter] = useState<string>('all');
+
+    // Fetch all locations for admin
     const { data: allLocations, isLoading: isLocationsLoading } = useLocations();
 
     // Filter to only show shops (not warehouses) for kitchen monitoring
-    const shopLocations = (allLocations || []).filter((loc: any) => loc.type === 'shop');
+    const shopLocations = useMemo(() =>
+        (allLocations || []).filter((loc: any) => loc.type === 'shop'),
+        [allLocations]
+    );
 
     // Determine which location to use for queries
     const activeLocationId = isAdmin ? selectedLocationId : user?.location_id;
@@ -116,8 +179,8 @@ export default function KitchenPage() {
         queryKey: ['stock', 'balance', activeLocationId],
         queryFn: () => stockApi.getBalance(activeLocationId!).then(r => r.data),
         enabled: !!activeLocationId,
-        staleTime: 0, // Always refetch for fresh data
-        refetchInterval: isAdmin ? 30000 : false, // Auto-refresh every 30s for admin
+        staleTime: 0,
+        refetchInterval: isAdmin ? 30000 : false,
     });
 
     // Fetch items to find Potatoes if balance is zero
@@ -129,64 +192,36 @@ export default function KitchenPage() {
     const potatoItem = itemsData?.items?.find((i: any) => i.name?.toLowerCase().includes('potato')) ||
         itemsData?.items?.[0];
 
-    // Fetch pending deliveries for this location
-    const { data: pendingData } = useQuery({
-        queryKey: ['pending-deliveries', 'pending', activeLocationId],
-        queryFn: () => pendingDeliveriesApi.getPending(activeLocationId!, 5).then(r => r.data),
-        enabled: !!activeLocationId,
-        refetchInterval: isAdmin ? 30000 : false,
-    });
-
-    // Fetch my stock requests
-    const { data: requestsData } = useQuery({
-        queryKey: ['stock-requests', 'my', activeLocationId],
-        queryFn: () => stockRequestsApi.getMyRequests('pending', 5).then(r => r.data),
-        enabled: !!activeLocationId,
-        refetchInterval: isAdmin ? 30000 : false,
-    });
-
-    // Fetch transaction history (withdrawals and returns) - today only for consistency
+    // Fetch transaction history (withdrawals and returns) - today only
     const { data: transactionsData, refetch: refetchTransactions } = useQuery({
         queryKey: ['transactions', 'kitchen', activeLocationId, 'today'],
         queryFn: async () => {
-            console.log('[KitchenPage] Fetching today\'s transactions for location:', activeLocationId);
             const response = await transactionsApi.getAll({
                 view_location_id: activeLocationId,
                 limit: 100,
-                days: 1  // Only today's transactions
+                days: 1
             });
-            console.log('[KitchenPage] Full API response:', response);
-            console.log('[KitchenPage] Response data:', response.data);
             return response.data;
         },
         enabled: !!activeLocationId,
-        staleTime: 0, // Always refetch when invalidated
-        refetchInterval: isAdmin ? 30000 : false, // Auto-refresh every 30s for admin
+        staleTime: 0,
+        refetchInterval: isAdmin ? 30000 : false,
     });
-
-    const pendingDeliveries = pendingData?.deliveries || [];
-    const myRequests = requestsData?.requests || [];
 
     // Filter for issue (withdraw) and return transactions only
     const allTransactions = transactionsData?.transactions || [];
-    console.log('[KitchenPage] transactionsData:', transactionsData);
-    console.log('[KitchenPage] allTransactions:', allTransactions);
-    console.log('[KitchenPage] user location_id:', user?.location_id);
     const kitchenTransactions = allTransactions.filter(
         (t: any) => t.type === 'issue' || t.type === 'return'
     );
-    console.log('[KitchenPage] kitchenTransactions (filtered):', kitchenTransactions);
 
-    // Get counts from API response (accurate counts, not limited by pagination)
+    // Get counts from API response
     const withdrawCount = transactionsData?.issue_count ?? kitchenTransactions.filter((t: any) => t.type === 'issue').length;
     const returnCount = transactionsData?.return_count ?? kitchenTransactions.filter((t: any) => t.type === 'return').length;
 
-    // Withdraw mutation (existing consume logic)
+    // Withdraw mutation
     const withdrawMutation = useMutation({
         mutationFn: async (qty: number) => {
             const itemId = potatoStock?.item_id || potatoItem?.id;
-            console.log('[KitchenPage] WITHDRAW - Starting withdrawal of', qty, 'bags');
-            console.log('[KitchenPage] WITHDRAW - Item ID:', itemId);
             if (!itemId) throw new Error("Potato item not found in system");
 
             const response = await stockApi.issue({
@@ -195,27 +230,13 @@ export default function KitchenPage() {
                 notes: 'Kitchen consumption',
                 item_id: itemId
             });
-            console.log('[KitchenPage] WITHDRAW - API Response:', response.data);
             return response;
         },
-        onSuccess: async (response, qty) => {
-            console.log('[KitchenPage] WITHDRAW SUCCESS - Full response:', response.data);
-            if (response.data?.debug) {
-                console.log('[KitchenPage] WITHDRAW DEBUG - Backend says new total:', response.data.debug.new_total_bags, 'bags');
-            }
-
-            // Invalidate and refetch all related queries (including stock-by-location for Stock page)
+        onSuccess: async (_response, qty) => {
             await queryClient.invalidateQueries({ queryKey: ['stock'] });
             await queryClient.invalidateQueries({ queryKey: ['stock-by-location'] });
             await queryClient.invalidateQueries({ queryKey: ['transactions'] });
-
-            // Force refetch to get updated stock
-            const refetchResult = await refetch();
-            console.log('[KitchenPage] WITHDRAW - Refetch result:', refetchResult.data);
-            if (refetchResult.data?.batch_totals) {
-                const totalKg = refetchResult.data.batch_totals.reduce((sum: number, b: any) => sum + (b.on_hand_qty || 0), 0);
-                console.log('[KitchenPage] WITHDRAW - New total from refetch:', totalKg, 'kg =', Math.floor(totalKg / 10), 'bags');
-            }
+            await refetch();
             await refetchTransactions();
 
             setLastAction(`Withdrew ${qty} bag${qty > 1 ? 's' : ''} from stock`);
@@ -231,7 +252,7 @@ export default function KitchenPage() {
         }
     });
 
-    // Return mutation (adds stock back)
+    // Return mutation
     const returnMutation = useMutation({
         mutationFn: (qty: number) => {
             const itemId = potatoStock?.item_id || potatoItem?.id;
@@ -245,12 +266,9 @@ export default function KitchenPage() {
             });
         },
         onSuccess: async (_data, qty) => {
-            // Invalidate and refetch all related queries (including stock-by-location for Stock page)
             await queryClient.invalidateQueries({ queryKey: ['stock'] });
             await queryClient.invalidateQueries({ queryKey: ['stock-by-location'] });
             await queryClient.invalidateQueries({ queryKey: ['transactions'] });
-
-            // Force refetch to get updated stock
             await refetch();
             await refetchTransactions();
 
@@ -304,22 +322,15 @@ export default function KitchenPage() {
         setQuantity(q => q - 1);
     };
 
-    // Prefer batch_totals (calculated directly from batches) over stock_balance view
+    // Stock calculations
     const batchData = stockData?.batch_totals || [];
     const balanceData = stockData?.balance || [];
-
-    // Sum ALL items at this location to match Stock page
-    // This ensures consistency between Kitchen and Stock views
     const totalKg = batchData.reduce((sum: number, b: any) => sum + (b.on_hand_qty || 0), 0);
-
-    // Get first potato item for reference (used for item_id in mutations)
     const potatoStock = batchData.find((b: any) => b.item_name?.toLowerCase().includes('potato')) ||
         batchData[0] ||
         balanceData.find((b: any) => b.item_name?.toLowerCase().includes('potato')) ||
         balanceData[0];
 
-    // Use total of all items to match Stock page
-    // Trust the database values - no local adjustment needed
     const baseKg = batchData.length > 0 ? totalKg : (potatoStock?.on_hand_qty || 0);
     const currentKg = baseKg;
     const currentBags = Math.floor(currentKg / 10);
@@ -336,117 +347,675 @@ export default function KitchenPage() {
     const statusStyle = STATUS_CONFIG[stockStatus];
     const capacityPercent = getCapacityPercent(currentKg);
 
-    // Calculate status
-    const hasLowStock = stockStatus !== 'healthy';
+    // Filter kitchen list
+    const filteredLocations = useMemo(() => {
+        return shopLocations.filter((loc: any) => {
+            // Search filter
+            if (searchQuery) {
+                const search = searchQuery.toLowerCase();
+                if (!loc.name.toLowerCase().includes(search) &&
+                    !(loc.zone_name || '').toLowerCase().includes(search)) {
+                    return false;
+                }
+            }
+            // Status filter would require stock data per location
+            // For now, we'll skip this filter
+            return true;
+        });
+    }, [shopLocations, searchQuery]);
 
-    // Admin location selector - show first before any kitchen data
-    if (isAdmin && !selectedLocationId) {
+    // Non-admin view - show standard kitchen interface
+    if (!isAdmin) {
         return (
-            <div className="space-y-6 max-w-2xl mx-auto px-4">
-                {/* Header */}
-                <div className="text-center py-8">
-                    <div className="w-20 h-20 bg-indigo-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                        <Eye className="w-10 h-10 text-indigo-600" />
+            <div className="space-y-6 max-w-4xl mx-auto px-4">
+                {/* ... original non-admin UI ... */}
+                <StandardKitchenUI
+                    stockData={stockData}
+                    currentKg={currentKg}
+                    currentBags={currentBags}
+                    stockStatus={stockStatus}
+                    statusStyle={statusStyle}
+                    capacityPercent={capacityPercent}
+                    withdrawCount={withdrawCount}
+                    returnCount={returnCount}
+                    mode={mode}
+                    setMode={setMode}
+                    quantity={quantity}
+                    setQuantity={setQuantity}
+                    showCustomInput={showCustomInput}
+                    setShowCustomInput={setShowCustomInput}
+                    handleQuickSelect={handleQuickSelect}
+                    handleCustomClick={handleCustomClick}
+                    incrementQuantity={incrementQuantity}
+                    decrementQuantity={decrementQuantity}
+                    handleSubmit={handleSubmit}
+                    isValidQuantity={isValidQuantity}
+                    isPending={isPending}
+                    isViewingOtherLocation={false}
+                    newBags={newBags}
+                    newKg={newKg}
+                    lastAction={lastAction}
+                    errorMessage={errorMessage}
+                    kitchenTransactions={kitchenTransactions}
+                    refetch={refetch}
+                    refetchTransactions={refetchTransactions}
+                    potatoStock={potatoStock}
+                />
+
+                {/* Confirmation Modal */}
+                {showConfirmModal && (
+                    <ConfirmModal
+                        mode={mode}
+                        quantity={quantity}
+                        isPending={isPending}
+                        onConfirm={handleConfirm}
+                        onCancel={handleCancel}
+                    />
+                )}
+            </div>
+        );
+    }
+
+    // Admin two-panel layout
+    return (
+        <div className="h-[calc(100vh-120px)] flex flex-col">
+            {/* Compact Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-white">
+                <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 bg-indigo-100 rounded-lg flex items-center justify-center">
+                        <Eye className="w-5 h-5 text-indigo-600" />
                     </div>
-                    <h1 className="text-2xl font-bold text-gray-900 mb-2">Kitchen Monitoring</h1>
-                    <p className="text-gray-500">Select a location to monitor kitchen activity</p>
+                    <div>
+                        <h1 className="text-lg font-bold text-gray-900">Kitchen Monitoring</h1>
+                        <p className="text-xs text-gray-500">{shopLocations.length} locations</p>
+                    </div>
+                </div>
+                <button
+                    onClick={() => refetch()}
+                    className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5"
+                >
+                    <RefreshCw className="w-4 h-4" />
+                    Refresh
+                </button>
+            </div>
+
+            {/* Two-Panel Layout */}
+            <div className="flex-1 flex overflow-hidden">
+                {/* Left Panel - Kitchen List */}
+                <div className="w-[380px] flex-shrink-0 border-r border-gray-200 bg-gray-50 flex flex-col">
+                    {/* Search & Filters */}
+                    <div className="p-4 space-y-3 border-b border-gray-200 bg-white">
+                        {/* Search */}
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                            <input
+                                type="text"
+                                placeholder="Search kitchens..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-gray-50"
+                            />
+                        </div>
+
+                        {/* Filter Pills */}
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setStatusFilter('all')}
+                                className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                                    statusFilter === 'all'
+                                        ? 'bg-gray-900 text-white'
+                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                }`}
+                            >
+                                All
+                            </button>
+                            <button
+                                onClick={() => setStatusFilter('critical')}
+                                className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                                    statusFilter === 'critical'
+                                        ? 'bg-red-500 text-white'
+                                        : 'bg-red-50 text-red-600 hover:bg-red-100'
+                                }`}
+                            >
+                                Critical
+                            </button>
+                            <button
+                                onClick={() => setStatusFilter('low')}
+                                className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                                    statusFilter === 'low'
+                                        ? 'bg-amber-500 text-white'
+                                        : 'bg-amber-50 text-amber-600 hover:bg-amber-100'
+                                }`}
+                            >
+                                Low Stock
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Kitchen List */}
+                    <div className="flex-1 overflow-y-auto p-3 space-y-1">
+                        {isLocationsLoading ? (
+                            <div className="space-y-2">
+                                {[1, 2, 3, 4, 5].map(i => (
+                                    <div key={i} className="h-16 bg-gray-200 rounded-lg animate-pulse" />
+                                ))}
+                            </div>
+                        ) : filteredLocations.length === 0 ? (
+                            <div className="text-center py-12">
+                                <Building2 className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                                <p className="text-sm text-gray-500">No kitchens found</p>
+                            </div>
+                        ) : (
+                            filteredLocations.map((loc: any) => (
+                                <KitchenListItem
+                                    key={loc.id}
+                                    location={loc}
+                                    isSelected={selectedLocationId === loc.id}
+                                    onClick={() => setSelectedLocationId(loc.id)}
+                                    stockData={selectedLocationId === loc.id ? { totalKg: currentKg } : undefined}
+                                />
+                            ))
+                        )}
+                    </div>
                 </div>
 
-                {/* Location Selection */}
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                    <div className="p-4 bg-gray-50 border-b border-gray-100">
-                        <p className="text-sm font-medium text-gray-600 uppercase tracking-wide">Select a Kitchen</p>
-                    </div>
-
-                    {isLocationsLoading ? (
-                        <div className="p-8 space-y-3">
-                            {[1, 2, 3].map(i => (
-                                <div key={i} className="h-16 bg-gray-100 rounded-xl animate-pulse" />
-                            ))}
+                {/* Right Panel - Monitoring Dashboard */}
+                <div className="flex-1 overflow-y-auto bg-white">
+                    {!selectedLocationId ? (
+                        /* Empty State */
+                        <div className="h-full flex items-center justify-center">
+                            <div className="text-center max-w-sm">
+                                <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                    <Eye className="w-8 h-8 text-gray-400" />
+                                </div>
+                                <h3 className="text-lg font-semibold text-gray-900 mb-2">Select a Kitchen</h3>
+                                <p className="text-sm text-gray-500">
+                                    Choose a kitchen from the list to view stock levels, activity, and monitoring details.
+                                </p>
+                            </div>
                         </div>
-                    ) : shopLocations.length === 0 ? (
-                        <div className="p-12 text-center">
-                            <Building2 className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                            <p className="text-gray-500">No shop locations found</p>
+                    ) : isLoading ? (
+                        /* Loading State */
+                        <div className="p-6 space-y-6">
+                            <div className="h-32 bg-gray-100 rounded-xl animate-pulse" />
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="h-24 bg-gray-100 rounded-xl animate-pulse" />
+                                <div className="h-24 bg-gray-100 rounded-xl animate-pulse" />
+                            </div>
+                            <div className="h-64 bg-gray-100 rounded-xl animate-pulse" />
                         </div>
                     ) : (
-                        <div className="divide-y divide-gray-100">
-                            {shopLocations.map((loc: any) => (
-                                <button
-                                    key={loc.id}
-                                    onClick={() => setSelectedLocationId(loc.id)}
-                                    className="w-full p-4 flex items-center gap-4 hover:bg-gray-50 transition-colors text-left"
-                                >
-                                    <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                                        <Building2 className="w-6 h-6 text-green-600" />
+                        /* Dashboard Content */
+                        <div className="p-6 space-y-6">
+                            {/* Location Header */}
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center">
+                                        <Building2 className="w-6 h-6 text-indigo-600" />
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="font-semibold text-gray-900">{loc.name}</p>
-                                        {loc.zone_name && (
-                                            <p className="text-sm text-gray-500 flex items-center gap-1">
-                                                <MapPin className="w-3 h-3" />
-                                                {loc.zone_name}
-                                            </p>
+                                    <div>
+                                        <h2 className="text-xl font-bold text-gray-900">{selectedLocation?.name}</h2>
+                                        <div className="flex items-center gap-2 text-sm text-gray-500">
+                                            {selectedLocation?.zone_name && (
+                                                <span className="flex items-center gap-1">
+                                                    <MapPin className="w-3 h-3" />
+                                                    {selectedLocation.zone_name}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className={`px-3 py-1.5 rounded-full text-sm font-medium ${statusStyle.bgColor} ${statusStyle.textColor}`}>
+                                    {statusStyle.label}
+                                </div>
+                            </div>
+
+                            {/* Read-only Notice */}
+                            {isViewingOtherLocation && (
+                                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-center gap-3">
+                                    <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                                    <p className="text-sm text-amber-800">
+                                        <span className="font-medium">View only.</span> Actions are disabled for this location.
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* Summary Cards Row */}
+                            <div className="grid grid-cols-3 gap-4">
+                                {/* Stock Card */}
+                                <div className={`rounded-xl border-2 ${statusStyle.borderColor} ${statusStyle.bgColor} p-4`}>
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <Package className={`w-5 h-5 ${statusStyle.textColor}`} />
+                                        <span className="text-sm font-medium text-gray-600">Current Stock</span>
+                                    </div>
+                                    <p className="text-3xl font-bold text-gray-900 tabular-nums">{formatNumber(currentBags)}</p>
+                                    <p className="text-sm text-gray-500">{formatNumber(currentKg)} kg</p>
+                                </div>
+
+                                {/* Withdrawals Card */}
+                                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <ArrowDownToLine className="w-5 h-5 text-amber-600" />
+                                        <span className="text-sm font-medium text-gray-600">Withdrawals</span>
+                                    </div>
+                                    <p className="text-3xl font-bold text-gray-900 tabular-nums">{withdrawCount}</p>
+                                    <p className="text-sm text-gray-500">Today</p>
+                                </div>
+
+                                {/* Returns Card */}
+                                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <ArrowUpFromLine className="w-5 h-5 text-teal-600" />
+                                        <span className="text-sm font-medium text-gray-600">Returns</span>
+                                    </div>
+                                    <p className="text-3xl font-bold text-gray-900 tabular-nums">{returnCount}</p>
+                                    <p className="text-sm text-gray-500">Today</p>
+                                </div>
+                            </div>
+
+                            {/* Stock Level Progress */}
+                            <div className="bg-gray-50 rounded-xl p-4">
+                                <div className="flex justify-between text-sm mb-2">
+                                    <span className="text-gray-600 font-medium">Stock Level</span>
+                                    <span className="font-semibold text-gray-900">{capacityPercent}% of target</span>
+                                </div>
+                                <div className="h-2.5 bg-gray-200 rounded-full overflow-hidden">
+                                    <div
+                                        className={`h-full ${statusStyle.barColor} transition-all duration-500 rounded-full`}
+                                        style={{ width: `${capacityPercent}%` }}
+                                    />
+                                </div>
+                                <div className="flex justify-between text-xs text-gray-400 mt-1.5">
+                                    <span>0</span>
+                                    <span>Target: {formatNumber(TARGET_STOCK_KG / 10)} bags</span>
+                                </div>
+                            </div>
+
+                            {/* Feedback Alerts */}
+                            {lastAction && (
+                                <div className={`p-3 rounded-lg flex items-center gap-3 ${mode === 'withdraw' ? 'bg-amber-50 border border-amber-200' : 'bg-teal-50 border border-teal-200'}`}>
+                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${mode === 'withdraw' ? 'bg-amber-500' : 'bg-teal-500'} text-white`}>
+                                        <Check className="w-4 h-4" />
+                                    </div>
+                                    <span className={`text-sm font-medium ${mode === 'withdraw' ? 'text-amber-800' : 'text-teal-800'}`}>
+                                        {lastAction}
+                                    </span>
+                                </div>
+                            )}
+
+                            {errorMessage && (
+                                <div className="p-3 rounded-lg bg-red-50 border border-red-200 flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-red-500 flex items-center justify-center text-white">
+                                        <AlertCircle className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-medium text-red-800">Action Failed</p>
+                                        <p className="text-xs text-red-600">{errorMessage}</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Action Card - Withdraw/Return */}
+                            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                                <div className={`h-1 ${mode === 'withdraw' ? 'bg-amber-500' : 'bg-teal-500'}`} />
+                                <div className="p-5">
+                                    {/* Mode Toggle */}
+                                    <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg mb-5">
+                                        <button
+                                            onClick={() => { setMode('withdraw'); setQuantity(1); setShowCustomInput(false); }}
+                                            className={`flex-1 py-2 px-4 text-sm font-medium rounded-md transition-all flex items-center justify-center gap-2 ${mode === 'withdraw'
+                                                ? 'bg-white text-gray-900 shadow-sm'
+                                                : 'text-gray-500 hover:text-gray-700'
+                                                }`}
+                                        >
+                                            <ArrowDownToLine className="w-4 h-4" />
+                                            Withdraw
+                                        </button>
+                                        <button
+                                            onClick={() => { setMode('return'); setQuantity(1); setShowCustomInput(false); }}
+                                            className={`flex-1 py-2 px-4 text-sm font-medium rounded-md transition-all flex items-center justify-center gap-2 ${mode === 'return'
+                                                ? 'bg-white text-gray-900 shadow-sm'
+                                                : 'text-gray-500 hover:text-gray-700'
+                                                }`}
+                                        >
+                                            <ArrowUpFromLine className="w-4 h-4" />
+                                            Return
+                                        </button>
+                                    </div>
+
+                                    {/* Quick Select */}
+                                    <p className="text-xs text-gray-500 uppercase tracking-wide font-medium mb-2">
+                                        {mode === 'withdraw' ? 'Bags to withdraw' : 'Bags to return'}
+                                    </p>
+                                    <div className="flex gap-2 mb-4">
+                                        {QUICK_AMOUNTS.map((amount) => (
+                                            <button
+                                                key={amount}
+                                                onClick={() => handleQuickSelect(amount)}
+                                                disabled={mode === 'withdraw' && amount > currentBags}
+                                                className={`flex-1 py-2.5 rounded-lg font-bold text-base transition-all ${quantity === amount && !showCustomInput
+                                                    ? mode === 'withdraw'
+                                                        ? 'bg-amber-500 text-white'
+                                                        : 'bg-teal-500 text-white'
+                                                    : `bg-gray-100 text-gray-700 hover:bg-gray-200 ${mode === 'withdraw' && amount > currentBags ? 'opacity-40 cursor-not-allowed' : ''}`
+                                                    }`}
+                                            >
+                                                {amount}
+                                            </button>
+                                        ))}
+                                        <button
+                                            onClick={handleCustomClick}
+                                            className={`flex-1 py-2.5 rounded-lg font-medium text-sm transition-all ${showCustomInput
+                                                ? mode === 'withdraw'
+                                                    ? 'bg-amber-500 text-white'
+                                                    : 'bg-teal-500 text-white'
+                                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                }`}
+                                        >
+                                            Other
+                                        </button>
+                                    </div>
+
+                                    {/* Custom Input */}
+                                    {showCustomInput && (
+                                        <div className="flex items-center justify-center gap-4 mb-4">
+                                            <button
+                                                onClick={decrementQuantity}
+                                                disabled={quantity <= 1}
+                                                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed ${mode === 'withdraw'
+                                                    ? 'bg-amber-100 text-amber-600 hover:bg-amber-200'
+                                                    : 'bg-teal-100 text-teal-600 hover:bg-teal-200'
+                                                    }`}
+                                            >
+                                                <Minus className="w-5 h-5" />
+                                            </button>
+
+                                            <input
+                                                type="number"
+                                                value={quantity}
+                                                onChange={(e) => {
+                                                    const val = parseInt(e.target.value) || 0;
+                                                    if (mode === 'withdraw') {
+                                                        setQuantity(Math.min(Math.max(0, val), currentBags));
+                                                    } else {
+                                                        setQuantity(Math.max(0, val));
+                                                    }
+                                                }}
+                                                className={`w-24 h-12 text-center text-2xl font-bold border-2 rounded-lg focus:outline-none focus:ring-2 ${mode === 'withdraw'
+                                                    ? 'border-amber-300 focus:ring-amber-500/30'
+                                                    : 'border-teal-300 focus:ring-teal-500/30'
+                                                    }`}
+                                                min={1}
+                                                max={mode === 'withdraw' ? currentBags : undefined}
+                                            />
+
+                                            <button
+                                                onClick={incrementQuantity}
+                                                disabled={mode === 'withdraw' && quantity >= currentBags}
+                                                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed ${mode === 'withdraw'
+                                                    ? 'bg-amber-100 text-amber-600 hover:bg-amber-200'
+                                                    : 'bg-teal-100 text-teal-600 hover:bg-teal-200'
+                                                    }`}
+                                            >
+                                                <Plus className="w-5 h-5" />
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {/* Preview */}
+                                    <div className={`p-3 rounded-lg mb-4 ${mode === 'withdraw' ? 'bg-amber-50' : 'bg-teal-50'}`}>
+                                        <div className="flex items-center justify-center gap-2 text-sm">
+                                            <span className={`font-medium ${mode === 'withdraw' ? 'text-amber-600' : 'text-teal-600'}`}>
+                                                {mode === 'withdraw' ? 'Removing' : 'Adding'} {quantity} bag{quantity !== 1 ? 's' : ''}
+                                            </span>
+                                            <span className="text-gray-400">→</span>
+                                            <span className="font-semibold text-gray-800">
+                                                New: {formatNumber(newBags)} bags
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Submit Button */}
+                                    <button
+                                        onClick={handleSubmit}
+                                        disabled={!isValidQuantity || isPending || isViewingOtherLocation}
+                                        className={`w-full py-3 rounded-lg font-semibold text-base text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${mode === 'withdraw'
+                                            ? 'bg-amber-500 hover:bg-amber-600'
+                                            : 'bg-teal-500 hover:bg-teal-600'
+                                            }`}
+                                    >
+                                        {isPending ? (
+                                            <RefreshCw className="animate-spin w-5 h-5" />
+                                        ) : isViewingOtherLocation ? (
+                                            <>
+                                                <Eye className="w-5 h-5" />
+                                                View Only
+                                            </>
+                                        ) : mode === 'withdraw' ? (
+                                            <>
+                                                <ArrowDownToLine className="w-5 h-5" />
+                                                Withdraw {quantity} Bag{quantity !== 1 ? 's' : ''}
+                                            </>
+                                        ) : (
+                                            <>
+                                                <ArrowUpFromLine className="w-5 h-5" />
+                                                Return {quantity} Bag{quantity !== 1 ? 's' : ''}
+                                            </>
                                         )}
+                                    </button>
+
+                                    {mode === 'withdraw' && quantity > currentBags && (
+                                        <p className="text-red-500 text-xs text-center mt-2 flex items-center justify-center gap-1">
+                                            <AlertCircle className="w-3 h-3" />
+                                            Cannot exceed available stock
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Activity Feed */}
+                            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                                <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <Activity className="w-5 h-5 text-gray-400" />
+                                        <h3 className="font-semibold text-gray-900">Recent Activity</h3>
                                     </div>
-                                    <ChevronRight className="w-5 h-5 text-gray-400" />
-                                </button>
-                            ))}
+                                    <button
+                                        onClick={() => refetchTransactions()}
+                                        className="text-xs text-gray-500 hover:text-gray-700"
+                                    >
+                                        Refresh
+                                    </button>
+                                </div>
+                                <div className="divide-y divide-gray-100 max-h-[300px] overflow-y-auto">
+                                    {kitchenTransactions.length === 0 ? (
+                                        <div className="p-8 text-center">
+                                            <Activity className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                                            <p className="text-sm text-gray-500">No activity today</p>
+                                        </div>
+                                    ) : (
+                                        kitchenTransactions.slice(0, 10).map((t: any) => {
+                                            const isWithdraw = t.type === 'issue';
+                                            const bags = Math.round(t.quantity / 10);
+                                            const date = new Date(t.created_at);
+                                            const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                                            return (
+                                                <div key={t.id} className="px-5 py-3 flex items-center gap-3">
+                                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isWithdraw ? 'bg-amber-100' : 'bg-teal-100'}`}>
+                                                        {isWithdraw ? (
+                                                            <ArrowDownToLine className="w-4 h-4 text-amber-600" />
+                                                        ) : (
+                                                            <ArrowUpFromLine className="w-4 h-4 text-teal-600" />
+                                                        )}
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className={`text-sm font-medium ${isWithdraw ? 'text-amber-800' : 'text-teal-800'}`}>
+                                                            {isWithdraw ? 'Withdrew' : 'Returned'} {bags} bag{bags !== 1 ? 's' : ''}
+                                                        </p>
+                                                        <p className="text-xs text-gray-400">{t.notes || 'Kitchen operation'}</p>
+                                                    </div>
+                                                    <span className="text-xs text-gray-400">{timeStr}</span>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     )}
                 </div>
             </div>
-        );
-    }
 
-    if (isLoading) {
-        return (
-            <div className="space-y-6 max-w-4xl mx-auto px-4">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div className="h-48 bg-gray-100 rounded-2xl animate-pulse" />
-                    <div className="h-48 bg-gray-100 rounded-2xl animate-pulse" />
-                </div>
-                <div className="h-80 bg-gray-100 rounded-2xl animate-pulse" />
-            </div>
-        );
-    }
+            {/* Confirmation Modal */}
+            {showConfirmModal && (
+                <ConfirmModal
+                    mode={mode}
+                    quantity={quantity}
+                    isPending={isPending}
+                    onConfirm={handleConfirm}
+                    onCancel={handleCancel}
+                />
+            )}
+        </div>
+    );
+}
 
+// Confirmation Modal Component
+interface ConfirmModalProps {
+    mode: Mode;
+    quantity: number;
+    isPending: boolean;
+    onConfirm: () => void;
+    onCancel: () => void;
+}
+
+function ConfirmModal({ mode, quantity, isPending, onConfirm, onCancel }: ConfirmModalProps) {
     return (
-        <div className="space-y-6 max-w-4xl mx-auto px-4">
-            {/* Admin Location Header */}
-            {isAdmin && selectedLocation && (
-                <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center">
-                            <Eye className="w-6 h-6 text-indigo-600" />
-                        </div>
-                        <div>
-                            <p className="text-sm text-indigo-600 font-medium">Monitoring</p>
-                            <p className="font-bold text-gray-900">{selectedLocation.name}</p>
+        <>
+            <div
+                className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50"
+                onClick={onCancel}
+            />
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden">
+                    <div className={`p-5 ${mode === 'withdraw' ? 'bg-amber-50' : 'bg-teal-50'}`}>
+                        <div className="flex items-center gap-3">
+                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${mode === 'withdraw' ? 'bg-amber-500' : 'bg-teal-500'}`}>
+                                {mode === 'withdraw' ? (
+                                    <ArrowDownToLine className="w-6 h-6 text-white" />
+                                ) : (
+                                    <ArrowUpFromLine className="w-6 h-6 text-white" />
+                                )}
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-lg text-gray-900">
+                                    Confirm {mode === 'withdraw' ? 'Withdrawal' : 'Return'}
+                                </h3>
+                                <p className="text-sm text-gray-500">Review before proceeding</p>
+                            </div>
                         </div>
                     </div>
-                    <button
-                        onClick={() => setSelectedLocationId(null)}
-                        className="px-4 py-2 bg-white border border-indigo-200 rounded-xl text-sm font-medium text-indigo-700 hover:bg-indigo-50 transition-colors"
-                    >
-                        Change Location
-                    </button>
-                </div>
-            )}
 
-            {/* Read-only Notice for Admin */}
-            {isViewingOtherLocation && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center gap-3">
-                    <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
-                    <p className="text-sm text-amber-800">
-                        <span className="font-medium">Read-only view.</span> You are monitoring this kitchen's activity. Withdraw and return actions are disabled.
-                    </p>
-                </div>
-            )}
+                    <div className="p-5">
+                        <p className="text-center text-gray-700">
+                            {mode === 'withdraw' ? 'Withdraw' : 'Return'} <span className="font-bold">{quantity} bag{quantity !== 1 ? 's' : ''}</span>?
+                        </p>
+                    </div>
 
-            {/* Top Section: Stock Summary + Quick Stats */}
+                    <div className="p-5 pt-0 flex gap-3">
+                        <button
+                            onClick={onCancel}
+                            className="flex-1 py-3 px-4 rounded-lg font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            onClick={onConfirm}
+                            disabled={isPending}
+                            className={`flex-1 py-3 px-4 rounded-lg font-medium text-white transition-colors flex items-center justify-center gap-2 ${mode === 'withdraw'
+                                ? 'bg-amber-500 hover:bg-amber-600'
+                                : 'bg-teal-500 hover:bg-teal-600'
+                                }`}
+                        >
+                            {isPending ? <RefreshCw className="animate-spin w-5 h-5" /> : 'Confirm'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </>
+    );
+}
+
+// Standard Kitchen UI Component (for non-admin users)
+interface StandardKitchenUIProps {
+    stockData: any;
+    currentKg: number;
+    currentBags: number;
+    stockStatus: StockStatus;
+    statusStyle: typeof STATUS_CONFIG.healthy;
+    capacityPercent: number;
+    withdrawCount: number;
+    returnCount: number;
+    mode: Mode;
+    setMode: (mode: Mode) => void;
+    quantity: number;
+    setQuantity: (qty: number) => void;
+    showCustomInput: boolean;
+    setShowCustomInput: (show: boolean) => void;
+    handleQuickSelect: (amount: number) => void;
+    handleCustomClick: () => void;
+    incrementQuantity: () => void;
+    decrementQuantity: () => void;
+    handleSubmit: () => void;
+    isValidQuantity: boolean;
+    isPending: boolean;
+    isViewingOtherLocation: boolean;
+    newBags: number;
+    newKg: number;
+    lastAction: string | null;
+    errorMessage: string | null;
+    kitchenTransactions: any[];
+    refetch: () => void;
+    refetchTransactions: () => void;
+    potatoStock: any;
+}
+
+function StandardKitchenUI({
+    currentKg,
+    currentBags,
+    statusStyle,
+    capacityPercent,
+    withdrawCount,
+    returnCount,
+    mode,
+    setMode,
+    quantity,
+    setQuantity,
+    showCustomInput,
+    setShowCustomInput,
+    handleQuickSelect,
+    handleCustomClick,
+    incrementQuantity,
+    decrementQuantity,
+    handleSubmit,
+    isValidQuantity,
+    isPending,
+    newBags,
+    newKg,
+    lastAction,
+    errorMessage,
+    kitchenTransactions,
+    refetch,
+    refetchTransactions,
+    potatoStock,
+}: StandardKitchenUIProps) {
+    const [showActivityDrawer, setShowActivityDrawer] = useState(false);
+
+    return (
+        <>
+            {/* Stock Summary */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Main Stock Card - Takes 2 columns on large screens */}
                 <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
                     <div className={`h-1.5 ${statusStyle.barColor}`} />
                     <div className="p-6 lg:p-8">
@@ -468,7 +1037,6 @@ export default function KitchenPage() {
                             </div>
                         </div>
 
-                        {/* Progress bar */}
                         <div className="mb-4">
                             <div className="flex justify-between text-sm mb-2">
                                 <span className="text-gray-500">Stock Level</span>
@@ -482,7 +1050,6 @@ export default function KitchenPage() {
                             </div>
                         </div>
 
-                        {/* Stats row */}
                         <div className="flex items-center gap-6 text-sm text-gray-500 pt-2 border-t border-gray-100">
                             <div className="flex items-center gap-2">
                                 <Scale className="w-5 h-5" />
@@ -496,9 +1063,7 @@ export default function KitchenPage() {
                     </div>
                 </div>
 
-                {/* Quick Stats Column */}
                 <div className="flex flex-col gap-4">
-                    {/* Withdrawals Today */}
                     <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm flex-1">
                         <div className="flex items-center gap-3 mb-3">
                             <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
@@ -509,7 +1074,6 @@ export default function KitchenPage() {
                         <p className="text-3xl font-bold text-gray-900 tabular-nums">{withdrawCount}</p>
                     </div>
 
-                    {/* Returns Today */}
                     <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm flex-1">
                         <div className="flex items-center gap-3 mb-3">
                             <div className="w-10 h-10 rounded-xl bg-teal-100 flex items-center justify-center">
@@ -546,11 +1110,10 @@ export default function KitchenPage() {
                 </div>
             )}
 
-            {/* Main Action Card - Withdraw/Return */}
+            {/* Action Card */}
             <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
                 <div className={`h-1.5 ${mode === 'withdraw' ? 'bg-amber-500' : 'bg-teal-500'}`} />
                 <div className="p-6 lg:p-8">
-                    {/* Mode Toggle - Pill/Segmented Control */}
                     <div className="flex items-center gap-1 bg-gray-100 p-1.5 rounded-xl mb-6 max-w-md mx-auto">
                         <button
                             onClick={() => { setMode('withdraw'); setQuantity(1); setShowCustomInput(false); }}
@@ -574,7 +1137,6 @@ export default function KitchenPage() {
                         </button>
                     </div>
 
-                    {/* Quick Select Buttons */}
                     <p className="text-sm text-gray-500 uppercase tracking-wide font-medium mb-3 text-center">
                         {mode === 'withdraw' ? 'How many bags to withdraw?' : 'How many bags to return?'}
                     </p>
@@ -607,7 +1169,6 @@ export default function KitchenPage() {
                         </button>
                     </div>
 
-                    {/* Manual Input with Stepper */}
                     {showCustomInput && (
                         <div className="flex items-center justify-center gap-5 mb-5">
                             <button
@@ -653,7 +1214,6 @@ export default function KitchenPage() {
                         </div>
                     )}
 
-                    {/* Live Preview */}
                     <div className={`p-4 rounded-xl mb-5 max-w-lg mx-auto ${mode === 'withdraw' ? 'bg-amber-50' : 'bg-teal-50'}`}>
                         <div className="flex items-center justify-center gap-3 text-base">
                             <span className={`font-medium ${mode === 'withdraw' ? 'text-amber-600' : 'text-teal-600'}`}>
@@ -666,10 +1226,9 @@ export default function KitchenPage() {
                         </div>
                     </div>
 
-                    {/* Confirm Button */}
                     <button
                         onClick={handleSubmit}
-                        disabled={!isValidQuantity || isPending || isViewingOtherLocation}
+                        disabled={!isValidQuantity || isPending}
                         className={`w-full max-w-lg mx-auto block py-5 rounded-xl font-bold text-xl text-white transition-all shadow-md hover:shadow-lg active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 ${mode === 'withdraw'
                             ? 'bg-amber-500 hover:bg-amber-600'
                             : 'bg-teal-500 hover:bg-teal-600'
@@ -677,11 +1236,6 @@ export default function KitchenPage() {
                     >
                         {isPending ? (
                             <RefreshCw className="animate-spin w-6 h-6" />
-                        ) : isViewingOtherLocation ? (
-                            <>
-                                <Eye className="w-6 h-6" />
-                                Monitoring Only
-                            </>
                         ) : mode === 'withdraw' ? (
                             <>
                                 <ArrowDownToLine className="w-6 h-6" />
@@ -695,7 +1249,6 @@ export default function KitchenPage() {
                         )}
                     </button>
 
-                    {/* Validation Warning */}
                     {mode === 'withdraw' && quantity > currentBags && (
                         <p className="text-red-500 text-sm text-center mt-3 flex items-center justify-center gap-1.5">
                             <AlertCircle className="w-4 h-4" />
@@ -705,9 +1258,8 @@ export default function KitchenPage() {
                 </div>
             </div>
 
-            {/* Bottom Row: Activity + Sync */}
+            {/* Activity Button */}
             <div className="flex items-center gap-4">
-                {/* Activity Button */}
                 <button
                     onClick={() => {
                         refetchTransactions();
@@ -731,7 +1283,6 @@ export default function KitchenPage() {
                     </div>
                 </button>
 
-                {/* Sync Button */}
                 <button
                     onClick={() => refetch()}
                     className="py-4 px-5 bg-white rounded-xl border border-gray-100 text-gray-500 hover:text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors shadow-sm"
@@ -744,15 +1295,12 @@ export default function KitchenPage() {
             {/* Activity Drawer */}
             {showActivityDrawer && (
                 <>
-                    {/* Backdrop */}
                     <div
                         className="fixed inset-0 bg-black/30 backdrop-blur-sm z-40"
                         onClick={() => setShowActivityDrawer(false)}
                     />
 
-                    {/* Drawer */}
                     <div className="fixed right-0 top-0 h-full w-full max-w-xl bg-white shadow-2xl z-50 overflow-y-auto">
-                        {/* Header */}
                         <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-5 flex items-center justify-between">
                             <div className="flex items-center gap-4">
                                 <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center">
@@ -771,9 +1319,7 @@ export default function KitchenPage() {
                             </button>
                         </div>
 
-                        {/* Content */}
                         <div className="p-6 space-y-6">
-                            {/* Summary Stats */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="bg-amber-50 rounded-2xl p-5">
                                     <div className="flex items-center gap-3 mb-3">
@@ -795,7 +1341,6 @@ export default function KitchenPage() {
                                 </div>
                             </div>
 
-                            {/* Transaction History */}
                             <div>
                                 <h3 className="text-sm uppercase tracking-wide text-gray-500 font-semibold mb-4">
                                     Transaction History
@@ -824,8 +1369,7 @@ export default function KitchenPage() {
                                                         }`}
                                                 >
                                                     <div className="flex items-center gap-4">
-                                                        <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${isWithdraw ? 'bg-amber-100' : 'bg-teal-100'
-                                                            }`}>
+                                                        <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${isWithdraw ? 'bg-amber-100' : 'bg-teal-100'}`}>
                                                             {isWithdraw ? (
                                                                 <ArrowDownToLine className="w-5 h-5 text-amber-600" />
                                                             ) : (
@@ -853,72 +1397,6 @@ export default function KitchenPage() {
                     </div>
                 </>
             )}
-
-            {/* Confirmation Modal */}
-            {showConfirmModal && (
-                <>
-                    {/* Backdrop */}
-                    <div
-                        className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50"
-                        onClick={handleCancel}
-                    />
-
-                    {/* Modal */}
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
-                            {/* Header */}
-                            <div className={`p-6 ${mode === 'withdraw' ? 'bg-amber-50' : 'bg-teal-50'}`}>
-                                <div className="flex items-center gap-4">
-                                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${mode === 'withdraw' ? 'bg-amber-500' : 'bg-teal-500'}`}>
-                                        {mode === 'withdraw' ? (
-                                            <ArrowDownToLine className="w-7 h-7 text-white" />
-                                        ) : (
-                                            <ArrowUpFromLine className="w-7 h-7 text-white" />
-                                        )}
-                                    </div>
-                                    <div>
-                                        <h3 className="font-bold text-xl text-gray-900">
-                                            Confirm {mode === 'withdraw' ? 'Withdrawal' : 'Return'}
-                                        </h3>
-                                        <p className="text-sm text-gray-500">Please review before proceeding</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Content */}
-                            <div className="p-6">
-                                <p className="text-center text-gray-700 text-xl">
-                                    Are you sure you want to {mode} <span className="font-bold">{quantity} bag{quantity !== 1 ? 's' : ''}</span>?
-                                </p>
-                            </div>
-
-                            {/* Actions */}
-                            <div className="p-6 pt-0 flex gap-4">
-                                <button
-                                    onClick={handleCancel}
-                                    className="flex-1 py-4 px-5 rounded-xl font-semibold text-lg text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors"
-                                >
-                                    No
-                                </button>
-                                <button
-                                    onClick={handleConfirm}
-                                    disabled={isPending}
-                                    className={`flex-1 py-4 px-5 rounded-xl font-semibold text-lg text-white transition-colors flex items-center justify-center gap-2 ${mode === 'withdraw'
-                                        ? 'bg-amber-500 hover:bg-amber-600'
-                                        : 'bg-teal-500 hover:bg-teal-600'
-                                        }`}
-                                >
-                                    {isPending ? (
-                                        <RefreshCw className="animate-spin w-5 h-5" />
-                                    ) : (
-                                        'Yes'
-                                    )}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </>
-            )}
-        </div>
+        </>
     );
 }

@@ -11,6 +11,7 @@ import {
 import { Card, Button, Badge, Select } from '../components/ui';
 import CreateLocationModal from '../components/modals/CreateLocationModal';
 import EditLocationModal from '../components/modals/EditLocationModal';
+import ConfirmationModal from '../components/modals/ConfirmationModal';
 import { useLocations, useZones, useDeleteLocation } from '../hooks/useData';
 
 interface Location {
@@ -36,6 +37,8 @@ const TYPE_COLORS: Record<string, string> = {
 export default function LocationsPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
+  const [deletingLocation, setDeletingLocation] = useState<Location | null>(null);
+  const [deleteError, setDeleteError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('');
   const [zoneFilter, setZoneFilter] = useState<string>('');
@@ -47,13 +50,21 @@ export default function LocationsPage() {
   // Mutations
   const deleteMutation = useDeleteLocation();
 
-  const handleDelete = async (location: Location) => {
-    if (window.confirm(`Are you sure you want to delete "${location.name}"?\n\nThis cannot be undone.`)) {
-      try {
-        await deleteMutation.mutateAsync(location.id);
-      } catch (err: any) {
-        alert(err.response?.data?.detail || 'Failed to delete location');
-      }
+  const handleDeleteClick = (location: Location) => {
+    setDeleteError('');
+    setDeletingLocation(location);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deletingLocation) return;
+
+    try {
+      await deleteMutation.mutateAsync(deletingLocation.id);
+      setDeletingLocation(null);
+    } catch (err: any) {
+      setDeleteError(err.response?.data?.detail || 'Failed to delete location');
+      setDeletingLocation(null);
+      alert(err.response?.data?.detail || 'Failed to delete location');
     }
   };
 
@@ -188,7 +199,7 @@ export default function LocationsPage() {
                     <Edit2 className="w-4 h-4" />
                   </button>
                   <button
-                    onClick={() => handleDelete(loc)}
+                    onClick={() => handleDeleteClick(loc)}
                     className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                     title="Delete"
                     disabled={deleteMutation.isPending}
@@ -225,6 +236,18 @@ export default function LocationsPage() {
         onClose={() => setEditingLocation(null)}
         onSuccess={handleSuccess}
         location={editingLocation}
+      />
+
+      <ConfirmationModal
+        isOpen={!!deletingLocation}
+        onClose={() => setDeletingLocation(null)}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Location"
+        message={`Are you sure you want to delete "${deletingLocation?.name}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
+        isLoading={deleteMutation.isPending}
       />
     </div>
   );
