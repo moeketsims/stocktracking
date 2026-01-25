@@ -9,8 +9,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Expose port
+# Expose port (Heroku uses dynamic PORT)
 EXPOSE 3001
 
-# Run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "3001"]
+# Run the application - use shell form to expand $PORT variable
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-3001}

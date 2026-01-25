@@ -1,0 +1,5 @@
+build:
+  docker:
+    web:
+      dockerfile: web-platform/backend-python/Dockerfile
+      context: web-platform/backend-python
