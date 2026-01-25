@@ -21,11 +21,14 @@ import {
   Truck,
   ClipboardList,
   ArrowDownToLine,
+  Mail,
+  Bell,
+  User,
 } from 'lucide-react';
 import { Button } from '../components/ui';
 import { useStockByLocation } from '../hooks/useData';
 import { useAuthStore } from '../stores/authStore';
-import { pendingDeliveriesApi, tripsApi, stockRequestsApi } from '../lib/api';
+import { pendingDeliveriesApi, tripsApi, stockRequestsApi, alertsApi, usersApi } from '../lib/api';
 import IssueModal from '../components/modals/IssueModal';
 import TransferModal from '../components/modals/TransferModal';
 import WasteModal from '../components/modals/WasteModal';
@@ -709,6 +712,9 @@ function DetailsDrawer({
   isManager: boolean;
   isDriver: boolean;
 }) {
+  const { user } = useAuthStore();
+  const isAdmin = user?.role === 'admin';
+
   // Fetch driver's deliveries to this location
   const { data: myDeliveriesData, isLoading: isLoadingDeliveries } = useQuery({
     queryKey: ['my-deliveries', location?.location_id],
@@ -716,11 +722,44 @@ function DetailsDrawer({
     enabled: isDriver && !!location?.location_id,
   });
 
-  // Fetch pending requests for this location
+  // Fetch pending requests for this location (for driver view)
   const { data: pendingRequestsData, isLoading: isLoadingRequests } = useQuery({
     queryKey: ['stock-requests', 'location', location?.location_id],
     queryFn: () => stockRequestsApi.list({ location_id: location!.location_id, status: 'pending' }).then(r => r.data),
     enabled: isDriver && !!location?.location_id,
+  });
+
+  // Admin-specific data fetching
+  // Fetch alerts for this specific location
+  const { data: locationAlertsData, isLoading: isLoadingAlerts } = useQuery({
+    queryKey: ['alerts', 'location', location?.location_id],
+    queryFn: () => alertsApi.getAll(location!.location_id).then(r => r.data),
+    enabled: isAdmin && !!location?.location_id,
+  });
+
+  // Fetch pending deliveries for this location
+  const { data: locationDeliveriesData, isLoading: isLoadingLocationDeliveries } = useQuery({
+    queryKey: ['pending-deliveries', 'location', location?.location_id],
+    queryFn: () => pendingDeliveriesApi.getPending(location!.location_id, 5).then(r => r.data),
+    enabled: isAdmin && !!location?.location_id,
+  });
+
+  // Fetch open stock requests for this location
+  const { data: locationRequestsData, isLoading: isLoadingLocationRequests } = useQuery({
+    queryKey: ['stock-requests', 'location-admin', location?.location_id],
+    queryFn: () => stockRequestsApi.list({ location_id: location!.location_id, status: 'pending', limit: 5 }).then(r => r.data),
+    enabled: isAdmin && !!location?.location_id,
+  });
+
+  // Fetch manager for this location
+  const { data: locationManagerData, isLoading: isLoadingManager } = useQuery({
+    queryKey: ['location-manager', location?.location_id],
+    queryFn: () => usersApi.list({ role: 'location_manager' }).then(r => {
+      // Filter to find the manager assigned to this location
+      const manager = r.data.users?.find((u: any) => u.location_id === location!.location_id);
+      return manager || null;
+    }),
+    enabled: isAdmin && !!location?.location_id,
   });
 
   if (!location) return null;
@@ -914,9 +953,199 @@ function DetailsDrawer({
                 )}
               </div>
             </>
+          ) : isAdmin ? (
+            <>
+              {/* Admin View - Monitoring Only (No Quick Actions) */}
+
+              {/* Alerts Section */}
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Bell className="w-4 h-4 text-amber-500" />
+                  <h3 className="text-sm font-medium text-gray-700">Alerts</h3>
+                  {(locationAlertsData?.active_alerts || []).length > 0 && (
+                    <span className="ml-auto px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-medium rounded-full">
+                      {locationAlertsData.active_alerts.length}
+                    </span>
+                  )}
+                </div>
+                {isLoadingAlerts ? (
+                  <div className="animate-pulse space-y-2">
+                    <div className="h-16 bg-gray-100 rounded-xl" />
+                  </div>
+                ) : (locationAlertsData?.active_alerts || []).length > 0 ? (
+                  <div className="space-y-2">
+                    {locationAlertsData.active_alerts.slice(0, 5).map((alert: any) => {
+                      const alertDate = new Date(alert.created_at);
+                      const formattedDate = alertDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                      const formattedTime = alertDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                      return (
+                        <div
+                          key={alert.id}
+                          className={`p-3 rounded-xl border ${
+                            alert.severity === 'error' ? 'bg-red-50 border-red-100' :
+                            alert.severity === 'warning' ? 'bg-amber-50 border-amber-100' :
+                            'bg-blue-50 border-blue-100'
+                          }`}
+                        >
+                          <div className="flex items-start gap-2">
+                            <AlertTriangle className={`w-4 h-4 mt-0.5 flex-shrink-0 ${
+                              alert.severity === 'error' ? 'text-red-500' :
+                              alert.severity === 'warning' ? 'text-amber-500' :
+                              'text-blue-500'
+                            }`} />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-900">{alert.title}</p>
+                              <p className="text-xs text-gray-500 mt-0.5">
+                                Since {formattedDate}, {formattedTime}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-6 bg-gray-50 rounded-xl">
+                    <Bell className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                    <p className="text-sm text-gray-400">No active alerts</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Pending Deliveries Section */}
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Truck className="w-4 h-4 text-orange-500" />
+                  <h3 className="text-sm font-medium text-gray-700">Pending Deliveries</h3>
+                </div>
+                {isLoadingLocationDeliveries ? (
+                  <div className="animate-pulse space-y-2">
+                    <div className="h-16 bg-gray-100 rounded-xl" />
+                  </div>
+                ) : (locationDeliveriesData?.deliveries || []).length > 0 ? (
+                  <div className="space-y-2">
+                    {locationDeliveriesData.deliveries.slice(0, 3).map((delivery: any) => (
+                      <div key={delivery.id} className="p-3 bg-orange-50 border border-orange-100 rounded-xl">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-medium text-gray-900">
+                            Trip #{delivery.trip?.trip_number || 'Unknown'}
+                          </span>
+                          <span className="text-sm font-semibold text-orange-600">
+                            {delivery.driver_claimed_bags || Math.round(delivery.driver_claimed_qty_kg / 10)} bags
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          From: {delivery.supplier?.name || 'Unknown supplier'}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-6 bg-gray-50 rounded-xl">
+                    <Truck className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                    <p className="text-sm text-gray-400">No pending deliveries</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Open Stock Requests Section */}
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <ClipboardList className="w-4 h-4 text-violet-500" />
+                  <h3 className="text-sm font-medium text-gray-700">Open Stock Requests</h3>
+                </div>
+                {isLoadingLocationRequests ? (
+                  <div className="animate-pulse space-y-2">
+                    <div className="h-16 bg-gray-100 rounded-xl" />
+                  </div>
+                ) : (locationRequestsData?.requests || []).length > 0 ? (
+                  <div className="space-y-2">
+                    {locationRequestsData.requests.slice(0, 3).map((request: any) => (
+                      <div key={request.id} className="p-3 bg-violet-50 border border-violet-100 rounded-xl">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-medium text-gray-900">
+                            {request.quantity_bags} bags requested
+                          </span>
+                          <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
+                            request.urgency === 'urgent' ? 'bg-red-100 text-red-700' :
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {request.urgency || 'normal'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          Requested {getRelativeTime(request.created_at)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-6 bg-gray-50 rounded-xl">
+                    <ClipboardList className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                    <p className="text-sm text-gray-400">No open requests</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Recent Activity */}
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Activity className="w-4 h-4 text-gray-400" />
+                  <h3 className="text-sm font-medium text-gray-700">Recent Activity</h3>
+                </div>
+                {location.recent_activity.length > 0 ? (
+                  <div className="space-y-2">
+                    {location.recent_activity.map((activity) => (
+                      <ActivityItem key={activity.id} activity={activity} />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 bg-gray-50 rounded-xl">
+                    <Activity className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                    <p className="text-sm text-gray-400">No recent activity</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Manager Contact */}
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <User className="w-4 h-4 text-gray-400" />
+                  <h3 className="text-sm font-medium text-gray-700">Manager Contact</h3>
+                </div>
+                {isLoadingManager ? (
+                  <div className="animate-pulse">
+                    <div className="h-12 bg-gray-100 rounded-xl" />
+                  </div>
+                ) : locationManagerData ? (
+                  <div className="p-3 bg-gray-50 border border-gray-100 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
+                        <User className="w-5 h-5 text-gray-500" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900">
+                          {locationManagerData.full_name || 'Manager'}
+                        </p>
+                        <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                          <Mail className="w-3 h-3" />
+                          <span className="truncate">{locationManagerData.email}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-6 bg-gray-50 rounded-xl">
+                    <User className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                    <p className="text-sm text-gray-400">No manager assigned</p>
+                  </div>
+                )}
+              </div>
+            </>
           ) : (
             <>
-              {/* Quick Actions - Non-driver view */}
+              {/* Non-Admin, Non-Driver View - Quick Actions */}
               <div>
                 <h3 className="text-sm font-medium text-gray-700 mb-3">Quick Actions</h3>
                 <div className="grid grid-cols-2 gap-3">
