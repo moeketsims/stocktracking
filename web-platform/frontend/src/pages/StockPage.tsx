@@ -744,11 +744,18 @@ function DetailsDrawer({
     enabled: isAdmin && !!location?.location_id,
   });
 
-  // Fetch open stock requests for this location
+  // Fetch open stock requests for this location (shop view)
   const { data: locationRequestsData, isLoading: isLoadingLocationRequests } = useQuery({
     queryKey: ['stock-requests', 'location-admin', location?.location_id],
     queryFn: () => stockRequestsApi.list({ location_id: location!.location_id, status: 'pending', limit: 5 }).then(r => r.data),
-    enabled: isAdmin && !!location?.location_id,
+    enabled: isAdmin && !!location?.location_id && location?.location_type !== 'warehouse',
+  });
+
+  // Fetch ALL pending shop requests (warehouse view - to see what shops need)
+  const { data: allPendingRequestsData, isLoading: isLoadingAllRequests } = useQuery({
+    queryKey: ['stock-requests', 'all-pending'],
+    queryFn: () => stockRequestsApi.getAvailable(10).then(r => r.data),
+    enabled: isAdmin && !!location?.location_id && location?.location_type === 'warehouse',
   });
 
   // Fetch manager for this location
@@ -957,7 +964,7 @@ function DetailsDrawer({
             <>
               {/* Admin View - Monitoring Only (No Quick Actions) */}
 
-              {/* Alerts Section */}
+              {/* Alerts Section - Common for both warehouse and shop */}
               <div>
                 <div className="flex items-center gap-2 mb-3">
                   <Bell className="w-4 h-4 text-amber-500" />
@@ -1013,11 +1020,62 @@ function DetailsDrawer({
                 )}
               </div>
 
-              {/* Pending Deliveries Section */}
+              {/* WAREHOUSE-SPECIFIC: Pending Shop Requests (all shops needing stock) */}
+              {location.location_type === 'warehouse' && (
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <ClipboardList className="w-4 h-4 text-violet-500" />
+                    <h3 className="text-sm font-medium text-gray-700">Pending Shop Requests</h3>
+                    {(allPendingRequestsData?.requests || []).length > 0 && (
+                      <span className="ml-auto px-2 py-0.5 bg-violet-100 text-violet-700 text-xs font-medium rounded-full">
+                        {allPendingRequestsData.requests.length} shops
+                      </span>
+                    )}
+                  </div>
+                  {isLoadingAllRequests ? (
+                    <div className="animate-pulse space-y-2">
+                      <div className="h-16 bg-gray-100 rounded-xl" />
+                    </div>
+                  ) : (allPendingRequestsData?.requests || []).length > 0 ? (
+                    <div className="space-y-2">
+                      {allPendingRequestsData.requests.slice(0, 5).map((request: any) => (
+                        <div key={request.id} className="p-3 bg-violet-50 border border-violet-100 rounded-xl">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-sm font-medium text-gray-900">
+                              {request.location?.name || 'Unknown shop'}
+                            </span>
+                            <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
+                              request.urgency === 'urgent' ? 'bg-red-100 text-red-700' :
+                              'bg-gray-100 text-gray-700'
+                            }`}>
+                              {request.urgency || 'normal'}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs text-gray-500">
+                              {getRelativeTime(request.created_at)}
+                            </p>
+                            <span className="text-sm font-semibold text-violet-600">
+                              {request.quantity_bags} bags
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-6 bg-gray-50 rounded-xl">
+                      <ClipboardList className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                      <p className="text-sm text-gray-400">No pending shop requests</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Incoming Deliveries - Common for both (from suppliers) */}
               <div>
                 <div className="flex items-center gap-2 mb-3">
                   <Truck className="w-4 h-4 text-orange-500" />
-                  <h3 className="text-sm font-medium text-gray-700">Pending Deliveries</h3>
+                  <h3 className="text-sm font-medium text-gray-700">Incoming Deliveries</h3>
                 </div>
                 {isLoadingLocationDeliveries ? (
                   <div className="animate-pulse space-y-2">
@@ -1044,51 +1102,53 @@ function DetailsDrawer({
                 ) : (
                   <div className="text-center py-6 bg-gray-50 rounded-xl">
                     <Truck className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                    <p className="text-sm text-gray-400">No pending deliveries</p>
+                    <p className="text-sm text-gray-400">No incoming deliveries</p>
                   </div>
                 )}
               </div>
 
-              {/* Open Stock Requests Section */}
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <ClipboardList className="w-4 h-4 text-violet-500" />
-                  <h3 className="text-sm font-medium text-gray-700">Open Stock Requests</h3>
-                </div>
-                {isLoadingLocationRequests ? (
-                  <div className="animate-pulse space-y-2">
-                    <div className="h-16 bg-gray-100 rounded-xl" />
+              {/* SHOP-SPECIFIC: Open Stock Requests (this shop's requests) */}
+              {location.location_type !== 'warehouse' && (
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <ClipboardList className="w-4 h-4 text-violet-500" />
+                    <h3 className="text-sm font-medium text-gray-700">Open Stock Requests</h3>
                   </div>
-                ) : (locationRequestsData?.requests || []).length > 0 ? (
-                  <div className="space-y-2">
-                    {locationRequestsData.requests.slice(0, 3).map((request: any) => (
-                      <div key={request.id} className="p-3 bg-violet-50 border border-violet-100 rounded-xl">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-sm font-medium text-gray-900">
-                            {request.quantity_bags} bags requested
-                          </span>
-                          <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
-                            request.urgency === 'urgent' ? 'bg-red-100 text-red-700' :
-                            'bg-gray-100 text-gray-700'
-                          }`}>
-                            {request.urgency || 'normal'}
-                          </span>
+                  {isLoadingLocationRequests ? (
+                    <div className="animate-pulse space-y-2">
+                      <div className="h-16 bg-gray-100 rounded-xl" />
+                    </div>
+                  ) : (locationRequestsData?.requests || []).length > 0 ? (
+                    <div className="space-y-2">
+                      {locationRequestsData.requests.slice(0, 3).map((request: any) => (
+                        <div key={request.id} className="p-3 bg-violet-50 border border-violet-100 rounded-xl">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-sm font-medium text-gray-900">
+                              {request.quantity_bags} bags requested
+                            </span>
+                            <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
+                              request.urgency === 'urgent' ? 'bg-red-100 text-red-700' :
+                              'bg-gray-100 text-gray-700'
+                            }`}>
+                              {request.urgency || 'normal'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500">
+                            Requested {getRelativeTime(request.created_at)}
+                          </p>
                         </div>
-                        <p className="text-xs text-gray-500">
-                          Requested {getRelativeTime(request.created_at)}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-6 bg-gray-50 rounded-xl">
-                    <ClipboardList className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                    <p className="text-sm text-gray-400">No open requests</p>
-                  </div>
-                )}
-              </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-6 bg-gray-50 rounded-xl">
+                      <ClipboardList className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                      <p className="text-sm text-gray-400">No open requests</p>
+                    </div>
+                  )}
+                </div>
+              )}
 
-              {/* Recent Activity */}
+              {/* Recent Activity - Common for both */}
               <div>
                 <div className="flex items-center gap-2 mb-3">
                   <Activity className="w-4 h-4 text-gray-400" />
@@ -1108,7 +1168,7 @@ function DetailsDrawer({
                 )}
               </div>
 
-              {/* Manager Contact */}
+              {/* Manager Contact - Common for both */}
               <div>
                 <div className="flex items-center gap-2 mb-3">
                   <User className="w-4 h-4 text-gray-400" />
