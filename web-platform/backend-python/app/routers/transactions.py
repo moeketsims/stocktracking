@@ -28,6 +28,8 @@ async def get_transactions(
         # Get effective location for viewing (location_manager can view other shops)
         location_id = get_view_location_id(profile.data, view_location_id) if profile.data else None
 
+        print(f"[TRANSACTIONS] Fetching transactions for user {user.id}, location_id={location_id}, view_location_id={view_location_id}, type_filter={type_filter}")
+
         # Build base query
         select_fields = "*, items(name), profiles!stock_transactions_created_by_fkey(full_name)"
 
@@ -52,6 +54,8 @@ async def get_transactions(
             for t in (result_to.data or []):
                 combined[t["id"]] = t
             all_data = list(combined.values())
+
+            print(f"[TRANSACTIONS] Found {len(result_from.data or [])} from-transactions, {len(result_to.data or [])} to-transactions, {len(all_data)} total unique")
 
             # Sort by created_at descending
             all_data.sort(key=lambda x: x.get("created_at", ""), reverse=True)

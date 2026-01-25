@@ -1,7 +1,7 @@
 // Enums
 export type UserRole = 'admin' | 'zone_manager' | 'location_manager' | 'driver' | 'staff';
 export type LocationType = 'shop' | 'warehouse';
-export type TransactionType = 'receive' | 'issue' | 'transfer' | 'waste' | 'adjustment';
+export type TransactionType = 'receive' | 'issue' | 'return' | 'transfer' | 'waste' | 'adjustment';
 export type NotificationType = 'bag_used' | 'threshold_alert' | 'daily_summary';
 export type QualityScore = 1 | 2 | 3;
 export type WasteReason = 'spoiled' | 'damaged' | 'trim_prep_loss' | 'contaminated' | 'other';

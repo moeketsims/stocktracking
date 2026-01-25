@@ -224,7 +224,7 @@ async def acknowledge_alert(request: AcknowledgeAlertRequest, user_data: dict = 
             "acknowledged_at": datetime.now().isoformat()
         }
 
-        supabase.table("alert_acknowledgments").insert(ack_data)
+        supabase.table("alert_acknowledgments").insert(ack_data).execute()
 
         return {"success": True, "message": "Alert acknowledged"}
 

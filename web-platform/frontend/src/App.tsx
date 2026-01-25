@@ -12,8 +12,10 @@ import {
   ClipboardList,
   PackageCheck,
   UtensilsCrossed,
+  LogOut,
 } from 'lucide-react';
 import { useAuthStore } from './stores/authStore';
+import { useLogout } from './hooks/useAuth';
 import { useNotifications, useAlerts, usePendingDeliveriesCount } from './hooks/useData';
 import {
   LoginPage,
@@ -53,15 +55,22 @@ type TabId =
   | 'settings';
 
 function App() {
-  const { isAuthenticated, isManager } = useAuthStore();
+  const { isAuthenticated, isManager, user } = useAuthStore();
+  const logoutMutation = useLogout();
   const [activeTab, setActiveTab] = useState<TabId>('stock');
   const [publicPage, setPublicPage] = useState<PublicPage>('login');
   const [inviteToken, setInviteToken] = useState<string>('');
   const [resetToken, setResetToken] = useState<string>('');
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [pendingTripRequest, setPendingTripRequest] = useState<string | null>(null);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const { data: notificationsData } = useNotifications();
   const { data: pendingDeliveriesCount = 0 } = usePendingDeliveriesCount();
+
+  const handleLogout = async () => {
+    await logoutMutation.mutateAsync();
+    setShowLogoutConfirm(false);
+  };
 
   // Navigate to trips page with specific trip selected
   const handleNavigateToTrip = (tripId: string) => {
@@ -282,9 +291,54 @@ function App() {
           ))}
         </nav>
 
-        {/* Version */}
+        {/* User Profile & Sign Out */}
         <div className="p-4 border-t border-indigo-900">
-          <p className="text-xs text-indigo-400 text-center">v1.0.0</p>
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-9 h-9 bg-orange-500 rounded-full flex items-center justify-center flex-shrink-0">
+              <span className="text-sm font-semibold text-white">
+                {user?.full_name?.[0]?.toUpperCase() || 'U'}
+              </span>
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-white truncate">
+                {user?.full_name || 'User'}
+              </p>
+              <p className="text-xs text-indigo-300 capitalize">
+                {user?.role?.replace('_', ' ') || 'Staff'}
+              </p>
+            </div>
+          </div>
+
+          {showLogoutConfirm ? (
+            <div className="space-y-2">
+              <p className="text-xs text-indigo-200 text-center">Sign out?</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowLogoutConfirm(false)}
+                  className="flex-1 px-3 py-1.5 text-xs font-medium text-indigo-200 bg-indigo-900 hover:bg-indigo-800 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleLogout}
+                  disabled={logoutMutation.isPending}
+                  className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {logoutMutation.isPending ? 'Signing out...' : 'Sign Out'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowLogoutConfirm(true)}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-indigo-200 hover:text-white hover:bg-indigo-900 rounded-lg transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+              Sign Out
+            </button>
+          )}
+
+          <p className="text-xs text-indigo-500 text-center mt-3">v1.0.0</p>
         </div>
       </aside>
 

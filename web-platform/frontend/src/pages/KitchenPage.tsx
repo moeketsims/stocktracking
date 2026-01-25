@@ -127,10 +127,16 @@ export default function KitchenPage() {
     // Fetch transaction history (withdrawals and returns)
     const { data: transactionsData, refetch: refetchTransactions } = useQuery({
         queryKey: ['transactions', 'kitchen', user?.location_id],
-        queryFn: () => transactionsApi.getAll({
-            view_location_id: user?.location_id,
-            limit: 50
-        }).then(r => r.data),
+        queryFn: async () => {
+            console.log('[KitchenPage] Fetching transactions for location:', user?.location_id);
+            const response = await transactionsApi.getAll({
+                view_location_id: user?.location_id,
+                limit: 50
+            });
+            console.log('[KitchenPage] Full API response:', response);
+            console.log('[KitchenPage] Response data:', response.data);
+            return response.data;
+        },
         enabled: !!user?.location_id,
         staleTime: 0, // Always refetch when invalidated
     });
@@ -140,9 +146,13 @@ export default function KitchenPage() {
 
     // Filter for issue (withdraw) and return transactions only
     const allTransactions = transactionsData?.transactions || [];
+    console.log('[KitchenPage] transactionsData:', transactionsData);
+    console.log('[KitchenPage] allTransactions:', allTransactions);
+    console.log('[KitchenPage] user location_id:', user?.location_id);
     const kitchenTransactions = allTransactions.filter(
         (t: any) => t.type === 'issue' || t.type === 'return'
     );
+    console.log('[KitchenPage] kitchenTransactions (filtered):', kitchenTransactions);
 
     // Count totals
     const withdrawCount = kitchenTransactions.filter((t: any) => t.type === 'issue').length;
@@ -150,25 +160,32 @@ export default function KitchenPage() {
 
     // Withdraw mutation (existing consume logic)
     const withdrawMutation = useMutation({
-        mutationFn: (qty: number) => {
+        mutationFn: async (qty: number) => {
             const itemId = potatoStock?.item_id || potatoItem?.id;
+            console.log('[KitchenPage] WITHDRAW - Starting withdrawal of', qty, 'bags');
+            console.log('[KitchenPage] WITHDRAW - Item ID:', itemId);
             if (!itemId) throw new Error("Potato item not found in system");
 
-            return stockApi.issue({
+            const response = await stockApi.issue({
                 quantity: qty,
                 unit: 'bag',
                 notes: 'Kitchen consumption',
                 item_id: itemId
             });
+            console.log('[KitchenPage] WITHDRAW - API Response:', response.data);
+            return response;
         },
-        onSuccess: (_data, qty) => {
+        onSuccess: async (_data, qty) => {
             // Immediately adjust local stock (subtract bags * 10kg)
             setStockAdjustmentKg(prev => prev - (qty * 10));
 
-            queryClient.invalidateQueries({ queryKey: ['stock'] });
-            queryClient.invalidateQueries({ queryKey: ['transactions'] });
-            refetch();
-            refetchTransactions();
+            // Invalidate and refetch all related queries
+            await queryClient.invalidateQueries({ queryKey: ['stock'] });
+            await queryClient.invalidateQueries({ queryKey: ['transactions', 'kitchen'] });
+
+            // Force refetch transactions to update counts
+            await refetchTransactions();
+
             setLastAction(`Withdrew ${qty} bag${qty > 1 ? 's' : ''} from stock`);
             setErrorMessage(null);
             setQuantity(1);
@@ -195,14 +212,17 @@ export default function KitchenPage() {
                 item_id: itemId
             });
         },
-        onSuccess: (_data, qty) => {
+        onSuccess: async (_data, qty) => {
             // Immediately adjust local stock (add bags * 10kg)
             setStockAdjustmentKg(prev => prev + (qty * 10));
 
-            queryClient.invalidateQueries({ queryKey: ['stock'] });
-            queryClient.invalidateQueries({ queryKey: ['transactions'] });
-            refetch();
-            refetchTransactions();
+            // Invalidate and refetch all related queries
+            await queryClient.invalidateQueries({ queryKey: ['stock'] });
+            await queryClient.invalidateQueries({ queryKey: ['transactions', 'kitchen'] });
+
+            // Force refetch transactions to update counts
+            await refetchTransactions();
+
             setLastAction(`Returned ${qty} bag${qty > 1 ? 's' : ''} to stock`);
             setErrorMessage(null);
             setQuantity(1);
@@ -659,7 +679,7 @@ export default function KitchenPage() {
                                     ) : (
                                         kitchenTransactions.map((t: any) => {
                                             const isWithdraw = t.type === 'issue';
-                                            const bags = Math.round(t.qty / 10);
+                                            const bags = Math.round(t.quantity / 10);
                                             const date = new Date(t.created_at);
                                             const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                                             const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });

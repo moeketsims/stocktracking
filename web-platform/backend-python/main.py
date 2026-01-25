@@ -77,6 +77,18 @@ async def health_check():
     return {"status": "ok", "service": "potato-stock-api"}
 
 
+# Debug endpoint to check transactions
+@app.get("/debug/transactions", tags=["Debug"])
+async def debug_all_transactions():
+    """Debug: Get all transactions without auth."""
+    from app.config import get_supabase_admin_client
+    print("[DEBUG] Checking all transactions in database", flush=True)
+    supabase = get_supabase_admin_client()
+    result = supabase.table("stock_transactions").select("id, type, location_id_from, location_id_to, qty, created_at").order("created_at", desc=True).limit(20).execute()
+    print(f"[DEBUG] Found {len(result.data or [])} transactions", flush=True)
+    return {"count": len(result.data or []), "transactions": result.data}
+
+
 # Include routers
 app.include_router(auth_router, prefix="/api")
 app.include_router(dashboard_router, prefix="/api")

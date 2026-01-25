@@ -453,8 +453,13 @@ async def receive_stock(request: ReceiveStockRequest, user_data: dict = Depends(
 @router.post("/issue")
 async def issue_stock(request: IssueStockRequest, user_data: dict = Depends(require_auth)):
     """Issue stock - deducts from batch using FIFO automatically."""
+    # Debug logging to file
+    with open("C:/Users/Moeketsi/Desktop/debug_log.txt", "a") as f:
+        f.write(f"\n[ISSUE] ===== WITHDRAWAL REQUEST =====\n")
     supabase = get_supabase_admin_client()
     user = user_data["user"]
+    with open("C:/Users/Moeketsi/Desktop/debug_log.txt", "a") as f:
+        f.write(f"[ISSUE] User ID: {user.id}\n")
 
     try:
         # Get user profile
@@ -466,6 +471,8 @@ async def issue_stock(request: IssueStockRequest, user_data: dict = Depends(requ
             raise HTTPException(status_code=400, detail="User profile not found")
 
         location_id = profile.data.get("location_id")
+        with open("C:/Users/Moeketsi/Desktop/debug_log.txt", "a") as f:
+            f.write(f"[ISSUE] Profile location_id from DB: {location_id}\n")
         if not location_id:
             raise HTTPException(status_code=400, detail="User has no assigned location")
 
@@ -539,6 +546,7 @@ async def issue_stock(request: IssueStockRequest, user_data: dict = Depends(requ
         }
 
         transaction = supabase.table("stock_transactions").insert(transaction_data).execute()
+        print(f"[ISSUE] Created transaction: id={transaction.data[0]['id'] if transaction.data else 'NONE'}, location_id_from={location_id}, type=issue")
 
         return {
             "success": True,
@@ -762,6 +770,7 @@ async def return_stock(request: IssueStockRequest, user_data: dict = Depends(req
         }
 
         transaction = supabase.table("stock_transactions").insert(transaction_data).execute()
+        print(f"[RETURN] Created transaction: id={transaction.data[0]['id'] if transaction.data else 'NONE'}, location_id_to={location_id}, type=return")
 
         return {
             "success": True,
