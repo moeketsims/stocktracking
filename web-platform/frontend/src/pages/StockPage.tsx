@@ -400,8 +400,8 @@ export default function StockPage() {
           )}
         </div>
 
-        {/* CTAs - Request Stock button only for managers (not admin, driver, or staff) */}
-        {isManager() && (
+        {/* CTAs - Request Stock button only for zone/location managers (not admin, driver, or staff) */}
+        {(user?.role === 'zone_manager' || user?.role === 'location_manager') && (
           <div className="flex items-center gap-2 shrink-0">
             <Button
               onClick={() => setShowRequestModal(true)}
