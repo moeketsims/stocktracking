@@ -77,6 +77,7 @@ export function useStockByLocation() {
       const response = await stockApi.getByLocation();
       return response.data;
     },
+    staleTime: 0,  // Always refetch for fresh data
   });
 }
 

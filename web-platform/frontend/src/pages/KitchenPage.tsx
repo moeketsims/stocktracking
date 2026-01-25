@@ -87,10 +87,6 @@ export default function KitchenPage() {
     const [quantity, setQuantity] = useState<number>(1);
     const [showCustomInput, setShowCustomInput] = useState(false);
 
-    // Local adjustment to track stock changes immediately (in kg)
-    // This ensures the UI updates instantly without waiting for DB view refresh
-    const [stockAdjustmentKg, setStockAdjustmentKg] = useState(0);
-
     // Confirmation modal state
     const [showConfirmModal, setShowConfirmModal] = useState(false);
 
@@ -99,6 +95,7 @@ export default function KitchenPage() {
         queryKey: ['stock', 'balance', user?.location_id],
         queryFn: () => stockApi.getBalance(user?.location_id).then(r => r.data),
         enabled: !!user?.location_id,
+        staleTime: 0, // Always refetch for fresh data
     });
 
     // Fetch items to find Potatoes if balance is zero
@@ -124,14 +121,15 @@ export default function KitchenPage() {
         enabled: !!user?.location_id,
     });
 
-    // Fetch transaction history (withdrawals and returns)
+    // Fetch transaction history (withdrawals and returns) - today only for consistency
     const { data: transactionsData, refetch: refetchTransactions } = useQuery({
-        queryKey: ['transactions', 'kitchen', user?.location_id],
+        queryKey: ['transactions', 'kitchen', user?.location_id, 'today'],
         queryFn: async () => {
-            console.log('[KitchenPage] Fetching transactions for location:', user?.location_id);
+            console.log('[KitchenPage] Fetching today\'s transactions for location:', user?.location_id);
             const response = await transactionsApi.getAll({
                 view_location_id: user?.location_id,
-                limit: 50
+                limit: 100,
+                days: 1  // Only today's transactions
             });
             console.log('[KitchenPage] Full API response:', response);
             console.log('[KitchenPage] Response data:', response.data);
@@ -154,9 +152,9 @@ export default function KitchenPage() {
     );
     console.log('[KitchenPage] kitchenTransactions (filtered):', kitchenTransactions);
 
-    // Count totals
-    const withdrawCount = kitchenTransactions.filter((t: any) => t.type === 'issue').length;
-    const returnCount = kitchenTransactions.filter((t: any) => t.type === 'return').length;
+    // Get counts from API response (accurate counts, not limited by pagination)
+    const withdrawCount = transactionsData?.issue_count ?? kitchenTransactions.filter((t: any) => t.type === 'issue').length;
+    const returnCount = transactionsData?.return_count ?? kitchenTransactions.filter((t: any) => t.type === 'return').length;
 
     // Withdraw mutation (existing consume logic)
     const withdrawMutation = useMutation({
@@ -175,15 +173,24 @@ export default function KitchenPage() {
             console.log('[KitchenPage] WITHDRAW - API Response:', response.data);
             return response;
         },
-        onSuccess: async (_data, qty) => {
-            // Immediately adjust local stock (subtract bags * 10kg)
-            setStockAdjustmentKg(prev => prev - (qty * 10));
+        onSuccess: async (response, qty) => {
+            console.log('[KitchenPage] WITHDRAW SUCCESS - Full response:', response.data);
+            if (response.data?.debug) {
+                console.log('[KitchenPage] WITHDRAW DEBUG - Backend says new total:', response.data.debug.new_total_bags, 'bags');
+            }
 
-            // Invalidate and refetch all related queries
+            // Invalidate and refetch all related queries (including stock-by-location for Stock page)
             await queryClient.invalidateQueries({ queryKey: ['stock'] });
-            await queryClient.invalidateQueries({ queryKey: ['transactions', 'kitchen'] });
+            await queryClient.invalidateQueries({ queryKey: ['stock-by-location'] });
+            await queryClient.invalidateQueries({ queryKey: ['transactions'] });
 
-            // Force refetch transactions to update counts
+            // Force refetch to get updated stock
+            const refetchResult = await refetch();
+            console.log('[KitchenPage] WITHDRAW - Refetch result:', refetchResult.data);
+            if (refetchResult.data?.batch_totals) {
+                const totalKg = refetchResult.data.batch_totals.reduce((sum: number, b: any) => sum + (b.on_hand_qty || 0), 0);
+                console.log('[KitchenPage] WITHDRAW - New total from refetch:', totalKg, 'kg =', Math.floor(totalKg / 10), 'bags');
+            }
             await refetchTransactions();
 
             setLastAction(`Withdrew ${qty} bag${qty > 1 ? 's' : ''} from stock`);
@@ -213,14 +220,13 @@ export default function KitchenPage() {
             });
         },
         onSuccess: async (_data, qty) => {
-            // Immediately adjust local stock (add bags * 10kg)
-            setStockAdjustmentKg(prev => prev + (qty * 10));
-
-            // Invalidate and refetch all related queries
+            // Invalidate and refetch all related queries (including stock-by-location for Stock page)
             await queryClient.invalidateQueries({ queryKey: ['stock'] });
-            await queryClient.invalidateQueries({ queryKey: ['transactions', 'kitchen'] });
+            await queryClient.invalidateQueries({ queryKey: ['stock-by-location'] });
+            await queryClient.invalidateQueries({ queryKey: ['transactions'] });
 
-            // Force refetch transactions to update counts
+            // Force refetch to get updated stock
+            await refetch();
             await refetchTransactions();
 
             setLastAction(`Returned ${qty} bag${qty > 1 ? 's' : ''} to stock`);
@@ -277,16 +283,20 @@ export default function KitchenPage() {
     const batchData = stockData?.batch_totals || [];
     const balanceData = stockData?.balance || [];
 
-    // Use batch_totals first as it's more accurate after updates
+    // Sum ALL items at this location to match Stock page
+    // This ensures consistency between Kitchen and Stock views
+    const totalKg = batchData.reduce((sum: number, b: any) => sum + (b.on_hand_qty || 0), 0);
+
+    // Get first potato item for reference (used for item_id in mutations)
     const potatoStock = batchData.find((b: any) => b.item_name?.toLowerCase().includes('potato')) ||
         batchData[0] ||
         balanceData.find((b: any) => b.item_name?.toLowerCase().includes('potato')) ||
         balanceData[0];
 
-    // Apply local adjustment to get accurate current stock
-    // This ensures immediate UI updates after withdraw/return operations
-    const baseKg = potatoStock?.on_hand_qty || 0;
-    const currentKg = baseKg + stockAdjustmentKg;
+    // Use total of all items to match Stock page
+    // Trust the database values - no local adjustment needed
+    const baseKg = batchData.length > 0 ? totalKg : (potatoStock?.on_hand_qty || 0);
+    const currentKg = baseKg;
     const currentBags = Math.floor(currentKg / 10);
     const isLoading = isStockLoading || isItemsLoading;
     const isPending = withdrawMutation.isPending || returnMutation.isPending;
@@ -591,9 +601,9 @@ export default function KitchenPage() {
                         <span className="font-semibold text-gray-900 text-lg">Activity History</span>
                     </div>
                     <div className="flex items-center gap-3">
-                        {kitchenTransactions.length > 0 && (
+                        {(withdrawCount + returnCount) > 0 && (
                             <span className="px-3 py-1 bg-gray-100 text-gray-600 text-sm font-medium rounded-full">
-                                {kitchenTransactions.length} records
+                                {withdrawCount + returnCount} records
                             </span>
                         )}
                         <ChevronRight className="w-6 h-6 text-gray-400" />
@@ -629,7 +639,7 @@ export default function KitchenPage() {
                                 </div>
                                 <div>
                                     <h2 className="font-bold text-xl text-gray-900">Activity History</h2>
-                                    <p className="text-sm text-gray-500">{kitchenTransactions.length} total transactions</p>
+                                    <p className="text-sm text-gray-500">{withdrawCount + returnCount} total transactions</p>
                                 </div>
                             </div>
                             <button

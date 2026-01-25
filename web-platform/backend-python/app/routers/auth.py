@@ -77,7 +77,7 @@ async def create_test_admin():
                 "created_at": datetime.utcnow().isoformat(),
             }
 
-            supabase.table("profiles").insert(profile_data).execute()
+            supabase.table("profiles").insert(profile_data)
 
             return {
                 "success": True,
@@ -353,12 +353,12 @@ async def accept_invite(request: AcceptInviteRequest):
             "created_at": datetime.utcnow().isoformat(),
         }
 
-        supabase.table("profiles").insert(profile_data).execute()
+        supabase.table("profiles").insert(profile_data)
 
         # Mark invitation as accepted
         supabase.table("user_invitations").eq("id", inv["id"]).update({
             "accepted_at": datetime.utcnow().isoformat()
-        }).execute()
+        })
 
         return {
             "success": True,

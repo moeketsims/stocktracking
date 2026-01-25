@@ -70,7 +70,7 @@ export const stockApi = {
 
 // Transactions API
 export const transactionsApi = {
-  getAll: (params?: { type_filter?: string; limit?: number; offset?: number; view_location_id?: string }) =>
+  getAll: (params?: { type_filter?: string; limit?: number; offset?: number; view_location_id?: string; days?: number }) =>
     api.get('/api/transactions', { params }),
   getById: (id: string) => api.get(`/api/transactions/${id}`),
 };

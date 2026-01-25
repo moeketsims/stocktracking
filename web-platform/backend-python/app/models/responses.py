@@ -147,6 +147,8 @@ class TransactionItem(BaseModel):
 class TransactionsResponse(BaseModel):
     transactions: List[TransactionItem]
     total: int
+    issue_count: int = 0
+    return_count: int = 0
 
 
 # Alert Responses

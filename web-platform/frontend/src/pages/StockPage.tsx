@@ -76,19 +76,13 @@ const formatNumber = (value: number, decimals: number = 0): string => {
   }).format(value);
 };
 
-// Convert kg to bags
-const kgToBags = (kg: number): number => kg / KG_PER_BAG;
+// Convert kg to bags (always floor to whole number - bags can't be fractional)
+const kgToBags = (kg: number): number => Math.floor(kg / KG_PER_BAG);
 
-// Format stock value in bags
-// >= 1000 bags: no decimals, < 1000 bags: 1 decimal if fractional
+// Format stock value in bags - always whole numbers
 const formatStockValue = (kg: number): { value: string; unit: string } => {
   const bags = kgToBags(kg);
-  if (bags >= 1000) {
-    return { value: formatNumber(bags, 0), unit: 'bags' };
-  }
-  // Show 1 decimal for smaller amounts if not a whole number
-  const decimals = bags % 1 === 0 ? 0 : 1;
-  return { value: formatNumber(bags, decimals), unit: 'bags' };
+  return { value: formatNumber(bags, 0), unit: 'bags' };
 };
 
 // Helper to get relative time

@@ -98,12 +98,12 @@ async def create_adjustment(request: AdjustmentRequest, user_data: dict = Depend
                 elif batch.data["status"] == "depleted" and new_remaining > 0:
                     update_data["status"] = "available"
 
-                supabase.table("stock_batches").eq("id", request.batch_id).update(update_data).execute()
+                supabase.table("stock_batches").eq("id", request.batch_id).update(update_data)
 
         return {
             "success": True,
             "message": f"Adjustment recorded: {'+' if is_positive else ''}{qty_kg:.2f} kg ({request.reason})",
-            "transaction_id": transaction.data[0]["id"]
+            "transaction_id": transaction.data["id"]
         }
 
     except HTTPException:

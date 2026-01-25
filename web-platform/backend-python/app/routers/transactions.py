@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import Optional, Literal
+from datetime import datetime, timedelta
 from ..config import get_supabase_admin_client
 from ..routers.auth import require_auth, get_view_location_id
 from ..models.responses import TransactionsResponse, TransactionItem
@@ -13,6 +14,7 @@ async def get_transactions(
     view_location_id: Optional[str] = Query(None, description="Location ID to view (location_manager can view other shops read-only)"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    days: Optional[int] = Query(None, description="Filter to last N days (e.g., 1 for today, 7 for last week)"),
     user_data: dict = Depends(require_auth)
 ):
     """Get transaction history with optional type filter."""
@@ -28,7 +30,12 @@ async def get_transactions(
         # Get effective location for viewing (location_manager can view other shops)
         location_id = get_view_location_id(profile.data, view_location_id) if profile.data else None
 
-        print(f"[TRANSACTIONS] Fetching transactions for user {user.id}, location_id={location_id}, view_location_id={view_location_id}, type_filter={type_filter}")
+        # Calculate date filter if days parameter provided
+        date_filter = None
+        if days is not None and days > 0:
+            date_filter = (datetime.utcnow() - timedelta(days=days)).isoformat()
+
+        print(f"[TRANSACTIONS] Fetching transactions for user {user.id}, location_id={location_id}, view_location_id={view_location_id}, type_filter={type_filter}, days={days}, date_filter={date_filter}")
 
         # Build base query - use simple select without joins that might fail
         select_fields = "*"
@@ -40,6 +47,8 @@ async def get_transactions(
             if type_filter and type_filter != "all":
                 query_from = query_from.eq("type", type_filter)
             query_from = query_from.eq("location_id_from", location_id)
+            if date_filter:
+                query_from = query_from.gte("created_at", date_filter)
             result_from = query_from.order("created_at", desc=True).limit(limit).execute()
 
             # Fetch transactions TO this location (receives, returns, transfers in)
@@ -47,6 +56,8 @@ async def get_transactions(
             if type_filter and type_filter != "all":
                 query_to = query_to.eq("type", type_filter)
             query_to = query_to.eq("location_id_to", location_id)
+            if date_filter:
+                query_to = query_to.gte("created_at", date_filter)
             result_to = query_to.order("created_at", desc=True).limit(limit).execute()
 
             # Combine and deduplicate by id
@@ -63,6 +74,8 @@ async def get_transactions(
             query = supabase.table("stock_transactions").select(select_fields)
             if type_filter and type_filter != "all":
                 query = query.eq("type", type_filter)
+            if date_filter:
+                query = query.gte("created_at", date_filter)
             query = query.order("created_at", desc=True).limit(limit)
             result = query.execute()
             all_data = result.data or []
@@ -111,10 +124,47 @@ async def get_transactions(
                 created_by_name=created_by_name
             ))
 
-        print(f"[TRANSACTIONS] Returning {len(transactions)} transactions (v2 - simple query)")
+        # Count issue and return transactions (with same date filter for consistency)
+        issue_count = 0
+        return_count = 0
+        if location_id:
+            # Count issues (from this location)
+            issue_query = supabase.table("stock_transactions").select("id").eq(
+                "type", "issue"
+            ).eq("location_id_from", location_id)
+            if date_filter:
+                issue_query = issue_query.gte("created_at", date_filter)
+            issue_result = issue_query.execute()
+            issue_count = len(issue_result.data or [])
+
+            # Count returns (to this location)
+            return_query = supabase.table("stock_transactions").select("id").eq(
+                "type", "return"
+            ).eq("location_id_to", location_id)
+            if date_filter:
+                return_query = return_query.gte("created_at", date_filter)
+            return_result = return_query.execute()
+            return_count = len(return_result.data or [])
+        else:
+            # Count all issues and returns (admin view)
+            issue_query = supabase.table("stock_transactions").select("id").eq("type", "issue")
+            if date_filter:
+                issue_query = issue_query.gte("created_at", date_filter)
+            issue_result = issue_query.execute()
+            issue_count = len(issue_result.data or [])
+
+            return_query = supabase.table("stock_transactions").select("id").eq("type", "return")
+            if date_filter:
+                return_query = return_query.gte("created_at", date_filter)
+            return_result = return_query.execute()
+            return_count = len(return_result.data or [])
+
+        print(f"[TRANSACTIONS] Returning {len(transactions)} transactions, issue_count={issue_count}, return_count={return_count}")
         return TransactionsResponse(
             transactions=transactions,
-            total=len(all_data)
+            total=len(all_data),
+            issue_count=issue_count,
+            return_count=return_count
         )
 
     except Exception as e:
