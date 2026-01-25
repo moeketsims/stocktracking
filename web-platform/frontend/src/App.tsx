@@ -55,7 +55,7 @@ type TabId =
   | 'settings';
 
 function App() {
-  const { isAuthenticated, isManager, user } = useAuthStore();
+  const { isAuthenticated, isManager, isDriver, user } = useAuthStore();
   const logoutMutation = useLogout();
   const [activeTab, setActiveTab] = useState<TabId>('stock');
   const [publicPage, setPublicPage] = useState<PublicPage>('login');
@@ -151,17 +151,19 @@ function App() {
     return <LoginPage onForgotPassword={() => setPublicPage('forgot-password')} />;
   }
 
+  // Filter main tabs based on role - drivers have limited access
   const mainTabs = [
     { id: 'stock' as const, label: 'Stock', icon: Package },
-    { id: 'kitchen' as const, label: 'Kitchen', icon: UtensilsCrossed },
+    ...(!isDriver() ? [{ id: 'kitchen' as const, label: 'Kitchen', icon: UtensilsCrossed }] : []),
     { id: 'requests' as const, label: 'Requests', icon: ClipboardList },
     { id: 'vehicles' as const, label: 'Vehicles', icon: Truck },
-    { id: 'alerts' as const, label: 'Alerts', icon: AlertTriangle },
-    { id: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard },
+    ...(!isDriver() ? [{ id: 'alerts' as const, label: 'Alerts', icon: AlertTriangle }] : []),
+    ...(!isDriver() ? [{ id: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard }] : []),
   ];
 
+  // Filter more tabs based on role - drivers only see notifications and settings
   const moreTabs = [
-    { id: 'deliveries' as const, label: 'Verification', icon: PackageCheck },
+    ...(!isDriver() ? [{ id: 'deliveries' as const, label: 'Verification', icon: PackageCheck }] : []),
     ...(isManager()
       ? [
         { id: 'drivers' as const, label: 'Drivers', icon: Users },

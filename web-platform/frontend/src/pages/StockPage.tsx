@@ -126,7 +126,7 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
 export default function StockPage() {
   const queryClient = useQueryClient();
   const { data, isLoading, error, refetch } = useStockByLocation();
-  const { isManager, user } = useAuthStore();
+  const { isManager, isDriver, user } = useAuthStore();
 
   // Search/filter/sort state
   const [searchQuery, setSearchQuery] = useState('');
@@ -397,16 +397,18 @@ export default function StockPage() {
           )}
         </div>
 
-        {/* CTAs */}
-        <div className="flex items-center gap-2 shrink-0">
-          <Button
-            onClick={() => setShowRequestModal(true)}
-            className="gap-2 bg-orange-500 hover:bg-orange-600 text-white"
-          >
-            <ClipboardList className="w-4 h-4" />
-            Request Stock
-          </Button>
-        </div>
+        {/* CTAs - Hide Request Stock button for drivers */}
+        {!isDriver() && (
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              onClick={() => setShowRequestModal(true)}
+              className="gap-2 bg-orange-500 hover:bg-orange-600 text-white"
+            >
+              <ClipboardList className="w-4 h-4" />
+              Request Stock
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Pending Deliveries Section */}
