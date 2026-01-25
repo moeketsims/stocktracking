@@ -400,8 +400,8 @@ export default function StockPage() {
           )}
         </div>
 
-        {/* CTAs - Hide Request Stock button for drivers */}
-        {!isDriver() && (
+        {/* CTAs - Request Stock button only for managers (not admin, driver, or staff) */}
+        {isManager() && (
           <div className="flex items-center gap-2 shrink-0">
             <Button
               onClick={() => setShowRequestModal(true)}
