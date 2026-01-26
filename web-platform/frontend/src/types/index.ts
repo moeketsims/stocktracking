@@ -407,9 +407,19 @@ export interface Vehicle {
   year: number | null;
   capacity_kg: number | null;
   fuel_type: string | null;
+  kilometers_traveled: number | null;
   is_active: boolean;
   notes: string | null;
   created_at: string;
+}
+
+export interface CreateVehicleForm {
+  registration_number: string;
+  make?: string;
+  model?: string;
+  fuel_type: 'diesel' | 'petrol';
+  kilometers_traveled?: number;
+  notes?: string;
 }
 
 // Driver Types

@@ -22,6 +22,7 @@ export default function VehicleModal({
     make: '',
     model: '',
     fuel_type: 'diesel',
+    kilometers_traveled: undefined,
     notes: '',
   });
   const [error, setError] = useState('');
@@ -38,7 +39,8 @@ export default function VehicleModal({
           registration_number: vehicle.registration_number,
           make: vehicle.make || '',
           model: vehicle.model || '',
-          fuel_type: vehicle.fuel_type,
+          fuel_type: vehicle.fuel_type as 'diesel' | 'petrol',
+          kilometers_traveled: vehicle.kilometers_traveled || undefined,
           notes: vehicle.notes || '',
         });
       } else {
@@ -47,6 +49,7 @@ export default function VehicleModal({
           make: '',
           model: '',
           fuel_type: 'diesel',
+          kilometers_traveled: undefined,
           notes: '',
         });
       }
@@ -136,6 +139,14 @@ export default function VehicleModal({
           options={fuelTypeOptions}
           value={form.fuel_type}
           onChange={(e) => setForm({ ...form, fuel_type: e.target.value as 'diesel' | 'petrol' })}
+        />
+
+        <Input
+          type="number"
+          label="Kilometers Traveled"
+          value={form.kilometers_traveled ?? ''}
+          onChange={(e) => setForm({ ...form, kilometers_traveled: e.target.value ? parseInt(e.target.value, 10) : undefined })}
+          placeholder="e.g., 50000"
         />
 
         <div>
