@@ -102,6 +102,11 @@ export default function InviteUserModal({
       return;
     }
 
+    if (!form.full_name?.trim()) {
+      setError('Full name is required');
+      return;
+    }
+
     try {
       await createMutation.mutateAsync({
         email: form.email,
@@ -137,7 +142,7 @@ export default function InviteUserModal({
 
         <Input
           type="text"
-          label="Full Name"
+          label="Full Name *"
           value={form.full_name || ''}
           onChange={(e) => setForm({ ...form, full_name: e.target.value })}
           placeholder="John Doe"

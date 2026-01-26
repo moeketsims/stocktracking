@@ -75,6 +75,21 @@ export default function DriverModal({
       return;
     }
 
+    if (!form.phone?.trim()) {
+      setError('Phone number is required');
+      return;
+    }
+
+    if (!form.license_number?.trim()) {
+      setError('License number is required');
+      return;
+    }
+
+    if (!form.license_expiry) {
+      setError('License expiry date is required');
+      return;
+    }
+
     try {
       if (isEditing && driver) {
         // Don't send email when updating - it can't be changed
@@ -132,7 +147,7 @@ export default function DriverModal({
 
         <Input
           type="tel"
-          label="Phone Number"
+          label="Phone Number *"
           value={form.phone || ''}
           onChange={(e) => setForm({ ...form, phone: e.target.value })}
           placeholder="e.g., 082 123 4567"
@@ -140,7 +155,7 @@ export default function DriverModal({
 
         <Input
           type="text"
-          label="License Number"
+          label="License Number *"
           value={form.license_number || ''}
           onChange={(e) => setForm({ ...form, license_number: e.target.value })}
           placeholder="e.g., DL123456"
@@ -148,7 +163,7 @@ export default function DriverModal({
 
         <Input
           type="date"
-          label="License Expiry"
+          label="License Expiry *"
           value={form.license_expiry || ''}
           onChange={(e) => setForm({ ...form, license_expiry: e.target.value })}
         />
