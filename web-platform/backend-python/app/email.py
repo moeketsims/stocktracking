@@ -1520,6 +1520,104 @@ Potato Stock Tracking System
     return send_email(to_email, subject, html_content, text_content)
 
 
+def send_driver_km_submission_request(
+    to_email: str,
+    driver_name: str,
+    location_name: str,
+    vehicle_reg: str,
+    trip_number: str,
+    starting_km: int,
+    submission_token: str
+) -> bool:
+    """Send email to driver to submit their closing odometer reading."""
+    settings = get_settings()
+    submit_url = f"{settings.app_url}/submit-km?token={submission_token}"
+
+    subject = f"Submit Closing Km - Trip #{trip_number}"
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ background: linear-gradient(135deg, #059669 0%, #10b981 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+            .content {{ background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; }}
+            .button {{ display: inline-block; background: #f97316; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0; }}
+            .footer {{ text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px; }}
+            .info-box {{ background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin: 16px 0; }}
+            .info-row {{ display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }}
+            .info-row:last-child {{ border-bottom: none; }}
+            .success-badge {{ background: #d1fae5; color: #059669; padding: 8px 16px; border-radius: 20px; display: inline-block; font-weight: bold; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1 style="margin: 0;">Delivery Confirmed!</h1>
+                <p style="margin: 10px 0 0 0; opacity: 0.9;">Please log your closing odometer reading</p>
+            </div>
+            <div class="content">
+                <h2>Hi {driver_name}!</h2>
+                <p>Your delivery has been confirmed by the store. Please submit your closing odometer reading to complete the trip.</p>
+
+                <div class="info-box">
+                    <div class="info-row">
+                        <span>📍 Delivered to</span>
+                        <strong>{location_name}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>🚗 Vehicle</span>
+                        <strong>{vehicle_reg}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>🎫 Trip</span>
+                        <strong>#{trip_number}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>📊 Starting Km</span>
+                        <strong>{starting_km:,} km</strong>
+                    </div>
+                </div>
+
+                <p style="text-align: center;">
+                    <a href="{submit_url}" class="button">Submit Closing Km</a>
+                </p>
+
+                <p style="color: #6b7280; font-size: 14px;">This link will expire in 7 days. If the button doesn't work, copy and paste this link into your browser:</p>
+                <p style="word-break: break-all; color: #4f46e5; font-size: 12px;">{submit_url}</p>
+            </div>
+            <div class="footer">
+                <p>Potato Stock Tracking System</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    text_content = f"""
+Hi {driver_name}!
+
+Your delivery has been confirmed by the store. Please submit your closing odometer reading to complete the trip.
+
+📍 Delivered to: {location_name}
+🚗 Vehicle: {vehicle_reg}
+🎫 Trip: #{trip_number}
+📊 Starting Km: {starting_km:,} km
+
+Submit your closing km here:
+{submit_url}
+
+This link will expire in 7 days.
+
+---
+Potato Stock Tracking System
+    """
+
+    return send_email(to_email, subject, html_content, text_content)
+
+
 def send_trip_started_with_eta_notification(
     to_email: str,
     manager_name: str,

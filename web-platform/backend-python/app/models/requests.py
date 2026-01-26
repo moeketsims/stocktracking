@@ -252,7 +252,6 @@ class CreateTripFromMultipleRequestsRequest(BaseModel):
 class ConfirmDeliveryRequest(BaseModel):
     confirmed_qty_kg: float = Field(ge=0)
     notes: Optional[str] = None
-    odometer_end: Optional[int] = Field(None, ge=0)  # Ending odometer reading
 
 
 class RejectDeliveryRequest(BaseModel):
@@ -281,4 +280,10 @@ class FulfillRemainingRequest(BaseModel):
     vehicle_id: str
     driver_id: Optional[str] = None
     supplier_id: str
+    notes: Optional[str] = None
+
+
+# Driver Closing Km Submission
+class SubmitClosingKmRequest(BaseModel):
+    closing_km: int = Field(ge=0, description="Closing odometer reading in km")
     notes: Optional[str] = None

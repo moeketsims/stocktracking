@@ -39,8 +39,9 @@ import AcceptInvitePage from './pages/AcceptInvitePage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import LocationsPage from './pages/LocationsPage';
+import SubmitKmPage from './pages/SubmitKmPage';
 
-type PublicPage = 'login' | 'forgot-password' | 'accept-invite' | 'reset-password';
+type PublicPage = 'login' | 'forgot-password' | 'accept-invite' | 'reset-password' | 'submit-km';
 
 type TabId =
   | 'dashboard'
@@ -65,6 +66,7 @@ function App() {
   const [publicPage, setPublicPage] = useState<PublicPage>('login');
   const [inviteToken, setInviteToken] = useState<string>('');
   const [resetToken, setResetToken] = useState<string>('');
+  const [kmSubmissionToken, setKmSubmissionToken] = useState<string>('');
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [pendingTripRequest, setPendingTripRequest] = useState<string | null>(null);
   const { data: notificationsData } = useNotifications();
@@ -89,14 +91,20 @@ function App() {
     setActiveTab('trips');
   };
 
-  // Check URL for invite/reset tokens on load
+  // Check URL for invite/reset/km-submission tokens on load
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const invite = params.get('invite');
     const reset = params.get('reset');
     const type = params.get('type');
+    const token = params.get('token');
+    const pathname = window.location.pathname;
 
-    if (invite) {
+    // Handle submit-km page (public, no auth required)
+    if (pathname === '/submit-km' && token) {
+      setKmSubmissionToken(token);
+      setPublicPage('submit-km');
+    } else if (invite) {
       setInviteToken(invite);
       setPublicPage('accept-invite');
     } else if (reset || type === 'recovery') {
@@ -117,11 +125,17 @@ function App() {
   }, []);
 
   const clearUrlParams = () => {
-    window.history.replaceState({}, document.title, window.location.pathname);
+    window.history.replaceState({}, document.title, '/');
     setInviteToken('');
     setResetToken('');
+    setKmSubmissionToken('');
     setPublicPage('login');
   };
+
+  // Handle km submission - completely public page, no auth check needed
+  if (publicPage === 'submit-km' && kmSubmissionToken) {
+    return <SubmitKmPage />;
+  }
 
   // Handle invitation acceptance - this should work regardless of auth status
   // If someone opens an invite link while logged in as admin, show the invite page
