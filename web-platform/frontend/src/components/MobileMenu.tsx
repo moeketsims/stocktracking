@@ -80,7 +80,7 @@ export function MobileDrawer({
       />
 
       {/* Drawer */}
-      <div className="fixed inset-y-0 left-0 w-72 max-w-[85vw] shadow-xl transform transition-transform duration-300 ease-in-out">
+      <div className="fixed inset-y-0 left-0 w-64 max-w-[80vw] shadow-xl transform transition-transform duration-300 ease-in-out">
         <Sidebar
           mainTabs={mainTabs}
           moreTabs={moreTabs}

@@ -340,7 +340,7 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Stock Requests</h1>
           <p className="text-xs text-gray-500 mt-0.5">
@@ -348,8 +348,8 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {/* Density Toggle */}
-          <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
+          {/* Density Toggle - hidden on mobile */}
+          <div className="hidden md:flex items-center bg-gray-100 rounded-lg p-0.5">
             <button
               onClick={() => setViewDensity('compact')}
               className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${
@@ -374,7 +374,7 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
             className={`gap-1.5 h-8 ${hasActiveFilters ? 'ring-2 ring-orange-500' : ''}`}
           >
             <Filter className="w-3.5 h-3.5" />
-            Filters
+            <span className="hidden sm:inline">Filters</span>
           </Button>
           <Button
             variant="secondary"
@@ -398,7 +398,7 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
               </button>
             )}
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs text-gray-600 mb-1">Urgency</label>
               <select
@@ -495,8 +495,8 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          {/* Table Header - Sticky */}
-          <div className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
+          {/* Table Header - Hidden on mobile */}
+          <div className="hidden md:block bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
             <div className={`grid ${viewDensity === 'compact' ? 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px_120px]' : 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px_120px]'} gap-2 px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider`}>
               <div>Req #</div>
               <div>Location</div>
@@ -724,134 +724,254 @@ function RequestRow({
   const rowPadding = density === 'compact' ? 'py-2' : 'py-3';
 
   return (
-    <div className={`grid grid-cols-[70px_1fr_65px_55px_120px_45px_90px_120px] gap-2 px-4 ${rowPadding} items-center hover:bg-gray-50 transition-colors ${
-      isUrgent && request.status === 'pending' ? 'bg-red-50/50' : ''
-    }`}>
-      {/* Request # */}
-      <div>
-        <span className="text-xs font-mono text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
-          {getShortRequestId(request.id)}
-        </span>
-      </div>
-
-      {/* Location */}
-      <div className="flex items-center gap-2 min-w-0">
-        <div className={`w-6 h-6 rounded flex items-center justify-center flex-shrink-0 ${
-          isOwner ? 'bg-emerald-100' : 'bg-gray-100'
-        }`}>
-          <Store className={`w-3 h-3 ${isOwner ? 'text-emerald-600' : 'text-gray-400'}`} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span className="text-sm font-medium text-gray-900 truncate">
-              {request.location?.name || 'Unknown'}
-            </span>
-            {isUrgent && request.status === 'pending' && (
-              <AlertTriangle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
-            )}
-          </div>
-          {/* Trip info inline - compact */}
-          {request.trips && (
-            <span className="text-[10px] text-gray-400">
-              {request.trips.trip_number} • {request.trips.status}
-            </span>
-          )}
-          {request.acceptor && !request.trips && (
-            <span className="text-[10px] text-gray-400">
-              <Truck className="w-2.5 h-2.5 inline mr-0.5" />
-              {request.acceptor.full_name}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Quantity - right aligned, more readable */}
-      <div className="text-right pr-1">
-        <span className="text-sm font-bold tabular-nums text-gray-900">{request.quantity_bags}</span>
-        <span className="text-[10px] text-gray-400 block -mt-0.5">bags</span>
-      </div>
-
-      {/* Stock - as metric with mini progress bar */}
-      <div className="flex flex-col items-center">
-        {capacityPct !== null ? (
-          <>
-            <div className="w-10 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all ${getStockColor(capacityPct)}`}
-                style={{ width: `${Math.min(capacityPct, 100)}%` }}
-              />
+    <>
+      {/* Mobile Card Layout */}
+      <div className={`md:hidden p-4 hover:bg-gray-50 transition-colors ${
+        isUrgent && request.status === 'pending' ? 'bg-red-50/50' : ''
+      }`}>
+        {/* Top row: Location + Status */}
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+              isOwner ? 'bg-emerald-100' : 'bg-gray-100'
+            }`}>
+              <Store className={`w-4 h-4 ${isOwner ? 'text-emerald-600' : 'text-gray-400'}`} />
             </div>
-            <span className={`text-[10px] font-medium mt-0.5 ${getStockTextColor(capacityPct)}`}>
-              {capacityPct}%
-            </span>
-          </>
-        ) : (
-          <span className="text-xs text-gray-300">—</span>
-        )}
-      </div>
-
-      {/* Requested By */}
-      <div className="min-w-0">
-        <div className="flex items-center gap-1 text-xs text-gray-600 truncate">
-          <User className="w-3 h-3 text-gray-400 flex-shrink-0" />
-          <span className="truncate">{request.requester?.full_name || 'Unknown'}</span>
-        </div>
-      </div>
-
-      {/* Age - centered */}
-      <div className="text-center">
-        <span className="text-xs text-gray-500 flex items-center justify-center gap-0.5">
-          <Clock className="w-3 h-3" />
-          {getRelativeTime(request.created_at)}
-        </span>
-      </div>
-
-      {/* Status - centered chip with border */}
-      <div className="flex justify-center">
-        <span className={`px-2 py-0.5 rounded border text-[11px] font-semibold ${statusConfig.bgColor} ${statusConfig.color} ${statusConfig.borderColor}`}>
-          {statusConfig.label}
-        </span>
-      </div>
-
-      {/* Actions - right aligned */}
-      <div className="flex items-center justify-end gap-1.5">
-        {renderPrimaryAction()}
-
-        {hasSecondaryActions && (
-          <div className="relative" ref={menuRef}>
-            <button
-              onClick={() => setShowMenu(!showMenu)}
-              className="w-7 h-7 rounded hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600"
-            >
-              <MoreVertical className="w-4 h-4" />
-            </button>
-
-            {showMenu && (
-              <div className="absolute right-0 top-full mt-1 w-32 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
-                {canEdit && (
-                  <button
-                    onClick={() => { setShowMenu(false); onEdit(); }}
-                    className="w-full px-3 py-1.5 text-left text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                  >
-                    <Edit3 className="w-3 h-3" />
-                    Edit
-                  </button>
-                )}
-                {canCancel && (
-                  <button
-                    onClick={() => { setShowMenu(false); onCancel(); }}
-                    className="w-full px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 flex items-center gap-2"
-                  >
-                    <XCircle className="w-3 h-3" />
-                    Cancel
-                  </button>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm font-semibold text-gray-900 truncate">
+                  {request.location?.name || 'Unknown'}
+                </span>
+                {isUrgent && request.status === 'pending' && (
+                  <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
                 )}
               </div>
+              <span className="text-xs text-gray-500 font-mono">
+                {getShortRequestId(request.id)}
+              </span>
+            </div>
+          </div>
+          <span className={`px-2 py-1 rounded border text-xs font-semibold flex-shrink-0 ${statusConfig.bgColor} ${statusConfig.color} ${statusConfig.borderColor}`}>
+            {statusConfig.label}
+          </span>
+        </div>
+
+        {/* Middle row: Key metrics */}
+        <div className="flex items-center gap-4 mb-3 text-sm">
+          <div className="flex items-center gap-1.5">
+            <Package className="w-4 h-4 text-gray-400" />
+            <span className="font-bold text-gray-900">{request.quantity_bags}</span>
+            <span className="text-gray-500 text-xs">bags</span>
+          </div>
+          {capacityPct !== null && (
+            <div className="flex items-center gap-1.5">
+              <div className="w-12 h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${getStockColor(capacityPct)}`}
+                  style={{ width: `${Math.min(capacityPct, 100)}%` }}
+                />
+              </div>
+              <span className={`text-xs font-medium ${getStockTextColor(capacityPct)}`}>
+                {capacityPct}%
+              </span>
+            </div>
+          )}
+          <div className="flex items-center gap-1 text-xs text-gray-500">
+            <Clock className="w-3.5 h-3.5" />
+            {getRelativeTime(request.created_at)}
+          </div>
+        </div>
+
+        {/* Requested by + Trip info */}
+        <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
+          <User className="w-3.5 h-3.5" />
+          <span>{request.requester?.full_name || 'Unknown'}</span>
+          {request.trips && (
+            <>
+              <span className="text-gray-300">•</span>
+              <span>{request.trips.trip_number}</span>
+            </>
+          )}
+          {request.acceptor && !request.trips && (
+            <>
+              <span className="text-gray-300">•</span>
+              <Truck className="w-3.5 h-3.5" />
+              <span>{request.acceptor.full_name}</span>
+            </>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-2">
+          <div className="flex-1">
+            {renderPrimaryAction()}
+          </div>
+          {hasSecondaryActions && (
+            <div className="relative" ref={menuRef}>
+              <button
+                onClick={() => setShowMenu(!showMenu)}
+                className="w-9 h-9 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600"
+              >
+                <MoreVertical className="w-5 h-5" />
+              </button>
+
+              {showMenu && (
+                <div className="absolute right-0 bottom-full mb-1 w-32 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                  {canEdit && (
+                    <button
+                      onClick={() => { setShowMenu(false); onEdit(); }}
+                      className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                      Edit
+                    </button>
+                  )}
+                  {canCancel && (
+                    <button
+                      onClick={() => { setShowMenu(false); onCancel(); }}
+                      className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                    >
+                      <XCircle className="w-4 h-4" />
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Desktop Table Row */}
+      <div className={`hidden md:grid grid-cols-[70px_1fr_65px_55px_120px_45px_90px_120px] gap-2 px-4 ${rowPadding} items-center hover:bg-gray-50 transition-colors ${
+        isUrgent && request.status === 'pending' ? 'bg-red-50/50' : ''
+      }`}>
+        {/* Request # */}
+        <div>
+          <span className="text-xs font-mono text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+            {getShortRequestId(request.id)}
+          </span>
+        </div>
+
+        {/* Location */}
+        <div className="flex items-center gap-2 min-w-0">
+          <div className={`w-6 h-6 rounded flex items-center justify-center flex-shrink-0 ${
+            isOwner ? 'bg-emerald-100' : 'bg-gray-100'
+          }`}>
+            <Store className={`w-3 h-3 ${isOwner ? 'text-emerald-600' : 'text-gray-400'}`} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm font-medium text-gray-900 truncate">
+                {request.location?.name || 'Unknown'}
+              </span>
+              {isUrgent && request.status === 'pending' && (
+                <AlertTriangle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+              )}
+            </div>
+            {/* Trip info inline - compact */}
+            {request.trips && (
+              <span className="text-[10px] text-gray-400">
+                {request.trips.trip_number} • {request.trips.status}
+              </span>
+            )}
+            {request.acceptor && !request.trips && (
+              <span className="text-[10px] text-gray-400">
+                <Truck className="w-2.5 h-2.5 inline mr-0.5" />
+                {request.acceptor.full_name}
+              </span>
             )}
           </div>
-        )}
+        </div>
+
+        {/* Quantity - right aligned, more readable */}
+        <div className="text-right pr-1">
+          <span className="text-sm font-bold tabular-nums text-gray-900">{request.quantity_bags}</span>
+          <span className="text-[10px] text-gray-400 block -mt-0.5">bags</span>
+        </div>
+
+        {/* Stock - as metric with mini progress bar */}
+        <div className="flex flex-col items-center">
+          {capacityPct !== null ? (
+            <>
+              <div className="w-10 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${getStockColor(capacityPct)}`}
+                  style={{ width: `${Math.min(capacityPct, 100)}%` }}
+                />
+              </div>
+              <span className={`text-[10px] font-medium mt-0.5 ${getStockTextColor(capacityPct)}`}>
+                {capacityPct}%
+              </span>
+            </>
+          ) : (
+            <span className="text-xs text-gray-300">—</span>
+          )}
+        </div>
+
+        {/* Requested By */}
+        <div className="min-w-0">
+          <div className="flex items-center gap-1 text-xs text-gray-600 truncate">
+            <User className="w-3 h-3 text-gray-400 flex-shrink-0" />
+            <span className="truncate">{request.requester?.full_name || 'Unknown'}</span>
+          </div>
+        </div>
+
+        {/* Age - centered */}
+        <div className="text-center">
+          <span className="text-xs text-gray-500 flex items-center justify-center gap-0.5">
+            <Clock className="w-3 h-3" />
+            {getRelativeTime(request.created_at)}
+          </span>
+        </div>
+
+        {/* Status - centered chip with border */}
+        <div className="flex justify-center">
+          <span className={`px-2 py-0.5 rounded border text-[11px] font-semibold ${statusConfig.bgColor} ${statusConfig.color} ${statusConfig.borderColor}`}>
+            {statusConfig.label}
+          </span>
+        </div>
+
+        {/* Actions - right aligned */}
+        <div className="flex items-center justify-end gap-1.5">
+          {renderPrimaryAction()}
+
+          {hasSecondaryActions && (
+            <div className="relative" ref={menuRef}>
+              <button
+                onClick={() => setShowMenu(!showMenu)}
+                className="w-7 h-7 rounded hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600"
+              >
+                <MoreVertical className="w-4 h-4" />
+              </button>
+
+              {showMenu && (
+                <div className="absolute right-0 top-full mt-1 w-32 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                  {canEdit && (
+                    <button
+                      onClick={() => { setShowMenu(false); onEdit(); }}
+                      className="w-full px-3 py-1.5 text-left text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                    >
+                      <Edit3 className="w-3 h-3" />
+                      Edit
+                    </button>
+                  )}
+                  {canCancel && (
+                    <button
+                      onClick={() => { setShowMenu(false); onCancel(); }}
+                      className="w-full px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 flex items-center gap-2"
+                    >
+                      <XCircle className="w-3 h-3" />
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
