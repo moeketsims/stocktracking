@@ -425,14 +425,21 @@ async def accept_invite(request: AcceptInviteRequest):
 
         if existing_user:
             # User exists in auth - check if they have a profile
-            existing_profile = supabase.table("profiles").select("id").eq(
+            existing_profile = supabase.table("profiles").select("id, is_active").eq(
                 "user_id", existing_user.id
             ).execute()
 
             if existing_profile.data:
-                raise HTTPException(status_code=400, detail="An account with this email already exists")
+                profile = existing_profile.data[0]
+                if profile.get("is_active", True):
+                    # Active profile exists - block
+                    raise HTTPException(status_code=400, detail="An account with this email already exists")
+                else:
+                    # Inactive profile - delete it so we can create a fresh one
+                    logger.info(f"[AUTH] Deleting inactive profile {profile['id']} for re-registration")
+                    supabase.table("profiles").delete().eq("id", profile["id"]).execute()
 
-            # User exists but no profile - use existing auth user
+            # User exists but no active profile - use existing auth user
             new_user_id = existing_user.id
 
             # Update their password
@@ -502,27 +509,34 @@ async def accept_invite(request: AcceptInviteRequest):
                             logger.info(f"[AUTH] Found existing user {new_user_id} for email {inv['email']}")
 
                             # Check if they already have a profile
-                            existing_profile = supabase.table("profiles").select("id").eq(
+                            existing_profile = supabase.table("profiles").select("id, is_active").eq(
                                 "user_id", new_user_id
                             ).execute()
 
                             if existing_profile.data:
-                                raise HTTPException(status_code=400, detail="An account with this email already exists. Please try logging in instead.")
+                                profile = existing_profile.data[0]
+                                if profile.get("is_active", True):
+                                    # Active profile exists - block
+                                    raise HTTPException(status_code=400, detail="An account with this email already exists. Please try logging in instead.")
+                                else:
+                                    # Inactive profile - delete it so we can create a fresh one
+                                    logger.info(f"[AUTH] Deleting inactive profile {profile['id']} for re-registration")
+                                    supabase.table("profiles").delete().eq("id", profile["id"]).execute()
 
                             # Update their password and confirm email
-                            update_response = httpx.put(
-                                f"{settings.supabase_url}/auth/v1/admin/users/{new_user_id}",
-                                headers=headers,
-                                json={
+                            update_result = supabase.auth.admin.update_user_by_id(
+                                new_user_id,
+                                {
                                     "password": request.password,
                                     "email_confirm": True
-                                },
-                                timeout=10.0
+                                }
                             )
-                            logger.info(f"[AUTH] Password update response: {update_response.status_code}")
-
-                            if update_response.status_code not in [200, 201]:
-                                logger.warning(f"[AUTH] Password update failed: {update_response.text}")
+                            if update_result.error:
+                                logger.error(f"[AUTH] Password update failed: {update_result.error}")
+                            else:
+                                logger.info(f"[AUTH] Password update successful for user {new_user_id}")
+                                if update_result.user:
+                                    logger.info(f"[AUTH] User email_confirmed_at: {update_result.user.email_confirmed_at}")
                         else:
                             logger.error(f"[AUTH] Could not find user with email {inv['email']} in users list")
                             raise HTTPException(status_code=400, detail="Account creation failed. Please contact support.")

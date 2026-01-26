@@ -55,6 +55,7 @@ export default function UsersPage() {
   const [roleFilter, setRoleFilter] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'users' | 'invitations'>('users');
   const [cancellingInvitation, setCancellingInvitation] = useState<UserInvitation | null>(null);
+  const [deactivatingUser, setDeactivatingUser] = useState<ManagedUser | null>(null);
 
   const user = useAuthStore((state) => state.user);
   const isAdmin = user?.role === 'admin';
@@ -78,13 +79,19 @@ export default function UsersPage() {
   const cancelInvitationMutation = useCancelInvitation();
   const resendInvitationMutation = useResendInvitation();
 
-  const handleDeactivate = async (u: ManagedUser) => {
-    if (window.confirm(`Are you sure you want to deactivate ${u.full_name || u.email}?`)) {
-      try {
-        await deactivateMutation.mutateAsync(u.id);
-      } catch (err) {
-        console.error('Failed to deactivate user:', err);
-      }
+  const handleDeactivate = (u: ManagedUser) => {
+    setDeactivatingUser(u);
+  };
+
+  const confirmDeactivateUser = async () => {
+    if (!deactivatingUser) return;
+    try {
+      await deactivateMutation.mutateAsync(deactivatingUser.id);
+      setDeactivatingUser(null);
+    } catch (err: any) {
+      console.error('Failed to deactivate user:', err);
+      alert(err.response?.data?.detail || 'Failed to deactivate user');
+      setDeactivatingUser(null);
     }
   };
 
@@ -434,6 +441,18 @@ export default function UsersPage() {
         cancelText="No, Keep It"
         type="danger"
         isLoading={cancelInvitationMutation.isPending}
+      />
+
+      <ConfirmationModal
+        isOpen={!!deactivatingUser}
+        onClose={() => setDeactivatingUser(null)}
+        onConfirm={confirmDeactivateUser}
+        title="Deactivate User"
+        message={`Are you sure you want to deactivate ${deactivatingUser?.full_name || deactivatingUser?.email}? This user will no longer be able to access the system${deactivatingUser?.role === 'driver' ? ' and will be removed from the drivers list' : ''}.`}
+        confirmText="Yes, Deactivate"
+        cancelText="No, Keep Active"
+        type="danger"
+        isLoading={deactivateMutation.isPending}
       />
     </div>
   );

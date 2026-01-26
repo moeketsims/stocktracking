@@ -140,11 +140,12 @@ async def create_invitation(
             # Default to actor's zone
             request.zone_id = actor_profile["zone_id"]
 
-        # Check if email already has an account - simplified
+        # Check if email already has an ACTIVE account
         try:
-            existing_result = supabase.table("profiles").select("id, user_id").execute()
+            existing_result = supabase.table("profiles").select("id, user_id, is_active").execute()
             for profile in existing_result.data or []:
-                if profile.get("user_id"):
+                # Only block if the profile is active
+                if profile.get("user_id") and profile.get("is_active", True):
                     try:
                         auth_user = supabase.auth.admin.get_user_by_id(profile["user_id"])
                         if auth_user and auth_user.user and auth_user.user.email == request.email:
@@ -161,14 +162,15 @@ async def create_invitation(
         except Exception:
             pass  # Skip check if it fails
 
-        # Check for pending invitation
+        # Check for pending invitation (not accepted, not cancelled, not expired)
         try:
-            pending_result = supabase.table("user_invitations").select("id, expires_at, accepted_at").eq(
+            pending_result = supabase.table("user_invitations").select("id, expires_at, accepted_at, cancelled_at").eq(
                 "email", request.email
             ).execute()
 
             for inv in pending_result.data or []:
-                if inv.get("accepted_at"):
+                # Skip accepted or cancelled invitations
+                if inv.get("accepted_at") or inv.get("cancelled_at"):
                     continue
                 expires_at = datetime.fromisoformat(inv["expires_at"].replace("Z", "+00:00")).replace(tzinfo=None)
                 if expires_at > datetime.utcnow():

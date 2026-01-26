@@ -757,6 +757,7 @@ export function useDeactivateUser() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['drivers'] });
     },
   });
 }

@@ -308,7 +308,7 @@ async def deactivate_user(
     user_id: str,
     user_data: dict = Depends(require_admin)
 ):
-    """Deactivate a user account. Admin only."""
+    """Deactivate a user account. Admin only. Also deactivates linked driver record if exists."""
     supabase = get_supabase_admin_client()
 
     try:
@@ -322,11 +322,19 @@ async def deactivate_user(
         if existing.data["user_id"] == user_data["user"].id:
             raise HTTPException(status_code=400, detail="Cannot deactivate your own account")
 
-        # Deactivate
-        supabase.table("profiles").update({
+        # Deactivate user profile
+        supabase.table("profiles").eq("id", user_id).update({
             "is_active": False,
             "updated_at": datetime.utcnow().isoformat()
-        }).eq("id", user_id).execute()
+        }).execute()
+
+        # If user is a driver, also deactivate their driver record
+        auth_user_id = existing.data.get("user_id")
+        if auth_user_id and existing.data.get("role") == "driver":
+            # Find and deactivate linked driver record
+            supabase.table("drivers").eq("user_id", auth_user_id).update({
+                "is_active": False
+            }).execute()
 
         return {
             "success": True,

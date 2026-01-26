@@ -373,7 +373,8 @@ class AuthAdmin:
             user = AuthUser(
                 id=data["id"],
                 email=data.get("email"),
-                user_metadata=data.get("user_metadata", {})
+                user_metadata=data.get("user_metadata", {}),
+                email_confirmed_at=data.get("email_confirmed_at")
             )
             return AuthResponse(user=user, session=None, error=None)
 
@@ -396,7 +397,8 @@ class AuthAdmin:
             user = AuthUser(
                 id=data["id"],
                 email=data.get("email"),
-                user_metadata=data.get("user_metadata", {})
+                user_metadata=data.get("user_metadata", {}),
+                email_confirmed_at=data.get("email_confirmed_at")
             )
             return AuthResponse(user=user, session=None, error=None)
 
@@ -419,9 +421,14 @@ class AuthAdmin:
             user = AuthUser(
                 id=data["id"],
                 email=data.get("email"),
-                user_metadata=data.get("user_metadata", {})
+                user_metadata=data.get("user_metadata", {}),
+                email_confirmed_at=data.get("email_confirmed_at")
             )
             return AuthResponse(user=user, session=None, error=None)
+
+    def update_user_by_id(self, user_id: str, update_data: dict) -> "AuthResponse":
+        """Alias for update_user for SDK compatibility."""
+        return self.update_user(user_id, update_data)
 
     def generate_link(self, link_data: dict) -> dict:
         """Generate an email link (password reset, signup, etc.)."""
@@ -442,10 +449,11 @@ class AuthAdmin:
 
 
 class AuthUser:
-    def __init__(self, id: str, email: str, user_metadata: dict = None):
+    def __init__(self, id: str, email: str, user_metadata: dict = None, email_confirmed_at: str = None):
         self.id = id
         self.email = email
         self.user_metadata = user_metadata or {}
+        self.email_confirmed_at = email_confirmed_at
 
 
 class AuthSession:

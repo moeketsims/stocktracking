@@ -121,32 +121,48 @@ function App() {
     setPublicPage('login');
   };
 
-  if (!isAuthenticated) {
-    // Handle public pages
-    if (publicPage === 'accept-invite' && inviteToken) {
-      return (
-        <AcceptInvitePage
-          token={inviteToken}
-          onSuccess={clearUrlParams}
-          onCancel={clearUrlParams}
-        />
-      );
-    }
+  // Handle invitation acceptance - this should work regardless of auth status
+  // If someone opens an invite link while logged in as admin, show the invite page
+  if (publicPage === 'accept-invite' && inviteToken) {
+    return (
+      <AcceptInvitePage
+        token={inviteToken}
+        onSuccess={() => {
+          // Log out any existing user before redirecting to login
+          if (isAuthenticated) {
+            logoutMutation.mutate();
+          }
+          clearUrlParams();
+        }}
+        onCancel={() => {
+          // If cancelling, just clear params but keep current session
+          clearUrlParams();
+        }}
+      />
+    );
+  }
 
+  // Handle password reset - also works regardless of auth status
+  if (publicPage === 'reset-password' && resetToken) {
+    return (
+      <ResetPasswordPage
+        token={resetToken}
+        onSuccess={() => {
+          if (isAuthenticated) {
+            logoutMutation.mutate();
+          }
+          clearUrlParams();
+        }}
+        onCancel={clearUrlParams}
+      />
+    );
+  }
+
+  if (!isAuthenticated) {
     if (publicPage === 'forgot-password') {
       return (
         <ForgotPasswordPage
           onBack={() => setPublicPage('login')}
-        />
-      );
-    }
-
-    if (publicPage === 'reset-password' && resetToken) {
-      return (
-        <ResetPasswordPage
-          token={resetToken}
-          onSuccess={clearUrlParams}
-          onCancel={clearUrlParams}
         />
       );
     }

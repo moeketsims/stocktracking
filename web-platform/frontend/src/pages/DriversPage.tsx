@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { User, Plus, Edit2, CheckCircle, XCircle, Phone, CreditCard, AlertTriangle, Mail, RefreshCw, Clock } from 'lucide-react';
 import { Card, Button, Badge } from '../components/ui';
 import DriverModal from '../components/modals/DriverModal';
+import ConfirmationModal from '../components/modals/ConfirmationModal';
 import { useDrivers, useDeleteDriver, useUpdateDriver, useResendDriverInvitation } from '../hooks/useData';
 import { useAuthStore } from '../stores/authStore';
 import type { Driver } from '../types';
@@ -17,6 +18,7 @@ export default function DriversPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingDriver, setEditingDriver] = useState<Driver | null>(null);
   const [showInactive, setShowInactive] = useState(false);
+  const [deactivatingDriver, setDeactivatingDriver] = useState<Driver | null>(null);
 
   const user = useAuthStore((state) => state.user);
   const isManager = user?.role && ['admin', 'zone_manager', 'location_manager'].includes(user.role);
@@ -31,13 +33,19 @@ export default function DriversPage() {
     setShowModal(true);
   };
 
-  const handleDeactivate = async (driver: Driver) => {
-    if (window.confirm(`Are you sure you want to deactivate ${driver.full_name}?`)) {
-      try {
-        await deleteMutation.mutateAsync(driver.id);
-      } catch (err) {
-        console.error('Failed to deactivate driver:', err);
-      }
+  const handleDeactivate = (driver: Driver) => {
+    setDeactivatingDriver(driver);
+  };
+
+  const confirmDeactivateDriver = async () => {
+    if (!deactivatingDriver) return;
+    try {
+      await deleteMutation.mutateAsync(deactivatingDriver.id);
+      setDeactivatingDriver(null);
+    } catch (err: any) {
+      console.error('Failed to deactivate driver:', err);
+      alert(err.response?.data?.detail || 'Failed to deactivate driver');
+      setDeactivatingDriver(null);
     }
   };
 
@@ -258,6 +266,19 @@ export default function DriversPage() {
         onClose={handleModalClose}
         onSuccess={handleSuccess}
         driver={editingDriver}
+      />
+
+      {/* Deactivate Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={!!deactivatingDriver}
+        onClose={() => setDeactivatingDriver(null)}
+        onConfirm={confirmDeactivateDriver}
+        title="Deactivate Driver"
+        message={`Are you sure you want to deactivate ${deactivatingDriver?.full_name}? This driver will no longer be available for trip assignments.`}
+        confirmText="Yes, Deactivate"
+        cancelText="No, Keep Active"
+        type="danger"
+        isLoading={deleteMutation.isPending}
       />
     </div>
   );
