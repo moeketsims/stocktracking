@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import secrets
 from ..config import get_supabase_admin_client
 from ..email import send_invitation_email
-from .users import require_admin_or_zone_manager, can_manage_role
+from .users import require_admin_or_zone_manager, require_manager, can_manage_role
 
 router = APIRouter(prefix="/invitations", tags=["User Invitations"])
 
@@ -22,9 +22,9 @@ class CreateInvitationRequest(BaseModel):
 @router.get("")
 async def list_invitations(
     status: Optional[str] = Query("pending", description="Filter: pending, accepted, expired, all"),
-    user_data: dict = Depends(require_admin_or_zone_manager)
+    user_data: dict = Depends(require_manager)
 ):
-    """List invitations. Zone managers see only invitations they created or for their zone."""
+    """List invitations. Zone/location managers see only invitations for their zone."""
     supabase = get_supabase_admin_client()
     actor_profile = user_data["profile"]
 
@@ -33,8 +33,8 @@ async def list_invitations(
             "*, zones(name), locations(name)"
         ).order("created_at", desc=True)
 
-        # Zone managers see only their zone's invitations (if they have a zone assigned)
-        if actor_profile["role"] == "zone_manager" and actor_profile.get("zone_id"):
+        # Zone/location managers see only their zone's invitations
+        if actor_profile["role"] in ["zone_manager", "location_manager"] and actor_profile.get("zone_id"):
             query = query.eq("zone_id", actor_profile["zone_id"])
 
         result = query.execute()
@@ -48,12 +48,15 @@ async def list_invitations(
             expires_at = datetime.fromisoformat(inv["expires_at"].replace("Z", "+00:00")).replace(tzinfo=None)
             is_expired = expires_at < now
             is_accepted = inv.get("accepted_at") is not None
+            is_cancelled = inv.get("cancelled_at") is not None
 
-            if status == "pending" and not is_accepted and not is_expired:
+            if status == "pending" and not is_accepted and not is_expired and not is_cancelled:
                 filtered.append(inv)
             elif status == "accepted" and is_accepted:
                 filtered.append(inv)
-            elif status == "expired" and is_expired and not is_accepted:
+            elif status == "expired" and is_expired and not is_accepted and not is_cancelled:
+                filtered.append(inv)
+            elif status == "cancelled" and is_cancelled:
                 filtered.append(inv)
             elif status == "all":
                 filtered.append(inv)
@@ -63,6 +66,16 @@ async def list_invitations(
         for inv in filtered:
             expires_at = datetime.fromisoformat(inv["expires_at"].replace("Z", "+00:00")).replace(tzinfo=None)
             is_expired = expires_at < now
+
+            # Determine status
+            if inv.get("cancelled_at"):
+                inv_status = "cancelled"
+            elif inv.get("accepted_at"):
+                inv_status = "accepted"
+            elif is_expired:
+                inv_status = "expired"
+            else:
+                inv_status = "pending"
 
             formatted.append({
                 "id": inv["id"],
@@ -76,8 +89,9 @@ async def list_invitations(
                 "invited_by": inv["invited_by"],
                 "expires_at": inv["expires_at"],
                 "accepted_at": inv.get("accepted_at"),
+                "cancelled_at": inv.get("cancelled_at"),
                 "created_at": inv["created_at"],
-                "status": "accepted" if inv.get("accepted_at") else ("expired" if is_expired else "pending")
+                "status": inv_status
             })
 
         return {
@@ -92,15 +106,25 @@ async def list_invitations(
 @router.post("")
 async def create_invitation(
     request: CreateInvitationRequest,
-    user_data: dict = Depends(require_admin_or_zone_manager)
+    user_data: dict = Depends(require_manager)
 ):
     """Create a new user invitation."""
     supabase = get_supabase_admin_client()
     actor_profile = user_data["profile"]
 
     try:
-        # Check role permissions
-        if not can_manage_role(actor_profile["role"], request.role):
+        # Location managers can ONLY invite drivers
+        if actor_profile["role"] == "location_manager":
+            if request.role != "driver":
+                raise HTTPException(
+                    status_code=403,
+                    detail="Location managers can only invite drivers"
+                )
+            # Default to actor's zone and location
+            request.zone_id = actor_profile["zone_id"]
+            request.location_id = actor_profile["location_id"]
+        # Check role permissions for other roles
+        elif not can_manage_role(actor_profile["role"], request.role):
             raise HTTPException(
                 status_code=403,
                 detail=f"You cannot invite users with the {request.role} role"
@@ -209,7 +233,7 @@ async def cancel_invitation(
     invitation_id: str,
     user_data: dict = Depends(require_admin_or_zone_manager)
 ):
-    """Cancel a pending invitation."""
+    """Cancel a pending invitation (flags as cancelled, does not delete)."""
     supabase = get_supabase_admin_client()
     actor_profile = user_data["profile"]
 
@@ -228,6 +252,10 @@ async def cancel_invitation(
         if invitation.get("accepted_at"):
             raise HTTPException(status_code=400, detail="Cannot cancel an accepted invitation")
 
+        # Check if already cancelled
+        if invitation.get("cancelled_at"):
+            raise HTTPException(status_code=400, detail="Invitation is already cancelled")
+
         # Zone managers can only cancel invitations for their zone
         if actor_profile["role"] == "zone_manager":
             if invitation.get("zone_id") != actor_profile["zone_id"]:
@@ -236,8 +264,19 @@ async def cancel_invitation(
                     detail="You can only cancel invitations for your zone"
                 )
 
-        # Delete invitation
-        supabase.table("user_invitations").delete().eq("id", invitation_id).execute()
+        # Flag invitation as cancelled instead of deleting
+        cancelled_time = datetime.utcnow().isoformat()
+        supabase.table("user_invitations").eq("id", invitation_id).update({
+            "cancelled_at": cancelled_time,
+            "cancelled_by": actor_profile["id"]
+        })
+
+        # If this invitation was linked to a driver, unlink it so they can be re-invited
+        driver_id = invitation.get("driver_id")
+        if driver_id:
+            supabase.table("drivers").eq("id", driver_id).update({
+                "invitation_id": None
+            })
 
         return {
             "success": True,

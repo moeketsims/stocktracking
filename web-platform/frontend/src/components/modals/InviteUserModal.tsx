@@ -27,10 +27,11 @@ export default function InviteUserModal({
   const user = useAuthStore((state) => state.user);
   const isAdmin = user?.role === 'admin';
   const isZoneManager = user?.role === 'zone_manager';
+  const isLocationManager = user?.role === 'location_manager';
 
   const [form, setForm] = useState<InviteUserForm>({
     email: '',
-    role: 'staff',
+    role: isLocationManager ? 'driver' : 'staff', // Default to driver for location managers
     zone_id: '',
     location_id: '',
     full_name: '',
@@ -45,6 +46,7 @@ export default function InviteUserModal({
   const availableRoles = ROLE_OPTIONS.filter((role) => {
     if (isAdmin) return true;
     if (isZoneManager) return ['staff', 'driver', 'location_manager'].includes(role.value);
+    if (isLocationManager) return role.value === 'driver'; // Location managers can only invite drivers
     return false;
   });
 
@@ -60,14 +62,14 @@ export default function InviteUserModal({
     if (isOpen) {
       setForm({
         email: '',
-        role: 'staff',
-        zone_id: isZoneManager ? user?.zone_id || '' : '',
-        location_id: '',
+        role: isLocationManager ? 'driver' : 'staff',
+        zone_id: (isZoneManager || isLocationManager) ? user?.zone_id || '' : '',
+        location_id: isLocationManager ? user?.location_id || '' : '',
         full_name: '',
       });
       setError('');
     }
-  }, [isOpen, isZoneManager, user?.zone_id]);
+  }, [isOpen, isZoneManager, isLocationManager, user?.zone_id, user?.location_id]);
 
   // Reset location only when zone changes (not when location changes)
   const [prevZoneId, setPrevZoneId] = useState(form.zone_id);

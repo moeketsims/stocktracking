@@ -205,6 +205,7 @@ export const driversApi = {
   create: (data: any) => api.post('/api/drivers', data),
   update: (id: string, data: any) => api.patch(`/api/drivers/${id}`, data),
   delete: (id: string) => api.delete(`/api/drivers/${id}`),
+  resendInvitation: (id: string) => api.post(`/api/drivers/${id}/resend-invitation`),
 };
 
 // Trips API

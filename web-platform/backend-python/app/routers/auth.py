@@ -3,9 +3,12 @@ from typing import Optional
 from datetime import datetime
 from uuid import uuid4
 from pydantic import BaseModel, EmailStr, Field
+import logging
 from ..config import get_supabase_client, get_supabase_admin_client
 from ..models.requests import LoginRequest
 from ..models.responses import LoginResponse, UserProfile, AuthStatusResponse
+
+logger = logging.getLogger(__name__)
 
 
 # Additional request models for auth extensions
@@ -113,6 +116,93 @@ async def create_test_admin():
         raise HTTPException(status_code=500, detail=f"Failed to reset password: {str(e)}")
 
     raise HTTPException(status_code=500, detail="Failed to create or update test admin")
+
+
+@router.post("/create-test-manager")
+async def create_test_location_manager():
+    """Create a test location manager user for development. Email: manager@test.com, Password: Test123!"""
+    supabase = get_supabase_admin_client()
+
+    test_email = "manager@test.com"
+    test_password = "Test123!"
+
+    try:
+        # Try to sign in first to check if user exists
+        client = get_supabase_client()
+        auth = client.auth.sign_in_with_password({
+            "email": test_email,
+            "password": test_password
+        })
+        if auth.session and auth.session.access_token:
+            return {
+                "success": True,
+                "message": "Test location manager already exists",
+                "email": test_email,
+                "password": test_password
+            }
+    except Exception:
+        pass
+
+    try:
+        # Create new auth user
+        auth_response = supabase.auth.admin.create_user({
+            "email": test_email,
+            "password": test_password,
+            "email_confirm": True
+        })
+
+        if auth_response.user:
+            new_user_id = auth_response.user.id
+
+            # Get first shop location
+            locations = supabase.table("locations").select("id, name, zone_id").eq("type", "shop").limit(1).execute()
+            if not locations.data:
+                locations = supabase.table("locations").select("id, name, zone_id").limit(1).execute()
+
+            location_id = locations.data[0]["id"] if locations.data else None
+            location_name = locations.data[0]["name"] if locations.data else "Unknown"
+            zone_id = locations.data[0].get("zone_id") if locations.data else None
+
+            # Create location_manager profile
+            profile_data = {
+                "id": str(uuid4()),
+                "user_id": new_user_id,
+                "role": "location_manager",
+                "zone_id": zone_id,
+                "location_id": location_id,
+                "full_name": "Test Location Manager",
+                "is_active": True,
+                "created_at": datetime.utcnow().isoformat(),
+            }
+
+            supabase.table("profiles").insert(profile_data)
+
+            return {
+                "success": True,
+                "message": "Test location manager created successfully",
+                "email": test_email,
+                "password": test_password,
+                "location": location_name,
+                "user_id": new_user_id
+            }
+    except Exception as e:
+        # Try to update password if user exists
+        try:
+            users = supabase.auth.admin.list_users()
+            for u in users:
+                if hasattr(u, 'email') and u.email == test_email:
+                    supabase.auth.admin.update_user_by_id(u.id, {"password": test_password})
+                    return {
+                        "success": True,
+                        "message": "Test location manager password reset",
+                        "email": test_email,
+                        "password": test_password
+                    }
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail=f"Failed to create location manager: {str(e)}")
+
+    raise HTTPException(status_code=500, detail="Failed to create test location manager")
 
 
 async def get_current_user(authorization: Optional[str] = Header(None)) -> Optional[dict]:
@@ -328,17 +418,123 @@ async def accept_invite(request: AcceptInviteRequest):
         if expires_at < datetime.utcnow():
             raise HTTPException(status_code=400, detail="Invitation has expired")
 
-        # Create auth user using signup
-        auth_response = supabase.auth.sign_up({
-            "email": inv["email"],
-            "password": request.password
-        })
+        # Check if user already exists in auth (from previous partial attempt)
+        # We'll handle this after trying to create the user since the API methods
+        # for finding users by email are not reliably available
+        existing_user = None
 
-        if not auth_response.user:
-            error_detail = auth_response.error if auth_response.error else "Failed to create user account"
-            raise HTTPException(status_code=500, detail=error_detail)
+        if existing_user:
+            # User exists in auth - check if they have a profile
+            existing_profile = supabase.table("profiles").select("id").eq(
+                "user_id", existing_user.id
+            ).execute()
 
-        new_user_id = auth_response.user.id
+            if existing_profile.data:
+                raise HTTPException(status_code=400, detail="An account with this email already exists")
+
+            # User exists but no profile - use existing auth user
+            new_user_id = existing_user.id
+
+            # Update their password
+            try:
+                supabase.auth.admin.update_user_by_id(existing_user.id, {
+                    "password": request.password
+                })
+            except Exception:
+                pass  # Password update failed, but user can still use the account
+        else:
+            # Create auth user using admin API
+            create_user_failed = False
+            try:
+                auth_response = supabase.auth.admin.create_user({
+                    "email": inv["email"],
+                    "password": request.password,
+                    "email_confirm": True  # Skip email confirmation since they used invite link
+                })
+
+                if auth_response.user:
+                    new_user_id = auth_response.user.id
+                else:
+                    create_user_failed = True
+                    logger.warning(f"[AUTH] create_user returned no user for {inv['email']}")
+
+            except Exception as auth_error:
+                error_msg = str(auth_error)
+                logger.error(f"[AUTH] Exception creating user: {error_msg}")
+                create_user_failed = True
+
+                # Check for common Supabase error patterns
+                if "rate" in error_msg.lower() or "429" in error_msg:
+                    raise HTTPException(status_code=429, detail="Please wait a moment and try again")
+
+            # If user creation failed, try to recover by finding existing user
+            if create_user_failed:
+                # User likely already exists - try to find them via REST API
+                import httpx
+                from ..config import get_settings
+                settings = get_settings()
+
+                try:
+                    # Use Supabase REST API to find user by email
+                    headers = {
+                        "Authorization": f"Bearer {settings.supabase_service_key}",
+                        "apikey": settings.supabase_service_key,
+                    }
+                    response = httpx.get(
+                        f"{settings.supabase_url}/auth/v1/admin/users",
+                        headers=headers,
+                        timeout=10.0
+                    )
+                    logger.info(f"[AUTH] List users response status: {response.status_code}")
+
+                    if response.status_code == 200:
+                        users_data = response.json()
+                        users_list = users_data.get("users", users_data) if isinstance(users_data, dict) else users_data
+
+                        found_user = None
+                        for u in users_list:
+                            if isinstance(u, dict) and u.get("email") == inv["email"]:
+                                found_user = u
+                                break
+
+                        if found_user:
+                            new_user_id = found_user["id"]
+                            logger.info(f"[AUTH] Found existing user {new_user_id} for email {inv['email']}")
+
+                            # Check if they already have a profile
+                            existing_profile = supabase.table("profiles").select("id").eq(
+                                "user_id", new_user_id
+                            ).execute()
+
+                            if existing_profile.data:
+                                raise HTTPException(status_code=400, detail="An account with this email already exists. Please try logging in instead.")
+
+                            # Update their password and confirm email
+                            update_response = httpx.put(
+                                f"{settings.supabase_url}/auth/v1/admin/users/{new_user_id}",
+                                headers=headers,
+                                json={
+                                    "password": request.password,
+                                    "email_confirm": True
+                                },
+                                timeout=10.0
+                            )
+                            logger.info(f"[AUTH] Password update response: {update_response.status_code}")
+
+                            if update_response.status_code not in [200, 201]:
+                                logger.warning(f"[AUTH] Password update failed: {update_response.text}")
+                        else:
+                            logger.error(f"[AUTH] Could not find user with email {inv['email']} in users list")
+                            raise HTTPException(status_code=400, detail="Account creation failed. Please contact support.")
+                    else:
+                        logger.error(f"[AUTH] Failed to list users: {response.status_code} - {response.text}")
+                        raise HTTPException(status_code=400, detail="Account creation failed. Please contact support.")
+
+                except HTTPException:
+                    raise
+                except Exception as e2:
+                    logger.error(f"[AUTH] Error recovering existing user: {e2}")
+                    raise HTTPException(status_code=400, detail="An account with this email may already exist. Please try logging in or contact support.")
 
         # Create profile
         profile_data = {
@@ -352,13 +548,72 @@ async def accept_invite(request: AcceptInviteRequest):
             "created_by": inv["invited_by"],
             "created_at": datetime.utcnow().isoformat(),
         }
+        logger.info(f"[AUTH] Creating profile for user {new_user_id} with data: {profile_data}")
 
-        supabase.table("profiles").insert(profile_data)
+        try:
+            profile_result = supabase.table("profiles").insert(profile_data)
+            logger.info(f"[AUTH] Profile created successfully: {profile_result.data}")
+        except Exception as profile_error:
+            logger.error(f"[AUTH] Error creating profile: {profile_error}")
+            raise HTTPException(status_code=500, detail=f"Failed to create profile: {str(profile_error)}")
 
         # Mark invitation as accepted
-        supabase.table("user_invitations").eq("id", inv["id"]).update({
-            "accepted_at": datetime.utcnow().isoformat()
-        })
+        try:
+            invitation_id = inv["id"]
+            logger.info(f"[AUTH] Marking invitation {invitation_id} as accepted")
+
+            # Use admin client to update the invitation
+            accepted_time = datetime.utcnow().isoformat()
+            invite_result = supabase.table("user_invitations").eq("id", invitation_id).update({
+                "accepted_at": accepted_time
+            })
+
+            logger.info(f"[AUTH] Invitation update result: {invite_result.data}")
+
+            # Verify the update worked
+            verify_result = supabase.table("user_invitations").select("accepted_at").eq("id", invitation_id).single().execute()
+            if verify_result.data and verify_result.data.get("accepted_at"):
+                logger.info(f"[AUTH] Invitation {invitation_id} successfully marked as accepted at {verify_result.data.get('accepted_at')}")
+            else:
+                logger.warning(f"[AUTH] Invitation {invitation_id} accepted_at still NULL after update. Verify result: {verify_result.data}")
+                # Try direct update as fallback
+                retry_result = supabase.table("user_invitations").eq("id", invitation_id).update({
+                    "accepted_at": accepted_time
+                })
+                logger.info(f"[AUTH] Retry update result: {retry_result.data}")
+        except Exception as invite_error:
+            logger.error(f"[AUTH] Error marking invitation as accepted: {invite_error}", exc_info=True)
+            # Don't fail the whole operation if this fails - profile is already created
+
+        # Create driver record if this invitation was for a driver
+        try:
+            if inv.get("role") == "driver":
+                driver_metadata = inv.get("driver_metadata") or {}
+                driver_id = str(uuid4())
+
+                # Convert empty strings to None for proper database handling
+                phone = driver_metadata.get("phone") or None
+                license_number = driver_metadata.get("license_number") or None
+                license_expiry = driver_metadata.get("license_expiry") or None
+                notes = driver_metadata.get("notes") or None
+
+                driver_data = {
+                    "id": driver_id,
+                    "email": inv["email"],
+                    "full_name": inv.get("full_name"),
+                    "phone": phone,
+                    "license_number": license_number,
+                    "license_expiry": license_expiry,
+                    "notes": notes,
+                    "user_id": new_user_id,
+                    "is_active": True
+                }
+                logger.info(f"[AUTH] Creating driver record {driver_id} for user {new_user_id}")
+                driver_result = supabase.table("drivers").insert(driver_data)
+                logger.info(f"[AUTH] Driver created successfully: {driver_result.data}")
+        except Exception as driver_error:
+            logger.error(f"[AUTH] Error creating driver record: {driver_error}", exc_info=True)
+            # Don't fail - the user account is created, driver creation can be fixed manually
 
         return {
             "success": True,

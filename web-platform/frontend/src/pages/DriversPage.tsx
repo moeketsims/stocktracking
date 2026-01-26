@@ -1,10 +1,17 @@
 import { useState } from 'react';
-import { User, Plus, Edit2, CheckCircle, XCircle, Phone, CreditCard, AlertTriangle } from 'lucide-react';
+import { User, Plus, Edit2, CheckCircle, XCircle, Phone, CreditCard, AlertTriangle, Mail, RefreshCw, Clock } from 'lucide-react';
 import { Card, Button, Badge } from '../components/ui';
 import DriverModal from '../components/modals/DriverModal';
-import { useDrivers, useDeleteDriver, useUpdateDriver } from '../hooks/useData';
+import { useDrivers, useDeleteDriver, useUpdateDriver, useResendDriverInvitation } from '../hooks/useData';
 import { useAuthStore } from '../stores/authStore';
 import type { Driver } from '../types';
+
+const INVITATION_STATUS_CONFIG = {
+  active: { label: 'Account Active', variant: 'success' as const, icon: CheckCircle },
+  pending: { label: 'Invite Pending', variant: 'warning' as const, icon: Clock },
+  expired: { label: 'Invite Expired', variant: 'error' as const, icon: AlertTriangle },
+  no_invitation: { label: 'No Invite', variant: 'default' as const, icon: Mail },
+};
 
 export default function DriversPage() {
   const [showModal, setShowModal] = useState(false);
@@ -17,6 +24,7 @@ export default function DriversPage() {
   const { data, isLoading, error, refetch } = useDrivers(!showInactive);
   const deleteMutation = useDeleteDriver();
   const updateMutation = useUpdateDriver();
+  const resendInvitationMutation = useResendDriverInvitation();
 
   const handleEdit = (driver: Driver) => {
     setEditingDriver(driver);
@@ -35,9 +43,18 @@ export default function DriversPage() {
 
   const handleReactivate = async (driver: Driver) => {
     try {
-      await updateMutation.mutateAsync({ driverId: driver.id, data: { is_active: true } });
+      await updateMutation.mutateAsync({ id: driver.id, data: { is_active: true } });
     } catch (err) {
       console.error('Failed to reactivate driver:', err);
+    }
+  };
+
+  const handleResendInvitation = async (driver: Driver) => {
+    try {
+      await resendInvitationMutation.mutateAsync(driver.id);
+      alert('Invitation resent successfully');
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to resend invitation');
     }
   };
 
@@ -52,7 +69,7 @@ export default function DriversPage() {
   };
 
   // Check if license is expired or expiring soon
-  const getLicenseStatus = (expiryDate?: string) => {
+  const getLicenseStatus = (expiryDate?: string | null) => {
     if (!expiryDate) return null;
 
     const expiry = new Date(expiryDate);
@@ -125,6 +142,9 @@ export default function DriversPage() {
         <div className="divide-y divide-gray-200">
           {drivers.map((driver) => {
             const licenseStatus = getLicenseStatus(driver.license_expiry);
+            const invitationConfig = INVITATION_STATUS_CONFIG[driver.invitation_status || 'no_invitation'];
+            const InvitationIcon = invitationConfig.icon;
+            const canResendInvitation = driver.invitation_status === 'pending' || driver.invitation_status === 'expired';
 
             return (
               <div
@@ -139,9 +159,13 @@ export default function DriversPage() {
                     <span className="font-semibold text-gray-900">
                       {driver.full_name}
                     </span>
-                    <Badge variant={driver.is_active ? 'success' : 'default'} size="sm">
-                      {driver.is_active ? 'Active' : 'Inactive'}
+                    <Badge variant={invitationConfig.variant} size="sm">
+                      <InvitationIcon className="w-3 h-3 mr-1" />
+                      {invitationConfig.label}
                     </Badge>
+                    {!driver.is_active && (
+                      <Badge variant="default" size="sm">Inactive</Badge>
+                    )}
                     {licenseStatus && (
                       <Badge variant={licenseStatus.variant} size="sm">
                         <AlertTriangle className="w-3 h-3 mr-1" />
@@ -149,7 +173,13 @@ export default function DriversPage() {
                       </Badge>
                     )}
                   </div>
-                  <div className="flex items-center gap-4 mt-1 text-sm text-gray-500">
+                  <div className="flex items-center gap-4 mt-1 text-sm text-gray-500 flex-wrap">
+                    {driver.email && (
+                      <span className="flex items-center gap-1">
+                        <Mail className="w-3 h-3" />
+                        {driver.email}
+                      </span>
+                    )}
                     {driver.phone && (
                       <span className="flex items-center gap-1">
                         <Phone className="w-3 h-3" />
@@ -169,6 +199,16 @@ export default function DriversPage() {
                 </div>
                 {isManager && (
                   <div className="flex items-center gap-2">
+                    {canResendInvitation && (
+                      <button
+                        onClick={() => handleResendInvitation(driver)}
+                        className="p-2 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                        title="Resend Invitation"
+                        disabled={resendInvitationMutation.isPending}
+                      >
+                        <RefreshCw className={`w-4 h-4 ${resendInvitationMutation.isPending ? 'animate-spin' : ''}`} />
+                      </button>
+                    )}
                     <button
                       onClick={() => handleEdit(driver)}
                       className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"

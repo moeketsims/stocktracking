@@ -714,6 +714,9 @@ function DetailsDrawer({
 }) {
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'admin';
+  const isLocationManager = user?.role === 'location_manager';
+  // Check if location manager is viewing their own assigned location
+  const isOwnLocation = isLocationManager && user?.location_id === location?.location_id;
 
   // Fetch driver's deliveries to this location
   const { data: myDeliveriesData, isLoading: isLoadingDeliveries } = useQuery({
@@ -758,7 +761,7 @@ function DetailsDrawer({
     enabled: isAdmin && !!location?.location_id && location?.location_type === 'warehouse',
   });
 
-  // Fetch manager for this location
+  // Fetch manager for this location (for admin view)
   const { data: locationManagerData, isLoading: isLoadingManager } = useQuery({
     queryKey: ['location-manager', location?.location_id],
     queryFn: () => usersApi.list({ role: 'location_manager' }).then(r => {
@@ -767,6 +770,23 @@ function DetailsDrawer({
       return manager || null;
     }),
     enabled: isAdmin && !!location?.location_id,
+  });
+
+  // Location Manager viewing OTHER locations - fetch manager contact
+  const { data: otherLocationManagerData, isLoading: isLoadingOtherManager } = useQuery({
+    queryKey: ['location-manager-readonly', location?.location_id],
+    queryFn: () => usersApi.list({ role: 'location_manager' }).then(r => {
+      const manager = r.data.users?.find((u: any) => u.location_id === location!.location_id);
+      return manager || null;
+    }),
+    enabled: isLocationManager && !isOwnLocation && !!location?.location_id,
+  });
+
+  // Location Manager viewing OTHER locations - fetch most recent delivery
+  const { data: recentDeliveryData, isLoading: isLoadingRecentDelivery } = useQuery({
+    queryKey: ['recent-delivery', location?.location_id],
+    queryFn: () => pendingDeliveriesApi.getPending(location!.location_id, 1).then(r => r.data),
+    enabled: isLocationManager && !isOwnLocation && !!location?.location_id,
   });
 
   if (!location) return null;
@@ -1203,9 +1223,148 @@ function DetailsDrawer({
                 )}
               </div>
             </>
+          ) : isLocationManager ? (
+            // Location Manager View - Different based on own location vs other locations
+            isOwnLocation ? (
+              <>
+                {/* Own Location - Full functionality */}
+                <div>
+                  <h3 className="text-sm font-medium text-gray-700 mb-3">Quick Actions</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <ActionButton
+                      icon={ArrowUpFromLine}
+                      label="Issue Stock"
+                      description="Record usage"
+                      onClick={() => onAction('issue')}
+                      color="slate"
+                    />
+                    <ActionButton
+                      icon={ArrowLeftRight}
+                      label="Transfer"
+                      description="Move to location"
+                      onClick={() => onAction('transfer')}
+                      color="violet"
+                    />
+                    <ActionButton
+                      icon={Trash2}
+                      label="Record Waste"
+                      description="Log spoilage"
+                      onClick={() => onAction('waste')}
+                      color="red"
+                    />
+                  </div>
+                </div>
+
+                {/* Recent Activity */}
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Activity className="w-4 h-4 text-gray-400" />
+                    <h3 className="text-sm font-medium text-gray-700">Recent Activity</h3>
+                  </div>
+                  {location.recent_activity.length > 0 ? (
+                    <div className="space-y-2">
+                      {location.recent_activity.map((activity) => (
+                        <ActivityItem key={activity.id} activity={activity} />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 bg-gray-50 rounded-xl">
+                      <Activity className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                      <p className="text-sm text-gray-400">No recent activity</p>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Other Locations - Read-only View */}
+                {/* Stock levels already shown above */}
+
+                {/* Most Recent Delivery */}
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Truck className="w-4 h-4 text-orange-500" />
+                    <h3 className="text-sm font-medium text-gray-700">Most Recent Delivery</h3>
+                  </div>
+                  {isLoadingRecentDelivery ? (
+                    <div className="animate-pulse">
+                      <div className="h-16 bg-gray-100 rounded-xl" />
+                    </div>
+                  ) : (recentDeliveryData?.deliveries || []).length > 0 ? (
+                    <div className="p-3 bg-orange-50 border border-orange-100 rounded-xl">
+                      {(() => {
+                        const delivery = recentDeliveryData.deliveries[0];
+                        return (
+                          <>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-sm font-medium text-gray-900">
+                                Trip #{delivery.trip?.trip_number || 'Unknown'}
+                              </span>
+                              <span className="text-sm font-semibold text-orange-600">
+                                {delivery.driver_claimed_bags || Math.round(delivery.driver_claimed_qty_kg / 10)} bags
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-500">
+                              From: {delivery.supplier?.name || 'Unknown supplier'}
+                            </p>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  ) : (
+                    <div className="text-center py-6 bg-gray-50 rounded-xl">
+                      <Truck className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                      <p className="text-sm text-gray-400">No recent deliveries</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Location Manager Contact */}
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <User className="w-4 h-4 text-gray-400" />
+                    <h3 className="text-sm font-medium text-gray-700">Location Manager</h3>
+                  </div>
+                  {isLoadingOtherManager ? (
+                    <div className="animate-pulse">
+                      <div className="h-12 bg-gray-100 rounded-xl" />
+                    </div>
+                  ) : otherLocationManagerData ? (
+                    <div className="p-3 bg-gray-50 border border-gray-100 rounded-xl">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
+                          <User className="w-5 h-5 text-gray-500" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900">
+                            {otherLocationManagerData.full_name || 'Manager'}
+                          </p>
+                          <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                            <Mail className="w-3 h-3" />
+                            <span className="truncate">{otherLocationManagerData.email}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-6 bg-gray-50 rounded-xl">
+                      <User className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                      <p className="text-sm text-gray-400">No manager assigned</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Read-only notice */}
+                <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl">
+                  <p className="text-sm text-blue-700 text-center">
+                    You have read-only access to this location's stock information.
+                  </p>
+                </div>
+              </>
+            )
           ) : (
             <>
-              {/* Non-Admin, Non-Driver View - Quick Actions */}
+              {/* Staff/Other Roles - Quick Actions */}
               <div>
                 <h3 className="text-sm font-medium text-gray-700 mb-3">Quick Actions</h3>
                 <div className="grid grid-cols-2 gap-3">
@@ -1235,7 +1394,7 @@ function DetailsDrawer({
                 </div>
               </div>
 
-              {/* Recent Activity - Non-driver view */}
+              {/* Recent Activity */}
               <div>
                 <div className="flex items-center gap-2 mb-3">
                   <Activity className="w-4 h-4 text-gray-400" />

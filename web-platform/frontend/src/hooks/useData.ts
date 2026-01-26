@@ -542,6 +542,20 @@ export function useDeleteDriver() {
   });
 }
 
+export function useResendDriverInvitation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (driverId: string) => {
+      const response = await driversApi.resendInvitation(driverId);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['drivers'] });
+    },
+  });
+}
+
 // Trips
 export function useTrips(params?: { status?: string; vehicle_id?: string; from_date?: string; to_date?: string; limit?: number }) {
   return useQuery<TripsData>({

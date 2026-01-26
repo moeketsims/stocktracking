@@ -390,6 +390,7 @@ export interface WasteStockForm {
 
 // Driver Form Types
 export interface CreateDriverForm {
+  email: string;
   full_name: string;
   phone?: string;
   license_number?: string;
@@ -412,15 +413,20 @@ export interface Vehicle {
 }
 
 // Driver Types
+export type DriverInvitationStatus = 'active' | 'pending' | 'expired' | 'no_invitation';
+
 export interface Driver {
   id: string;
   name: string;
   full_name: string;
+  email: string | null;
   license_number: string | null;
   license_expiry: string | null;
   phone: string | null;
   is_active: boolean;
   notes: string | null;
+  invitation_status: DriverInvitationStatus;
+  user_id: string | null;
   created_at: string;
 }
 

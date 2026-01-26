@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Mail } from 'lucide-react';
 import { Modal, Button, Input } from '../ui';
 import { useCreateDriver, useUpdateDriver } from '../../hooks/useData';
 import type { Driver, CreateDriverForm } from '../../types';
@@ -18,6 +18,7 @@ export default function DriverModal({
   driver,
 }: DriverModalProps) {
   const [form, setForm] = useState<CreateDriverForm>({
+    email: '',
     full_name: '',
     phone: '',
     license_number: '',
@@ -34,6 +35,7 @@ export default function DriverModal({
     if (isOpen) {
       if (driver) {
         setForm({
+          email: driver.email || '',
           full_name: driver.full_name,
           phone: driver.phone || '',
           license_number: driver.license_number || '',
@@ -42,6 +44,7 @@ export default function DriverModal({
         });
       } else {
         setForm({
+          email: '',
           full_name: '',
           phone: '',
           license_number: '',
@@ -62,16 +65,28 @@ export default function DriverModal({
       return;
     }
 
+    if (!isEditing && !form.email.trim()) {
+      setError('Email address is required');
+      return;
+    }
+
+    if (!isEditing && !form.email.includes('@')) {
+      setError('Please enter a valid email address');
+      return;
+    }
+
     try {
       if (isEditing && driver) {
-        await updateMutation.mutateAsync({ driverId: driver.id, data: form });
+        // Don't send email when updating - it can't be changed
+        const { email, ...updateData } = form;
+        await updateMutation.mutateAsync({ id: driver.id, data: updateData });
       } else {
         await createMutation.mutateAsync(form);
       }
       onSuccess();
       onClose();
     } catch (err: any) {
-      setError(err.response?.data?.detail || `Failed to ${isEditing ? 'update' : 'create'} driver`);
+      setError(err.response?.data?.detail || `Failed to ${isEditing ? 'update' : 'add'} driver`);
     }
   };
 
@@ -82,6 +97,28 @@ export default function DriverModal({
           <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm flex items-center gap-2">
             <AlertCircle className="w-4 h-4" />
             {error}
+          </div>
+        )}
+
+        {!isEditing && (
+          <>
+            <Input
+              type="email"
+              label="Email Address *"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              placeholder="driver@example.com"
+            />
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700 flex items-start gap-2">
+              <Mail className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <span>An invitation email will be sent to this address. The driver will use it to create their account and access the system.</span>
+            </div>
+          </>
+        )}
+
+        {isEditing && driver?.email && (
+          <div className="text-sm text-gray-500">
+            <span className="font-medium">Email:</span> {driver.email}
           </div>
         )}
 

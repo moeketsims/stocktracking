@@ -18,6 +18,7 @@ import {
 import { Card, Button, Badge, Select } from '../components/ui';
 import InviteUserModal from '../components/modals/InviteUserModal';
 import EditUserModal from '../components/modals/EditUserModal';
+import ConfirmationModal from '../components/modals/ConfirmationModal';
 import {
   useUsers,
   useDeactivateUser,
@@ -53,9 +54,12 @@ export default function UsersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'users' | 'invitations'>('users');
+  const [cancellingInvitation, setCancellingInvitation] = useState<UserInvitation | null>(null);
 
   const user = useAuthStore((state) => state.user);
   const isAdmin = user?.role === 'admin';
+  const isLocationManager = user?.role === 'location_manager';
+  const canEditUsers = isAdmin || user?.role === 'zone_manager'; // Location managers cannot edit
 
   // Users data
   const { data: usersData, isLoading: usersLoading, refetch: refetchUsers } = useUsers({
@@ -103,13 +107,17 @@ export default function UsersPage() {
     }
   };
 
-  const handleCancelInvitation = async (inv: UserInvitation) => {
-    if (window.confirm(`Cancel invitation to ${inv.email}?`)) {
-      try {
-        await cancelInvitationMutation.mutateAsync(inv.id);
-      } catch (err) {
-        console.error('Failed to cancel invitation:', err);
-      }
+  const handleCancelInvitation = (inv: UserInvitation) => {
+    setCancellingInvitation(inv);
+  };
+
+  const confirmCancelInvitation = async () => {
+    if (!cancellingInvitation) return;
+    try {
+      await cancelInvitationMutation.mutateAsync(cancellingInvitation.id);
+      setCancellingInvitation(null);
+    } catch (err) {
+      console.error('Failed to cancel invitation:', err);
     }
   };
 
@@ -146,10 +154,12 @@ export default function UsersPage() {
             </p>
           </div>
         </div>
-        <Button onClick={() => setShowInviteModal(true)}>
-          <UserPlus className="w-4 h-4 mr-1" />
-          Invite User
-        </Button>
+        {!isLocationManager && (
+          <Button onClick={() => setShowInviteModal(true)}>
+            <UserPlus className="w-4 h-4 mr-1" />
+            Invite User
+          </Button>
+        )}
       </div>
 
       {/* Tabs */}
@@ -269,13 +279,19 @@ export default function UsersPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setEditingUser(u)}
-                        className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                        title="Edit"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
+                      {/* Active status indicator */}
+                      <div className={`w-2 h-2 rounded-full ${u.is_active ? 'bg-green-500' : 'bg-gray-300'}`} title={u.is_active ? 'Active' : 'Inactive'} />
+
+                      {/* Action buttons - hidden for location managers */}
+                      {canEditUsers && (
+                        <button
+                          onClick={() => setEditingUser(u)}
+                          className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="Edit"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                      )}
                       {isAdmin && u.email && (
                         <button
                           onClick={() => handleResetPassword(u)}
@@ -406,6 +422,18 @@ export default function UsersPage() {
         onClose={() => setEditingUser(null)}
         onSuccess={handleSuccess}
         user={editingUser}
+      />
+
+      <ConfirmationModal
+        isOpen={!!cancellingInvitation}
+        onClose={() => setCancellingInvitation(null)}
+        onConfirm={confirmCancelInvitation}
+        title="Cancel Invitation"
+        message={`Are you sure you want to cancel the invitation to ${cancellingInvitation?.full_name || cancellingInvitation?.email}? This will remove the invitation from all records and the user will no longer be able to accept it.`}
+        confirmText="Yes, Cancel Invitation"
+        cancelText="No, Keep It"
+        type="danger"
+        isLoading={cancelInvitationMutation.isPending}
       />
     </div>
   );

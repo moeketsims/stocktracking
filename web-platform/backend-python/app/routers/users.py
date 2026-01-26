@@ -57,6 +57,21 @@ async def require_admin_or_zone_manager(user_data: dict = Depends(require_auth))
     return user_data
 
 
+async def require_manager(user_data: dict = Depends(require_auth)) -> dict:
+    """Require admin, zone_manager, or location_manager role (for viewing users)."""
+    supabase = get_supabase_admin_client()
+
+    profile = supabase.table("profiles").select("*").eq(
+        "user_id", user_data["user"].id
+    ).single().execute()
+
+    if not profile.data or profile.data["role"] not in ["admin", "zone_manager", "location_manager"]:
+        raise HTTPException(status_code=403, detail="Manager access required")
+
+    user_data["profile"] = profile.data
+    return user_data
+
+
 def can_manage_role(actor_role: str, target_role: str) -> bool:
     """Check if actor can manage a user with target role."""
     if actor_role == "admin":
@@ -88,9 +103,9 @@ async def list_users(
     zone_id: Optional[str] = Query(None, description="Filter by zone"),
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
     search: Optional[str] = Query(None, description="Search by name or email"),
-    user_data: dict = Depends(require_admin_or_zone_manager)
+    user_data: dict = Depends(require_manager)
 ):
-    """List users with filtering. Zone managers see only users in their zone."""
+    """List users with filtering. Zone/location managers see users in their scope."""
     supabase = get_supabase_admin_client()
     actor_profile = user_data["profile"]
 
@@ -100,8 +115,8 @@ async def list_users(
             "*, zones(name), locations(name)"
         ).order("created_at", desc=True)
 
-        # Zone manager can only see users in their zone
-        if actor_profile["role"] == "zone_manager":
+        # Zone manager and location manager can only see users in their zone
+        if actor_profile["role"] in ["zone_manager", "location_manager"]:
             query = query.eq("zone_id", actor_profile["zone_id"])
         elif zone_id:
             query = query.eq("zone_id", zone_id)

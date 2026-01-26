@@ -26,10 +26,10 @@ export default function LocationSelector({
 }: LocationSelectorProps) {
   const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);
-  const { user, isLocationManager, isAdmin, isZoneManager } = useAuthStore();
+  const { user, isAdmin, isZoneManager } = useAuthStore();
 
-  // Only show for location_manager, admin, and zone_manager
-  const canViewOtherLocations = isLocationManager() || isAdmin() || isZoneManager();
+  // Only show for admin and zone_manager - location managers should only see their own location
+  const canViewOtherLocations = isAdmin() || isZoneManager();
 
   useEffect(() => {
     if (canViewOtherLocations) {
