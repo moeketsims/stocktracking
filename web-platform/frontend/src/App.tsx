@@ -12,12 +12,13 @@ import {
   ClipboardList,
   PackageCheck,
   UtensilsCrossed,
-  LogOut,
   MapPin,
 } from 'lucide-react';
 import { useAuthStore } from './stores/authStore';
 import { useLogout } from './hooks/useAuth';
-import { useNotifications, useAlerts, usePendingDeliveriesCount } from './hooks/useData';
+import { useNotifications, usePendingDeliveriesCount } from './hooks/useData';
+import Sidebar from './components/Sidebar';
+import { MobileMenuButton, MobileDrawer } from './components/MobileMenu';
 import {
   LoginPage,
   DashboardPage,
@@ -66,14 +67,8 @@ function App() {
   const [resetToken, setResetToken] = useState<string>('');
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [pendingTripRequest, setPendingTripRequest] = useState<string | null>(null);
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const { data: notificationsData } = useNotifications();
   const { data: pendingDeliveriesCount = 0 } = usePendingDeliveriesCount();
-
-  const handleLogout = async () => {
-    await logoutMutation.mutateAsync();
-    setShowLogoutConfirm(false);
-  };
 
   // Navigate to trips page with specific trip selected
   const handleNavigateToTrip = (tripId: string) => {
@@ -250,134 +245,41 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-100 flex">
-      {/* Sidebar */}
-      <aside className="w-64 bg-indigo-950 flex flex-col">
-        <div className="p-6">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center">
-              <span className="text-xl">🥔</span>
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-white">Potato Stock</h1>
-              <p className="text-xs text-indigo-300">Inventory Manager</p>
-            </div>
-          </div>
-        </div>
+      {/* Mobile Drawer Overlay */}
+      <MobileDrawer
+        mainTabs={mainTabs}
+        moreTabs={moreTabs}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        unreadCount={unreadCount}
+        pendingDeliveriesCount={pendingDeliveriesCount}
+      />
 
-        <nav className="flex-1 px-3 space-y-1">
-          {/* Main Tabs */}
-          {mainTabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 ${activeTab === tab.id
-                ? 'bg-orange-500 text-white'
-                : 'text-indigo-200 hover:bg-indigo-900 hover:text-white'
-                }`}
-            >
-              <tab.icon className="w-5 h-5" />
-              {tab.label}
-              {tab.id === 'alerts' && (
-                <AlertBadge />
-              )}
-            </button>
-          ))}
-
-          {/* Divider */}
-          <div className="pt-4 pb-2">
-            <p className="px-4 text-xs font-medium text-indigo-400 uppercase tracking-wider">
-              More
-            </p>
-          </div>
-
-          {/* More Tabs */}
-          {moreTabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 ${activeTab === tab.id
-                ? 'bg-orange-500 text-white'
-                : 'text-indigo-200 hover:bg-indigo-900 hover:text-white'
-                }`}
-            >
-              <tab.icon className="w-5 h-5" />
-              {tab.label}
-              {tab.id === 'notifications' && unreadCount > 0 && (
-                <span className="ml-auto px-2 py-0.5 bg-red-500 text-white text-xs font-medium rounded-full">
-                  {unreadCount}
-                </span>
-              )}
-              {tab.id === 'deliveries' && pendingDeliveriesCount > 0 && (
-                <span className="ml-auto px-1.5 py-0.5 bg-orange-600 text-white text-[10px] font-medium rounded-full min-w-[18px] text-center">
-                  {pendingDeliveriesCount > 99 ? '99+' : pendingDeliveriesCount}
-                </span>
-              )}
-            </button>
-          ))}
-        </nav>
-
-        {/* User Profile & Sign Out */}
-        <div className="p-4 border-t border-indigo-900">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-9 h-9 bg-orange-500 rounded-full flex items-center justify-center flex-shrink-0">
-              <span className="text-sm font-semibold text-white">
-                {user?.full_name?.[0]?.toUpperCase() || 'U'}
-              </span>
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-white truncate">
-                {user?.full_name || 'User'}
-              </p>
-              <p className="text-xs text-indigo-300 capitalize">
-                {user?.role?.replace('_', ' ') || 'Staff'}
-              </p>
-            </div>
-          </div>
-
-          {showLogoutConfirm ? (
-            <div className="space-y-2">
-              <p className="text-xs text-indigo-200 text-center">Sign out?</p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowLogoutConfirm(false)}
-                  className="flex-1 px-3 py-1.5 text-xs font-medium text-indigo-200 bg-indigo-900 hover:bg-indigo-800 rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleLogout}
-                  disabled={logoutMutation.isPending}
-                  className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50"
-                >
-                  {logoutMutation.isPending ? 'Signing out...' : 'Sign Out'}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              onClick={() => setShowLogoutConfirm(true)}
-              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-indigo-200 hover:text-white hover:bg-indigo-900 rounded-lg transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-              Sign Out
-            </button>
-          )}
-
-          <p className="text-xs text-indigo-500 text-center mt-3">v1.0.0</p>
-        </div>
+      {/* Desktop Sidebar - hidden on mobile */}
+      <aside className="hidden md:flex w-64 flex-shrink-0">
+        <Sidebar
+          mainTabs={mainTabs}
+          moreTabs={moreTabs}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          unreadCount={unreadCount}
+          pendingDeliveriesCount={pendingDeliveriesCount}
+        />
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto">
-        <header className="bg-white border-b border-gray-200 px-8 py-4 sticky top-0 z-10">
+      <main className="flex-1 overflow-auto min-w-0">
+        <header className="bg-white border-b border-gray-200 px-4 md:px-8 py-3 md:py-4 sticky top-0 z-10">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 md:gap-3">
+              {/* Mobile Menu Button */}
+              <MobileMenuButton />
               {currentTab && <currentTab.icon className="w-5 h-5 text-emerald-600" />}
-              <h2 className="text-lg font-semibold text-gray-800">
+              <h2 className="text-base md:text-lg font-semibold text-gray-800 truncate">
                 {currentTab?.label || 'Dashboard'}
               </h2>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 md:gap-4">
               <button
                 onClick={() => setActiveTab('notifications')}
                 className="relative p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
@@ -396,34 +298,9 @@ function App() {
             </div>
           </div>
         </header>
-        <div className="p-8">{renderPage()}</div>
+        <div className="p-4 md:p-8">{renderPage()}</div>
       </main>
     </div>
-  );
-}
-
-function AlertBadge() {
-  const { data: alertsData } = useAlerts();
-  const criticalCount = alertsData?.summary?.reorder_now_count || 0;
-  const warningCount =
-    (alertsData?.summary?.low_stock_count || 0) +
-    (alertsData?.summary?.expiring_soon_count || 0);
-  const totalAlerts = criticalCount + warningCount;
-
-  if (totalAlerts === 0) return null;
-
-  // Cap at 99+ for cleaner display
-  const displayCount = totalAlerts > 99 ? '99+' : totalAlerts;
-
-  // Red only for critical, muted for warnings/counts - don't compete with brand orange
-  const style = criticalCount > 0
-    ? 'bg-red-500 text-white'
-    : 'bg-indigo-200 text-indigo-700';
-
-  return (
-    <span className={`ml-auto px-1.5 py-0.5 ${style} text-[10px] font-medium rounded-full min-w-[18px] text-center`}>
-      {displayCount}
-    </span>
   );
 }
 
