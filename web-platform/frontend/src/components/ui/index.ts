@@ -4,3 +4,4 @@ export { default as Card, CardHeader, CardContent } from './Card';
 export { default as Input } from './Input';
 export { default as Select } from './Select';
 export { default as Modal } from './Modal';
+export { default as Drawer } from './Drawer';

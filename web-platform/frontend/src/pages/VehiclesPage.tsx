@@ -1,18 +1,43 @@
 import { useState } from 'react';
-import { Truck, Plus, Edit2, CheckCircle, XCircle } from 'lucide-react';
+import { Truck, Plus, Edit2, CheckCircle, XCircle, ChevronRight, AlertTriangle } from 'lucide-react';
 import { Card, Button, Badge } from '../components/ui';
 import VehicleModal from '../components/modals/VehicleModal';
+import VehicleHealthDrawer from '../components/VehicleHealthDrawer';
 import { useVehicles, useDeleteVehicle, useUpdateVehicle } from '../hooks/useData';
 import { useAuthStore } from '../stores/authStore';
-import type { Vehicle } from '../types';
+import type { Vehicle, HealthStatus, VehicleHealth } from '../types';
+
+// Status color/icon mappings for health tiles
+const STATUS_CONFIG: Record<HealthStatus, { bg: string; text: string; icon: typeof CheckCircle }> = {
+  ok: { bg: 'bg-green-100', text: 'text-green-600', icon: CheckCircle },
+  soon: { bg: 'bg-amber-100', text: 'text-amber-600', icon: AlertTriangle },
+  due: { bg: 'bg-red-100', text: 'text-red-600', icon: AlertTriangle },
+};
+
+// Mini health indicator component for list view
+function HealthIndicator({ status, label }: { status: HealthStatus; label: string }) {
+  const config = STATUS_CONFIG[status];
+  const Icon = config.icon;
+  return (
+    <div className={`flex items-center gap-1 px-2 py-1 rounded-lg ${config.bg}`}>
+      <Icon className={`w-3 h-3 ${config.text}`} />
+      <span className={`text-xs font-medium ${config.text}`}>{label}</span>
+    </div>
+  );
+}
 
 export default function VehiclesPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
   const [showInactive, setShowInactive] = useState(false);
+  const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
+  const [showHealthDrawer, setShowHealthDrawer] = useState(false);
 
   const user = useAuthStore((state) => state.user);
-  const isManager = user?.role && ['admin', 'zone_manager', 'location_manager'].includes(user.role);
+  const { isVehicleManager, isAdmin } = useAuthStore();
+  const isVehicleMgr = isVehicleManager();
+  const isAdminUser = isAdmin();
+  const isManager = user?.role && ['admin', 'zone_manager', 'location_manager', 'vehicle_manager'].includes(user.role);
 
   const { data, isLoading, error, refetch } = useVehicles(!showInactive);
   const deleteMutation = useDeleteVehicle();
@@ -49,6 +74,23 @@ export default function VehiclesPage() {
   const handleSuccess = () => {
     refetch();
     handleModalClose();
+  };
+
+  const handleOpenHealth = (vehicle: Vehicle) => {
+    setSelectedVehicle(vehicle);
+    setShowHealthDrawer(true);
+  };
+
+  const handleCloseHealth = () => {
+    setShowHealthDrawer(false);
+    setSelectedVehicle(null);
+  };
+
+  const handleSaveHealth = async (vehicleId: string, health: Partial<VehicleHealth>) => {
+    // TODO: Implement API call to save vehicle health data
+    console.log('Saving health for vehicle:', vehicleId, health);
+    // For now, just close the drawer - backend integration will be added later
+    refetch();
   };
 
   if (isLoading) {
@@ -106,65 +148,92 @@ export default function VehiclesPage() {
       {/* Vehicles List */}
       <Card padding="none">
         <div className="divide-y divide-gray-200">
-          {vehicles.map((vehicle) => (
-            <div
-              key={vehicle.id}
-              className={`flex items-center gap-4 p-4 ${!vehicle.is_active ? 'bg-gray-50 opacity-75' : 'hover:bg-gray-50'} transition-colors`}
-            >
-              <div className={`w-12 h-12 ${vehicle.is_active ? 'bg-blue-100' : 'bg-gray-200'} rounded-lg flex items-center justify-center flex-shrink-0`}>
-                <Truck className={`w-6 h-6 ${vehicle.is_active ? 'text-blue-600' : 'text-gray-400'}`} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-gray-900 font-mono">
-                    {vehicle.registration_number}
-                  </span>
-                  <Badge variant={vehicle.is_active ? 'success' : 'default'} size="sm">
-                    {vehicle.is_active ? 'Active' : 'Inactive'}
-                  </Badge>
-                  <Badge variant="info" size="sm">
-                    {vehicle.fuel_type}
-                  </Badge>
+          {vehicles.map((vehicle) => {
+            // Get health status (default to ok if not available)
+            const serviceStatus = vehicle.health?.service_status || 'ok';
+            const tyresStatus = vehicle.health?.tyres_status || 'ok';
+            const brakesStatus = vehicle.health?.brake_pads_status || 'ok';
+
+            // Determine if this row should be clickable (for vehicle manager or admin viewing health)
+            const isClickable = isVehicleMgr || isAdminUser;
+
+            return (
+              <div
+                key={vehicle.id}
+                onClick={() => isClickable && handleOpenHealth(vehicle)}
+                className={`flex items-center gap-4 p-4 ${!vehicle.is_active ? 'bg-gray-50 opacity-75' : 'hover:bg-gray-50'} transition-colors ${isClickable ? 'cursor-pointer' : ''}`}
+              >
+                <div className={`w-12 h-12 ${vehicle.is_active ? 'bg-blue-100' : 'bg-gray-200'} rounded-lg flex items-center justify-center flex-shrink-0`}>
+                  <Truck className={`w-6 h-6 ${vehicle.is_active ? 'text-blue-600' : 'text-gray-400'}`} />
                 </div>
-                <p className="text-sm text-gray-500">
-                  {vehicle.make && vehicle.model
-                    ? `${vehicle.make} ${vehicle.model}`
-                    : vehicle.make || vehicle.model || 'No make/model specified'}
-                </p>
-                {vehicle.notes && (
-                  <p className="text-xs text-gray-400 mt-1 truncate">{vehicle.notes}</p>
-                )}
-              </div>
-              {isManager && (
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleEdit(vehicle)}
-                    className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                    title="Edit"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                  {vehicle.is_active ? (
-                    <button
-                      onClick={() => handleDeactivate(vehicle)}
-                      className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                      title="Deactivate"
-                    >
-                      <XCircle className="w-4 h-4" />
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => handleReactivate(vehicle)}
-                      className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                      title="Reactivate"
-                    >
-                      <CheckCircle className="w-4 h-4" />
-                    </button>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-gray-900 font-mono">
+                      {vehicle.registration_number}
+                    </span>
+                    <Badge variant={vehicle.is_active ? 'success' : 'default'} size="sm">
+                      {vehicle.is_active ? 'Active' : 'Inactive'}
+                    </Badge>
+                    <Badge variant="info" size="sm">
+                      {vehicle.fuel_type}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-gray-500">
+                    {vehicle.make && vehicle.model
+                      ? `${vehicle.make} ${vehicle.model}`
+                      : vehicle.make || vehicle.model || 'No make/model specified'}
+                  </p>
+                  {vehicle.notes && (
+                    <p className="text-xs text-gray-400 mt-1 truncate">{vehicle.notes}</p>
+                  )}
+
+                  {/* Health indicators for Vehicle Managers and Admins */}
+                  {(isVehicleMgr || isAdminUser) && (
+                    <div className="flex items-center gap-2 mt-2">
+                      <HealthIndicator status={serviceStatus} label="Service" />
+                      <HealthIndicator status={tyresStatus} label="Tyres" />
+                      <HealthIndicator status={brakesStatus} label="Brakes" />
+                    </div>
                   )}
                 </div>
-              )}
-            </div>
-          ))}
+
+                {/* Action buttons - only for regular managers, not vehicle managers */}
+                {isManager && !isVehicleMgr && (
+                  <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => handleEdit(vehicle)}
+                      className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      title="Edit"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    {vehicle.is_active ? (
+                      <button
+                        onClick={() => handleDeactivate(vehicle)}
+                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Deactivate"
+                      >
+                        <XCircle className="w-4 h-4" />
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleReactivate(vehicle)}
+                        className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                        title="Reactivate"
+                      >
+                        <CheckCircle className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Chevron for clickable rows */}
+                {isClickable && (
+                  <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                )}
+              </div>
+            );
+          })}
           {vehicles.length === 0 && (
             <div className="p-12 text-center">
               <Truck className="w-12 h-12 text-gray-300 mx-auto mb-3" />
@@ -185,6 +254,14 @@ export default function VehiclesPage() {
         onClose={handleModalClose}
         onSuccess={handleSuccess}
         vehicle={editingVehicle}
+      />
+
+      {/* Vehicle Health Drawer (for Vehicle Managers and Admins) */}
+      <VehicleHealthDrawer
+        isOpen={showHealthDrawer}
+        onClose={handleCloseHealth}
+        vehicle={selectedVehicle}
+        onSave={handleSaveHealth}
       />
     </div>
   );

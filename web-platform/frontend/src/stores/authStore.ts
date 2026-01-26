@@ -9,6 +9,7 @@ interface AuthStore extends AuthState {
   isAdmin: () => boolean;
   isZoneManager: () => boolean;
   isLocationManager: () => boolean;
+  isVehicleManager: () => boolean;
   isDriver: () => boolean;
   isManager: () => boolean;
   isStaff: () => boolean;
@@ -51,6 +52,7 @@ export const useAuthStore = create<AuthStore>()(
       isAdmin: () => get().user?.role === 'admin',
       isZoneManager: () => get().user?.role === 'zone_manager',
       isLocationManager: () => get().user?.role === 'location_manager',
+      isVehicleManager: () => get().user?.role === 'vehicle_manager',
       isDriver: () => get().user?.role === 'driver',
       isStaff: () => get().user?.role === 'staff',
       isManager: () => {

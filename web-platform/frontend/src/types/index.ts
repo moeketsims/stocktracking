@@ -1,5 +1,5 @@
 // Enums
-export type UserRole = 'admin' | 'zone_manager' | 'location_manager' | 'driver' | 'staff';
+export type UserRole = 'admin' | 'zone_manager' | 'location_manager' | 'vehicle_manager' | 'driver' | 'staff';
 export type LocationType = 'shop' | 'warehouse';
 export type TransactionType = 'receive' | 'issue' | 'return' | 'transfer' | 'waste' | 'adjustment';
 export type NotificationType = 'bag_used' | 'threshold_alert' | 'daily_summary';
@@ -398,6 +398,51 @@ export interface CreateDriverForm {
   notes?: string;
 }
 
+// Vehicle Health Types
+export type HealthStatus = 'ok' | 'soon' | 'due';
+
+export interface TyreHealth {
+  position: 'front_left' | 'front_right' | 'rear_left' | 'rear_right';
+  status: HealthStatus;
+  last_replaced_at: string | null;
+  last_replaced_km: number | null;
+  notes: string | null;
+}
+
+export interface BrakePadHealth {
+  position: 'front' | 'rear';
+  status: HealthStatus;
+  last_replaced_at: string | null;
+  last_replaced_km: number | null;
+  notes: string | null;
+}
+
+export interface VehicleHealth {
+  // Service
+  last_service_date: string | null;
+  last_service_km: number | null;
+  next_service_due_km: number | null;
+  service_status: HealthStatus;
+  service_notes: string | null;
+
+  // Tyres
+  tyres: TyreHealth[];
+  tyres_status: HealthStatus; // Worst status of all tyres
+
+  // Brake pads (front and rear)
+  brake_pads: BrakePadHealth[];
+  brake_pads_status: HealthStatus; // Worst status of front/rear
+
+  // Last driver
+  last_driver_id: string | null;
+  last_driver_name: string | null;
+  last_trip_at: string | null;
+
+  // Metadata
+  updated_at: string | null;
+  updated_by: string | null;
+}
+
 // Vehicle Types
 export interface Vehicle {
   id: string;
@@ -411,6 +456,8 @@ export interface Vehicle {
   is_active: boolean;
   notes: string | null;
   created_at: string;
+  // Health fields (optional - populated when fetched with health data)
+  health?: VehicleHealth;
 }
 
 export interface CreateVehicleForm {

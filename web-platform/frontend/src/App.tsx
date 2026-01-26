@@ -59,7 +59,7 @@ type TabId =
   | 'settings';
 
 function App() {
-  const { isAuthenticated, isManager, isDriver, user } = useAuthStore();
+  const { isAuthenticated, isManager, isDriver, isVehicleManager, user } = useAuthStore();
   const logoutMutation = useLogout();
   const [activeTab, setActiveTab] = useState<TabId>('stock');
   const [publicPage, setPublicPage] = useState<PublicPage>('login');
@@ -69,6 +69,13 @@ function App() {
   const [pendingTripRequest, setPendingTripRequest] = useState<string | null>(null);
   const { data: notificationsData } = useNotifications();
   const { data: pendingDeliveriesCount = 0 } = usePendingDeliveriesCount();
+
+  // Set default tab based on role
+  useEffect(() => {
+    if (isVehicleManager()) {
+      setActiveTab('vehicles');
+    }
+  }, [user?.role]);
 
   // Navigate to trips page with specific trip selected
   const handleNavigateToTrip = (tripId: string) => {
@@ -165,31 +172,46 @@ function App() {
     return <LoginPage onForgotPassword={() => setPublicPage('forgot-password')} />;
   }
 
-  // Filter main tabs based on role - drivers have limited access
+  // Filter main tabs based on role - drivers and vehicle managers have limited access
   const isAdmin = user?.role === 'admin';
-  const mainTabs = [
-    { id: 'stock' as const, label: 'Stock', icon: Package },
-    ...(!isDriver() ? [{ id: 'kitchen' as const, label: isAdmin ? 'Kitchens' : 'Kitchen', icon: UtensilsCrossed }] : []),
-    { id: 'requests' as const, label: 'Requests', icon: ClipboardList },
-    { id: 'vehicles' as const, label: 'Vehicles', icon: Truck },
-    ...(!isDriver() ? [{ id: 'alerts' as const, label: 'Alerts', icon: AlertTriangle }] : []),
-    ...(!isDriver() ? [{ id: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard }] : []),
-  ];
+  const isVehicleMgr = isVehicleManager();
 
-  // Filter more tabs based on role - drivers only see notifications and settings
-  const moreTabs = [
-    ...(!isDriver() ? [{ id: 'deliveries' as const, label: 'Verification', icon: PackageCheck }] : []),
-    ...(isManager()
-      ? [
-        { id: 'drivers' as const, label: 'Drivers', icon: Users },
-        { id: 'batches' as const, label: 'Batches', icon: Boxes },
-        { id: 'users' as const, label: 'User Management', icon: UserCog },
+  // Vehicle Manager only sees Vehicles in main tabs
+  const mainTabs = isVehicleMgr
+    ? [
+        { id: 'vehicles' as const, label: 'Vehicles', icon: Truck },
       ]
-      : []),
-    ...(isAdmin ? [{ id: 'locations' as const, label: 'Locations', icon: MapPin }] : []),
-    { id: 'notifications' as const, label: 'Notifications', icon: Bell },
-    { id: 'settings' as const, label: 'Settings', icon: Settings },
-  ];
+    : [
+        { id: 'stock' as const, label: 'Stock', icon: Package },
+        ...(!isDriver() ? [{ id: 'kitchen' as const, label: isAdmin ? 'Kitchens' : 'Kitchen', icon: UtensilsCrossed }] : []),
+        { id: 'requests' as const, label: 'Requests', icon: ClipboardList },
+        { id: 'vehicles' as const, label: 'Vehicles', icon: Truck },
+        ...(!isDriver() ? [{ id: 'alerts' as const, label: 'Alerts', icon: AlertTriangle }] : []),
+        ...(!isDriver() ? [{ id: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard }] : []),
+      ];
+
+  // Filter more tabs based on role
+  // Vehicle Manager sees: Drivers, User Management, Notifications, Settings
+  const moreTabs = isVehicleMgr
+    ? [
+        { id: 'drivers' as const, label: 'Drivers', icon: Users },
+        { id: 'users' as const, label: 'User Management', icon: UserCog },
+        { id: 'notifications' as const, label: 'Notifications', icon: Bell },
+        { id: 'settings' as const, label: 'Settings', icon: Settings },
+      ]
+    : [
+        ...(!isDriver() ? [{ id: 'deliveries' as const, label: 'Verification', icon: PackageCheck }] : []),
+        ...(isManager()
+          ? [
+            { id: 'drivers' as const, label: 'Drivers', icon: Users },
+            { id: 'batches' as const, label: 'Batches', icon: Boxes },
+            { id: 'users' as const, label: 'User Management', icon: UserCog },
+          ]
+          : []),
+        ...(isAdmin ? [{ id: 'locations' as const, label: 'Locations', icon: MapPin }] : []),
+        { id: 'notifications' as const, label: 'Notifications', icon: Bell },
+        { id: 'settings' as const, label: 'Settings', icon: Settings },
+      ];
 
   const allTabs = [...mainTabs, ...moreTabs];
   const currentTab = allTabs.find((t) => t.id === activeTab);

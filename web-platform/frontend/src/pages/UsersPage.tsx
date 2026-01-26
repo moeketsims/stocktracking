@@ -35,6 +35,7 @@ const ROLE_LABELS: Record<string, string> = {
   admin: 'Admin',
   zone_manager: 'Zone Manager',
   location_manager: 'Location Manager',
+  vehicle_manager: 'Vehicle Manager',
   driver: 'Driver',
   staff: 'Staff',
 };
@@ -43,6 +44,7 @@ const ROLE_COLORS: Record<string, string> = {
   admin: 'bg-purple-100 text-purple-800',
   zone_manager: 'bg-blue-100 text-blue-800',
   location_manager: 'bg-green-100 text-green-800',
+  vehicle_manager: 'bg-teal-100 text-teal-800',
   driver: 'bg-orange-100 text-orange-800',
   staff: 'bg-gray-100 text-gray-800',
 };
@@ -56,6 +58,7 @@ export default function UsersPage() {
   const [activeTab, setActiveTab] = useState<'users' | 'invitations'>('users');
   const [cancellingInvitation, setCancellingInvitation] = useState<UserInvitation | null>(null);
   const [deactivatingUser, setDeactivatingUser] = useState<ManagedUser | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const user = useAuthStore((state) => state.user);
   const isAdmin = user?.role === 'admin';
@@ -137,9 +140,17 @@ export default function UsersPage() {
     }
   };
 
-  const handleSuccess = () => {
+  const handleSuccess = (message?: string) => {
     refetchUsers();
     refetchInvitations();
+    if (message) {
+      setSuccessMessage(message);
+      setTimeout(() => setSuccessMessage(null), 4000);
+    }
+  };
+
+  const handleInviteSuccess = () => {
+    handleSuccess('Invitation sent successfully!');
   };
 
   const users = usersData?.users || [];
@@ -148,6 +159,20 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-6">
+      {/* Success Toast */}
+      {successMessage && (
+        <div className="fixed top-4 right-4 z-50 bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+          <CheckCircle className="w-5 h-5 text-green-600" />
+          <span className="font-medium">{successMessage}</span>
+          <button
+            onClick={() => setSuccessMessage(null)}
+            className="ml-2 text-green-600 hover:text-green-800"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -421,7 +446,7 @@ export default function UsersPage() {
       <InviteUserModal
         isOpen={showInviteModal}
         onClose={() => setShowInviteModal(false)}
-        onSuccess={handleSuccess}
+        onSuccess={handleInviteSuccess}
       />
 
       <EditUserModal

@@ -12,14 +12,14 @@ router = APIRouter(prefix="/users", tags=["User Management"])
 # Request Models
 class InviteUserRequest(BaseModel):
     email: EmailStr
-    role: str = Field(..., pattern="^(admin|zone_manager|location_manager|driver|staff)$")
+    role: str = Field(..., pattern="^(admin|zone_manager|location_manager|vehicle_manager|driver|staff)$")
     zone_id: Optional[str] = None
     location_id: Optional[str] = None
     full_name: Optional[str] = None
 
 
 class UpdateUserRequest(BaseModel):
-    role: Optional[str] = Field(None, pattern="^(admin|zone_manager|location_manager|driver|staff)$")
+    role: Optional[str] = Field(None, pattern="^(admin|zone_manager|location_manager|vehicle_manager|driver|staff)$")
     zone_id: Optional[str] = None
     location_id: Optional[str] = None
     full_name: Optional[str] = None
@@ -58,14 +58,14 @@ async def require_admin_or_zone_manager(user_data: dict = Depends(require_auth))
 
 
 async def require_manager(user_data: dict = Depends(require_auth)) -> dict:
-    """Require admin, zone_manager, or location_manager role (for viewing users)."""
+    """Require admin, zone_manager, location_manager, or vehicle_manager role (for viewing users)."""
     supabase = get_supabase_admin_client()
 
     profile = supabase.table("profiles").select("*").eq(
         "user_id", user_data["user"].id
     ).single().execute()
 
-    if not profile.data or profile.data["role"] not in ["admin", "zone_manager", "location_manager"]:
+    if not profile.data or profile.data["role"] not in ["admin", "zone_manager", "location_manager", "vehicle_manager"]:
         raise HTTPException(status_code=403, detail="Manager access required")
 
     user_data["profile"] = profile.data
@@ -78,6 +78,8 @@ def can_manage_role(actor_role: str, target_role: str) -> bool:
         return True  # Admin can manage any role
     if actor_role == "zone_manager":
         return target_role in ["location_manager", "driver", "staff"]
+    if actor_role == "vehicle_manager":
+        return target_role in ["driver"]  # Vehicle manager can manage drivers
     return False
 
 

@@ -13,7 +13,7 @@ router = APIRouter(prefix="/invitations", tags=["User Invitations"])
 
 class CreateInvitationRequest(BaseModel):
     email: EmailStr
-    role: str = Field(..., pattern="^(admin|zone_manager|location_manager|driver|staff)$")
+    role: str = Field(..., pattern="^(admin|zone_manager|location_manager|vehicle_manager|driver|staff)$")
     zone_id: Optional[str] = None
     location_id: Optional[str] = None
     full_name: Optional[str] = None

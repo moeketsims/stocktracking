@@ -15,6 +15,7 @@ const ROLE_OPTIONS = [
   { value: 'staff', label: 'Staff' },
   { value: 'driver', label: 'Driver' },
   { value: 'location_manager', label: 'Location Manager' },
+  { value: 'vehicle_manager', label: 'Vehicle Manager' },
   { value: 'zone_manager', label: 'Zone Manager' },
   { value: 'admin', label: 'Admin' },
 ];
