@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { X, Truck, Package, AlertTriangle, CheckCircle, XCircle, Gauge } from 'lucide-react';
+import { X, Truck, Package, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
 import { Button } from '../ui';
 import { pendingDeliveriesApi } from '../../lib/api';
 import type { PendingDelivery } from '../../types';
@@ -27,7 +27,6 @@ export default function ConfirmDeliveryModal({
   const [error, setError] = useState<string | null>(null);
   const [showRejectConfirm, setShowRejectConfirm] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
-  const [odometerEnd, setOdometerEnd] = useState('');
 
   // Reset form when modal opens
   useEffect(() => {
@@ -38,7 +37,6 @@ export default function ConfirmDeliveryModal({
       setError(null);
       setShowRejectConfirm(false);
       setRejectReason('');
-      setOdometerEnd('');
     }
   }, [isOpen, delivery]);
 
@@ -80,7 +78,6 @@ export default function ConfirmDeliveryModal({
     confirmMutation.mutate({
       confirmed_qty_kg: confirmedQtyKg,
       notes: notes || undefined,
-      odometer_end: odometerEnd ? parseInt(odometerEnd, 10) : undefined,
     });
   };
 
@@ -300,24 +297,6 @@ export default function ConfirmDeliveryModal({
                     : "Any notes about the delivery..."
                   }
                 />
-              </div>
-
-              {/* Odometer End */}
-              <div>
-                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                  <Gauge className="w-4 h-4" />
-                  End KM (Odometer)
-                </label>
-                <input
-                  type="number"
-                  value={odometerEnd}
-                  onChange={(e) => setOdometerEnd(e.target.value)}
-                  placeholder="e.g., 125050"
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                />
-                <p className="text-xs text-gray-400 mt-1">
-                  Optional: Enter current odometer reading to track distance
-                </p>
               </div>
 
               {/* Actions */}
