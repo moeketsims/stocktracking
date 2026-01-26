@@ -42,7 +42,7 @@ interface RequestsPageProps {
 
 export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip, onNavigateToDeliveries }: RequestsPageProps) {
   const queryClient = useQueryClient();
-  const { user, isManager } = useAuthStore();
+  const { user, isManager, isDriver } = useAuthStore();
   const [activeTab, setActiveTab] = useState<TabFilter>('available');
   const [selectedRequest, setSelectedRequest] = useState<StockRequest | null>(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -497,7 +497,7 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           {/* Table Header - Hidden on mobile */}
           <div className="hidden md:block bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
-            <div className={`grid ${viewDensity === 'compact' ? 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px_120px]' : 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px_120px]'} gap-2 px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider`}>
+            <div className={`grid ${isDriver() ? (viewDensity === 'compact' ? 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px_120px]' : 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px_120px]') : 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px]'} gap-2 px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider`}>
               <div>Req #</div>
               <div>Location</div>
               <div className="text-right pr-1">Qty</div>
@@ -505,7 +505,7 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
               <div>Requested By</div>
               <div className="text-center">Age</div>
               <div className="text-center">Status</div>
-              <div className="text-right">Action</div>
+              {isDriver() && <div className="text-right">Action</div>}
             </div>
           </div>
 
@@ -517,6 +517,7 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
                 request={request}
                 isOwner={isMyRequest(request)}
                 isManager={isManager}
+                isDriver={isDriver()}
                 density={viewDensity}
                 onAcceptAndDeliver={() => {
                   setSelectedRequest(request);
@@ -591,6 +592,7 @@ function RequestRow({
   request,
   isOwner,
   isManager,
+  isDriver,
   density,
   onAcceptAndDeliver,
   onCreateTrip,
@@ -604,6 +606,7 @@ function RequestRow({
   request: StockRequest;
   isOwner: boolean;
   isManager: boolean;
+  isDriver: boolean;
   density: ViewDensity;
   onAcceptAndDeliver: () => void;
   onCreateTrip: () => void;
@@ -638,14 +641,16 @@ function RequestRow({
     return 'text-gray-500';
   };
 
-  const canAccept = request.status === 'pending';
-  const canCreateTrip = request.status === 'accepted' && isOwner;
-  const canEdit = (request.status === 'pending' || request.status === 'accepted') && (isOwner || isManager);
-  const canCancel = (request.status === 'pending' || request.status === 'accepted') && (isOwner || isManager);
-  const canFulfillRemaining = request.status === 'partially_fulfilled' && isManager;
-  const isInDelivery = request.status === 'in_delivery';
+  // Only drivers can accept requests and perform delivery actions
+  const canAccept = request.status === 'pending' && isDriver;
+  const canCreateTrip = request.status === 'accepted' && isOwner && isDriver;
+  const canEdit = (request.status === 'pending' || request.status === 'accepted') && isOwner && isDriver;
+  const canCancel = (request.status === 'pending' || request.status === 'accepted') && isOwner && isDriver;
+  const canFulfillRemaining = request.status === 'partially_fulfilled' && isDriver;
+  const isInDelivery = request.status === 'in_delivery' && isDriver;
   const hasTrip = request.status === 'trip_created' || request.status === 'fulfilled';
-  const hasSecondaryActions = canEdit || canCancel;
+  // Only show secondary actions menu for drivers
+  const hasSecondaryActions = isDriver && (canEdit || canCancel);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -801,49 +806,51 @@ function RequestRow({
           )}
         </div>
 
-        {/* Actions */}
-        <div className="flex items-center gap-2">
-          <div className="flex-1">
-            {renderPrimaryAction()}
-          </div>
-          {hasSecondaryActions && (
-            <div className="relative" ref={menuRef}>
-              <button
-                onClick={() => setShowMenu(!showMenu)}
-                className="w-9 h-9 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600"
-              >
-                <MoreVertical className="w-5 h-5" />
-              </button>
-
-              {showMenu && (
-                <div className="absolute right-0 bottom-full mb-1 w-32 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
-                  {canEdit && (
-                    <button
-                      onClick={() => { setShowMenu(false); onEdit(); }}
-                      className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                      Edit
-                    </button>
-                  )}
-                  {canCancel && (
-                    <button
-                      onClick={() => { setShowMenu(false); onCancel(); }}
-                      className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
-                    >
-                      <XCircle className="w-4 h-4" />
-                      Cancel
-                    </button>
-                  )}
-                </div>
-              )}
+        {/* Actions (only for drivers) */}
+        {isDriver && (
+          <div className="flex items-center gap-2">
+            <div className="flex-1">
+              {renderPrimaryAction()}
             </div>
-          )}
-        </div>
+            {hasSecondaryActions && (
+              <div className="relative" ref={menuRef}>
+                <button
+                  onClick={() => setShowMenu(!showMenu)}
+                  className="w-9 h-9 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600"
+                >
+                  <MoreVertical className="w-5 h-5" />
+                </button>
+
+                {showMenu && (
+                  <div className="absolute right-0 bottom-full mb-1 w-32 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                    {canEdit && (
+                      <button
+                        onClick={() => { setShowMenu(false); onEdit(); }}
+                        className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                        Edit
+                      </button>
+                    )}
+                    {canCancel && (
+                      <button
+                        onClick={() => { setShowMenu(false); onCancel(); }}
+                        className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                      >
+                        <XCircle className="w-4 h-4" />
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Desktop Table Row */}
-      <div className={`hidden md:grid grid-cols-[70px_1fr_65px_55px_120px_45px_90px_120px] gap-2 px-4 ${rowPadding} items-center hover:bg-gray-50 transition-colors ${
+      <div className={`hidden md:grid ${isDriver ? 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px_120px]' : 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px]'} gap-2 px-4 ${rowPadding} items-center hover:bg-gray-50 transition-colors ${
         isUrgent && request.status === 'pending' ? 'bg-red-50/50' : ''
       }`}>
         {/* Request # */}
@@ -932,44 +939,46 @@ function RequestRow({
           </span>
         </div>
 
-        {/* Actions - right aligned */}
-        <div className="flex items-center justify-end gap-1.5">
-          {renderPrimaryAction()}
+        {/* Actions - right aligned (only for drivers) */}
+        {isDriver && (
+          <div className="flex items-center justify-end gap-1.5">
+            {renderPrimaryAction()}
 
-          {hasSecondaryActions && (
-            <div className="relative" ref={menuRef}>
-              <button
-                onClick={() => setShowMenu(!showMenu)}
-                className="w-7 h-7 rounded hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600"
-              >
-                <MoreVertical className="w-4 h-4" />
-              </button>
+            {hasSecondaryActions && (
+              <div className="relative" ref={menuRef}>
+                <button
+                  onClick={() => setShowMenu(!showMenu)}
+                  className="w-7 h-7 rounded hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600"
+                >
+                  <MoreVertical className="w-4 h-4" />
+                </button>
 
-              {showMenu && (
-                <div className="absolute right-0 top-full mt-1 w-32 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
-                  {canEdit && (
-                    <button
-                      onClick={() => { setShowMenu(false); onEdit(); }}
-                      className="w-full px-3 py-1.5 text-left text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                    >
-                      <Edit3 className="w-3 h-3" />
-                      Edit
-                    </button>
-                  )}
-                  {canCancel && (
-                    <button
-                      onClick={() => { setShowMenu(false); onCancel(); }}
-                      className="w-full px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 flex items-center gap-2"
-                    >
-                      <XCircle className="w-3 h-3" />
-                      Cancel
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+                {showMenu && (
+                  <div className="absolute right-0 top-full mt-1 w-32 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                    {canEdit && (
+                      <button
+                        onClick={() => { setShowMenu(false); onEdit(); }}
+                        className="w-full px-3 py-1.5 text-left text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                      >
+                        <Edit3 className="w-3 h-3" />
+                        Edit
+                      </button>
+                    )}
+                    {canCancel && (
+                      <button
+                        onClick={() => { setShowMenu(false); onCancel(); }}
+                        className="w-full px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 flex items-center gap-2"
+                      >
+                        <XCircle className="w-3 h-3" />
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </>
   );
