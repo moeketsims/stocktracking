@@ -58,7 +58,7 @@ export function StartTripModal({ isOpen, onClose, trip, onSuccess }: StartTripMo
     : 'Unknown vehicle';
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
         <div className="flex items-center justify-between p-6 border-b">
           <div className="flex items-center space-x-3">

@@ -94,7 +94,7 @@ export default function ConfirmationModal({
       onClick={handleBackdropClick}
     >
       {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/50 transition-opacity" />
+      <div className="fixed inset-0 bg-black/30 backdrop-blur-sm transition-opacity" />
 
       {/* Modal */}
       <div className="flex min-h-full items-center justify-center p-4">
