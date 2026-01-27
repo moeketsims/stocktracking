@@ -399,6 +399,11 @@ async def accept_stock_request(
                     status_code=400,
                     detail="This request has already been fulfilled."
                 )
+            elif status == "cancelled":
+                raise HTTPException(
+                    status_code=400,
+                    detail="This request has been cancelled and is no longer available."
+                )
             else:
                 raise HTTPException(
                     status_code=400,
@@ -1000,7 +1005,7 @@ async def cancel_stock_request(
         # Only allow cancellation by requester, acceptor, or manager
         is_requester = profile.data["id"] == existing.data["requested_by"]
         is_acceptor = profile.data["id"] == existing.data.get("accepted_by")
-        is_manager = profile.data["role"] in ("admin", "zone_manager")
+        is_manager = profile.data["role"] in ("admin", "zone_manager", "location_manager")
 
         if not (is_requester or is_acceptor or is_manager):
             raise HTTPException(status_code=403, detail="Not authorized to cancel this request")

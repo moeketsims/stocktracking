@@ -104,10 +104,22 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
   });
 
   // Re-request mutation (resend notification to all drivers)
+  const [reRequestSuccess, setReRequestSuccess] = useState<string | null>(null);
+  const [reRequestError, setReRequestError] = useState<string | null>(null);
+
   const reRequestMutation = useMutation({
     mutationFn: (requestId: string) => stockRequestsApi.reRequest(requestId),
-    onSuccess: () => {
+    onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['stock-requests'] });
+      const emailsSent = response.data?.emails_sent || 0;
+      setReRequestSuccess(`Notification sent to ${emailsSent} driver(s)`);
+      setReRequestError(null);
+      setTimeout(() => setReRequestSuccess(null), 3000);
+    },
+    onError: (error: any) => {
+      setReRequestError(error.response?.data?.detail || 'Failed to send notifications');
+      setReRequestSuccess(null);
+      setTimeout(() => setReRequestError(null), 5000);
     },
   });
 
@@ -164,6 +176,13 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
           request,
           message: `This request has been fulfilled.`,
           type: 'info',
+        });
+      } else if (status === 'cancelled') {
+        setLinkedRequestBanner({
+          show: true,
+          request,
+          message: `This request has been cancelled and is no longer available.`,
+          type: 'warning',
         });
       } else {
         setLinkedRequestBanner({
@@ -322,6 +341,24 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
 
   return (
     <div className="space-y-4">
+      {/* Re-request Success/Error Toast */}
+      {reRequestSuccess && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center gap-3">
+          <div className="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center flex-shrink-0">
+            <Check className="w-4 h-4 text-emerald-600" />
+          </div>
+          <span className="text-sm text-emerald-800">{reRequestSuccess}</span>
+        </div>
+      )}
+      {reRequestError && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-3">
+          <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+            <AlertTriangle className="w-4 h-4 text-red-600" />
+          </div>
+          <span className="text-sm text-red-800">{reRequestError}</span>
+        </div>
+      )}
+
       {/* Linked Request Banner */}
       {linkedRequestBanner.show && linkedRequestBanner.request && (
         <div className={`rounded-xl p-3 flex items-center justify-between ${
