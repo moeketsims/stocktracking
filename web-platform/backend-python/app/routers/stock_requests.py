@@ -547,6 +547,21 @@ async def create_trip_from_request(
         if not vehicle.data.get("is_active"):
             raise HTTPException(status_code=400, detail="Vehicle is not active")
 
+        # Check if vehicle is already on a trip (planned or in_progress)
+        active_trips = supabase.table("trips").select(
+            "id, trip_number, driver_name, status"
+        ).eq("vehicle_id", trip_request.vehicle_id).in_(
+            "status", ["planned", "in_progress"]
+        ).execute()
+
+        if active_trips.data and len(active_trips.data) > 0:
+            active_trip = active_trips.data[0]
+            driver_info = active_trip.get("driver_name") or "Unknown driver"
+            raise HTTPException(
+                status_code=400,
+                detail=f"Vehicle {vehicle.data['registration_number']} is currently on trip {active_trip['trip_number']} with {driver_info}. Please select a different vehicle."
+            )
+
         # Get supplier info
         supplier = supabase.table("suppliers").select("*").eq(
             "id", trip_request.supplier_id
@@ -757,6 +772,21 @@ async def create_trip_from_multiple_requests(
 
         if not vehicle.data.get("is_active"):
             raise HTTPException(status_code=400, detail="Vehicle is not active")
+
+        # Check if vehicle is already on a trip (planned or in_progress)
+        active_trips = supabase.table("trips").select(
+            "id, trip_number, driver_name, status"
+        ).eq("vehicle_id", trip_request.vehicle_id).in_(
+            "status", ["planned", "in_progress"]
+        ).execute()
+
+        if active_trips.data and len(active_trips.data) > 0:
+            active_trip = active_trips.data[0]
+            driver_info = active_trip.get("driver_name") or "Unknown driver"
+            raise HTTPException(
+                status_code=400,
+                detail=f"Vehicle {vehicle.data['registration_number']} is currently on trip {active_trip['trip_number']} with {driver_info}. Please select a different vehicle."
+            )
 
         # Get supplier info
         supplier = supabase.table("suppliers").select("*").eq(
@@ -1348,6 +1378,21 @@ async def fulfill_remaining_request(
 
         if not vehicle.data.get("is_active"):
             raise HTTPException(status_code=400, detail="Vehicle is not active")
+
+        # Check if vehicle is already on a trip (planned or in_progress)
+        active_trips = supabase.table("trips").select(
+            "id, trip_number, driver_name, status"
+        ).eq("vehicle_id", fulfill_request.vehicle_id).in_(
+            "status", ["planned", "in_progress"]
+        ).execute()
+
+        if active_trips.data and len(active_trips.data) > 0:
+            active_trip = active_trips.data[0]
+            driver_info = active_trip.get("driver_name") or "Unknown driver"
+            raise HTTPException(
+                status_code=400,
+                detail=f"Vehicle {vehicle.data['registration_number']} is currently on trip {active_trip['trip_number']} with {driver_info}. Please select a different vehicle."
+            )
 
         # Get supplier
         supplier = supabase.table("suppliers").select("*").eq(

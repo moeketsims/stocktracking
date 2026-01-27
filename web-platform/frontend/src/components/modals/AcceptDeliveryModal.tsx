@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Truck, MapPin, Clock, AlertCircle, Package, Gauge } from 'lucide-react';
+import { Truck, MapPin, Clock, AlertCircle, Package, Gauge, AlertTriangle, User } from 'lucide-react';
 import { Modal, Button, Select } from '../ui';
 import { useVehicles, useSuppliers } from '../../hooks/useData';
 import { stockRequestsApi } from '../../lib/api';
@@ -29,16 +29,20 @@ export default function AcceptDeliveryModal({
   const [odometerStart, setOdometerStart] = useState('');
   const [error, setError] = useState('');
 
-  const { data: vehiclesData } = useVehicles(true);
+  const { data: vehiclesData } = useVehicles(true, true); // Include trip status
   const { data: suppliersData } = useSuppliers();
 
-  const vehicles = vehiclesData?.vehicles || [];
+  const allVehicles = vehiclesData?.vehicles || [];
   const suppliers = suppliersData || [];
+
+  // Filter out vehicles that are on trips
+  const availableVehicles = allVehicles.filter((v) => v.is_available !== false);
+  const vehiclesOnTrips = allVehicles.filter((v) => v.is_available === false && v.current_trip);
 
   // Initialize defaults when modal opens
   useState(() => {
-    if (isOpen && vehicles.length > 0 && !vehicleId) {
-      setVehicleId(vehicles[0]?.id || '');
+    if (isOpen && availableVehicles.length > 0 && !vehicleId) {
+      setVehicleId(availableVehicles[0]?.id || '');
     }
     if (isOpen && suppliers.length > 0 && !supplierId) {
       setSupplierId(suppliers[0]?.id || '');
@@ -113,7 +117,7 @@ export default function AcceptDeliveryModal({
     });
   };
 
-  const vehicleOptions = vehicles.map((v) => ({
+  const vehicleOptions = availableVehicles.map((v) => ({
     value: v.id,
     label: `${v.registration_number} - ${v.make || ''} ${v.model || ''}`.trim(),
   }));
@@ -187,16 +191,64 @@ export default function AcceptDeliveryModal({
             <Truck className="w-4 h-4 text-gray-600" />
             <span className="text-sm font-medium text-gray-800">Vehicle</span>
           </div>
-          {vehicleOptions.length === 0 ? (
-            <div className="text-amber-700 text-sm">No vehicles available</div>
+
+          {allVehicles.length === 0 ? (
+            <div className="text-amber-700 text-sm">No active vehicles found</div>
+          ) : vehicleOptions.length === 0 ? (
+            // All vehicles are on trips
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-amber-800">
+              <div className="flex items-center gap-2 font-medium mb-2">
+                <AlertTriangle className="w-5 h-5" />
+                All vehicles are currently on trips
+              </div>
+              <p className="text-sm mb-3">
+                Please wait for a driver to complete their trip before starting a new delivery.
+              </p>
+              <div className="space-y-2">
+                {vehiclesOnTrips.map((v) => (
+                  <div key={v.id} className="flex items-center justify-between text-sm bg-white/50 rounded-lg p-2">
+                    <div className="flex items-center gap-2">
+                      <Truck className="w-4 h-4 text-amber-600" />
+                      <span className="font-medium">{v.registration_number}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-amber-700">
+                      <User className="w-3.5 h-3.5" />
+                      <span>{v.current_trip?.driver_name || 'Unknown driver'}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           ) : (
-            <Select
-              label="Vehicle *"
-              options={vehicleOptions}
-              value={vehicleId}
-              onChange={(e) => setVehicleId(e.target.value)}
-              placeholder="Select a vehicle"
-            />
+            <>
+              <Select
+                label="Vehicle *"
+                options={vehicleOptions}
+                value={vehicleId}
+                onChange={(e) => setVehicleId(e.target.value)}
+                placeholder="Select a vehicle"
+              />
+              {/* Show vehicles currently on trips */}
+              {vehiclesOnTrips.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-3">
+                  <p className="text-xs font-medium text-amber-700 mb-2 flex items-center gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    Vehicles currently on trips:
+                  </p>
+                  <div className="space-y-1">
+                    {vehiclesOnTrips.map((v) => (
+                      <div key={v.id} className="flex items-center justify-between text-xs text-amber-800">
+                        <span className="font-medium">{v.registration_number}</span>
+                        <span className="flex items-center gap-1">
+                          <User className="w-3 h-3" />
+                          {v.current_trip?.driver_name || 'Unknown'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
           {/* Odometer Start */}
           <div className="mt-3 pt-3 border-t border-gray-200">
@@ -263,7 +315,7 @@ export default function AcceptDeliveryModal({
             type="submit"
             className="flex-1 bg-emerald-600 hover:bg-emerald-700"
             isLoading={createTripMutation.isPending}
-            disabled={vehicleOptions.length === 0 || supplierOptions.length === 0}
+            disabled={vehicleOptions.length === 0 || supplierOptions.length === 0 || !vehicleId}
           >
             Accept & Start Delivery
           </Button>

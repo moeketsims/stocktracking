@@ -244,7 +244,7 @@ async def create_trip(request: CreateTripRequest, user_data: dict = Depends(requ
 
     try:
         # Validate vehicle exists and is active
-        vehicle = supabase.table("vehicles").select("id, is_active").eq(
+        vehicle = supabase.table("vehicles").select("id, registration_number, is_active").eq(
             "id", request.vehicle_id
         ).single().execute()
 
@@ -253,6 +253,21 @@ async def create_trip(request: CreateTripRequest, user_data: dict = Depends(requ
 
         if not vehicle.data["is_active"]:
             raise HTTPException(status_code=400, detail="Vehicle is not active")
+
+        # Check if vehicle is already on a trip (planned or in_progress)
+        active_trips = supabase.table("trips").select(
+            "id, trip_number, driver_name, status"
+        ).eq("vehicle_id", request.vehicle_id).in_(
+            "status", ["planned", "in_progress"]
+        ).execute()
+
+        if active_trips.data and len(active_trips.data) > 0:
+            active_trip = active_trips.data[0]
+            driver_info = active_trip.get("driver_name") or "Unknown driver"
+            raise HTTPException(
+                status_code=400,
+                detail=f"Vehicle {vehicle.data['registration_number']} is currently on trip {active_trip['trip_number']} with {driver_info}. Please select a different vehicle."
+            )
 
         # Generate trip number
         trip_number = generate_trip_number(supabase)
@@ -780,7 +795,7 @@ async def create_multi_stop_trip(
 
     try:
         # Validate vehicle exists and is active
-        vehicle = supabase.table("vehicles").select("id, is_active").eq(
+        vehicle = supabase.table("vehicles").select("id, registration_number, is_active").eq(
             "id", request.vehicle_id
         ).single().execute()
 
@@ -789,6 +804,21 @@ async def create_multi_stop_trip(
 
         if not vehicle.data["is_active"]:
             raise HTTPException(status_code=400, detail="Vehicle is not active")
+
+        # Check if vehicle is already on a trip (planned or in_progress)
+        active_trips = supabase.table("trips").select(
+            "id, trip_number, driver_name, status"
+        ).eq("vehicle_id", request.vehicle_id).in_(
+            "status", ["planned", "in_progress"]
+        ).execute()
+
+        if active_trips.data and len(active_trips.data) > 0:
+            active_trip = active_trips.data[0]
+            driver_info = active_trip.get("driver_name") or "Unknown driver"
+            raise HTTPException(
+                status_code=400,
+                detail=f"Vehicle {vehicle.data['registration_number']} is currently on trip {active_trip['trip_number']} with {driver_info}. Please select a different vehicle."
+            )
 
         # Get driver name if driver_id provided
         # Only use driver_id if driver exists in drivers table (FK constraint)
