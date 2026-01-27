@@ -111,10 +111,10 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
 
   const reRequestMutation = useMutation({
     mutationFn: (requestId: string) => stockRequestsApi.reRequest(requestId),
-    onSuccess: (response) => {
-      queryClient.invalidateQueries({ queryKey: ['stock-requests'] });
-      queryClient.invalidateQueries({ queryKey: ['my-requests'] });
-      queryClient.refetchQueries({ queryKey: ['stock-requests'] });
+    onSuccess: async (response) => {
+      // Invalidate all stock-requests queries to refresh the data
+      await queryClient.invalidateQueries({ queryKey: ['stock-requests', 'all'] });
+      await queryClient.invalidateQueries({ queryKey: ['stock-requests', 'my'] });
       const emailsSent = response.data?.emails_sent || 0;
       setReRequestSuccess(`Notification sent to ${emailsSent} driver(s)`);
       setReRequestError(null);
@@ -684,10 +684,10 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
         isOpen={showCancelModal}
         onClose={() => { setShowCancelModal(false); setSelectedRequest(null); }}
         request={selectedRequest}
-        onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: ['stock-requests'] });
-          queryClient.invalidateQueries({ queryKey: ['my-requests'] });
-          queryClient.refetchQueries({ queryKey: ['stock-requests'] });
+        onSuccess={async () => {
+          // Invalidate all stock-requests queries to refresh the data
+          await queryClient.invalidateQueries({ queryKey: ['stock-requests', 'all'] });
+          await queryClient.invalidateQueries({ queryKey: ['stock-requests', 'my'] });
           setCancelSuccess(true);
           setTimeout(() => setCancelSuccess(false), 3000);
         }}
@@ -697,14 +697,20 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
         isOpen={showEditModal}
         onClose={() => { setShowEditModal(false); setSelectedRequest(null); }}
         request={selectedRequest}
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['stock-requests'] })}
+        onSuccess={async () => {
+          await queryClient.invalidateQueries({ queryKey: ['stock-requests', 'all'] });
+          await queryClient.invalidateQueries({ queryKey: ['stock-requests', 'my'] });
+        }}
       />
 
       <AcceptDeliveryModal
         isOpen={showAcceptDeliveryModal}
         onClose={() => { setShowAcceptDeliveryModal(false); setSelectedRequest(null); }}
         request={selectedRequest}
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['stock-requests'] })}
+        onSuccess={async () => {
+          await queryClient.invalidateQueries({ queryKey: ['stock-requests', 'all'] });
+          await queryClient.invalidateQueries({ queryKey: ['stock-requests', 'my'] });
+        }}
       />
 
       {showFulfillRemainingModal && selectedRequest && (
@@ -713,8 +719,9 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
           vehicles={vehiclesData?.vehicles || []}
           suppliers={suppliersData?.suppliers || []}
           onClose={() => { setShowFulfillRemainingModal(false); setSelectedRequest(null); }}
-          onSuccess={() => {
-            queryClient.invalidateQueries({ queryKey: ['stock-requests'] });
+          onSuccess={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['stock-requests', 'all'] });
+            await queryClient.invalidateQueries({ queryKey: ['stock-requests', 'my'] });
             setShowFulfillRemainingModal(false);
             setSelectedRequest(null);
           }}

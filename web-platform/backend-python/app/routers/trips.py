@@ -224,41 +224,63 @@ async def get_driver_awaiting_km_trip(user_data: dict = Depends(get_current_user
     user = user_data["user"]
 
     try:
-        # Get the driver record linked to this user
+        # Get driver IDs from both drivers table AND profiles table
+        # (trips may use either ID depending on how they were created)
+        driver_ids = []
+        driver_name = None
+
+        logger.info(f"[AWAITING_KM] Looking up driver for user.id: {user.id}")
+
+        # Check drivers table
         driver_result = supabase.table("drivers").select("id, full_name").eq(
             "user_id", user.id
         ).execute()
 
-        if not driver_result.data:
-            # Try getting from profiles (user might not have a driver record in drivers table)
-            profile_result = supabase.table("profiles").select("id, full_name, role").eq(
-                "user_id", user.id
-            ).execute()
+        if driver_result.data:
+            driver_ids.append(driver_result.data[0]["id"])
+            driver_name = driver_result.data[0].get("full_name")
+            logger.info(f"[AWAITING_KM] Found in drivers table: {driver_result.data[0]['id']}")
 
-            if not profile_result.data or profile_result.data[0].get("role") != "driver":
+        # Also check profiles table
+        profile_result = supabase.table("profiles").select("id, full_name, role").eq(
+            "user_id", user.id
+        ).execute()
+
+        if profile_result.data:
+            profile_id = profile_result.data[0]["id"]
+            if profile_id not in driver_ids:
+                driver_ids.append(profile_id)
+            if not driver_name:
+                driver_name = profile_result.data[0].get("full_name")
+            logger.info(f"[AWAITING_KM] Found in profiles table: {profile_id}, role: {profile_result.data[0].get('role')}")
+
+            # Verify user is a driver
+            if profile_result.data[0].get("role") != "driver":
                 return {"trip": None, "message": "Not a driver"}
 
-            # Find trips by driver_id matching profile id
-            driver_id = profile_result.data[0]["id"]
-            driver_name = profile_result.data[0].get("full_name")
-        else:
-            driver_id = driver_result.data[0]["id"]
-            driver_name = driver_result.data[0].get("full_name")
+        if not driver_ids:
+            return {"trip": None, "message": "Driver not found"}
+
+        logger.info(f"[AWAITING_KM] Searching trips with driver_ids: {driver_ids}")
 
         # Find the most recent completed trip that needs km submission
         # (has odometer_start but no odometer_end)
-        # Note: Can't use .is_() for null check, so we fetch and filter
+        # Search using ALL possible driver IDs
         result = supabase.table("trips").select(
             "id, trip_number, status, vehicle_id, driver_id, driver_name, "
             "odometer_start, odometer_end, completed_at, created_at, "
             "vehicles(id, registration_number, make, model), "
             "to_location:locations!trips_to_location_id_fkey(id, name)"
-        ).eq("driver_id", driver_id).eq(
+        ).in_("driver_id", driver_ids).eq(
             "status", "completed"
         ).order("completed_at", desc=True).execute()
 
+        logger.info(f"[AWAITING_KM] Found {len(result.data or [])} completed trips")
+
         # Filter for trips without odometer_end (awaiting km submission)
         awaiting_km_trips = [t for t in (result.data or []) if t.get("odometer_end") is None]
+
+        logger.info(f"[AWAITING_KM] Trips awaiting km: {len(awaiting_km_trips)}")
 
         if not awaiting_km_trips:
             # No trips awaiting km
@@ -304,25 +326,33 @@ async def submit_trip_km(
     user = user_data["user"]
 
     try:
-        # Get the driver record to verify this user can submit for this trip
-        driver = supabase.table("drivers").select("id, full_name").eq(
+        # Get driver IDs from both tables (same pattern as awaiting-km endpoint)
+        driver_ids = []
+        driver_name = None
+
+        # Check drivers table
+        driver_result = supabase.table("drivers").select("id, full_name").eq(
             "user_id", user.id
-        ).single().execute()
+        ).execute()
 
-        if not driver.data:
-            # Try getting from profiles
-            profile = supabase.table("profiles").select("id, full_name, role").eq(
-                "user_id", user.id
-            ).single().execute()
+        if driver_result.data:
+            driver_ids.append(driver_result.data[0]["id"])
+            driver_name = driver_result.data[0].get("full_name")
 
-            if not profile.data:
-                raise HTTPException(status_code=403, detail="User profile not found")
+        # Also check profiles table
+        profile_result = supabase.table("profiles").select("id, full_name, role").eq(
+            "user_id", user.id
+        ).execute()
 
-            driver_id = profile.data["id"]
-            driver_name = profile.data.get("full_name")
-        else:
-            driver_id = driver.data["id"]
-            driver_name = driver.data.get("full_name")
+        if profile_result.data:
+            profile_id = profile_result.data[0]["id"]
+            if profile_id not in driver_ids:
+                driver_ids.append(profile_id)
+            if not driver_name:
+                driver_name = profile_result.data[0].get("full_name")
+
+        if not driver_ids:
+            raise HTTPException(status_code=403, detail="User profile not found")
 
         # Get the trip and verify it belongs to this driver
         trip_result = supabase.table("trips").select(
@@ -334,8 +364,8 @@ async def submit_trip_km(
 
         trip = trip_result.data
 
-        # Verify this driver is assigned to the trip
-        if trip["driver_id"] != driver_id:
+        # Verify this driver is assigned to the trip (check both possible IDs)
+        if trip["driver_id"] not in driver_ids:
             raise HTTPException(status_code=403, detail="You are not assigned to this trip")
 
         # Check trip is completed
@@ -373,12 +403,14 @@ async def submit_trip_km(
         # 1. Update trip with odometer_end
         supabase.table("trips").eq("id", trip_id).update({
             "odometer_end": closing_km
-        })
+        }).execute()
 
         # 2. Get current vehicle data and update kilometers_traveled
         vehicle_result = supabase.table("vehicles").select(
             "kilometers_traveled, health"
         ).eq("id", vehicle_id).single().execute()
+
+        logger.info(f"[KM_SUBMISSION_AUTH] Vehicle lookup for {vehicle_id}: {vehicle_result.data}")
 
         if vehicle_result.data:
             current_km = vehicle_result.data.get("kilometers_traveled") or 0
@@ -387,25 +419,27 @@ async def submit_trip_km(
             # Update kilometers_traveled
             new_total_km = current_km + trip_distance
 
-            # Update last_driver info in health
+            # Update last_driver info in health (use the trip's driver_id)
             if isinstance(current_health, dict):
-                current_health["last_driver_id"] = driver_id
+                current_health["last_driver_id"] = trip["driver_id"]
                 current_health["last_driver_name"] = driver_name
                 current_health["last_trip_at"] = datetime.now().isoformat()
             else:
                 current_health = {
-                    "last_driver_id": driver_id,
+                    "last_driver_id": trip["driver_id"],
                     "last_driver_name": driver_name,
                     "last_trip_at": datetime.now().isoformat()
                 }
 
             # Update vehicle
-            supabase.table("vehicles").eq("id", vehicle_id).update({
+            update_result = supabase.table("vehicles").eq("id", vehicle_id).update({
                 "kilometers_traveled": new_total_km,
                 "health": current_health
-            })
+            }).execute()
 
-            logger.info(f"[KM_SUBMISSION_AUTH] Trip {trip_id}: {starting_km} -> {closing_km} = {trip_distance} km. Vehicle total: {new_total_km} km")
+            logger.info(f"[KM_SUBMISSION_AUTH] Trip {trip_id}: {starting_km} -> {closing_km} = {trip_distance} km. Vehicle total: {new_total_km} km. Update result: {update_result.data}")
+        else:
+            logger.warning(f"[KM_SUBMISSION_AUTH] Vehicle {vehicle_id} not found, skipping km update")
 
         return {
             "success": True,

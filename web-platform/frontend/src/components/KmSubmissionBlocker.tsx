@@ -25,8 +25,11 @@ export default function KmSubmissionBlocker() {
 
   const isDriver = user?.role === 'driver';
 
+  // Debug logging
+  console.log('[KmBlocker] user:', user?.role, 'isDriver:', isDriver);
+
   // Only fetch for drivers
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error: queryError } = useQuery({
     queryKey: ['driver-awaiting-km'],
     queryFn: async () => {
       const response = await tripsApi.getDriverAwaitingKm();
@@ -89,15 +92,29 @@ export default function KmSubmissionBlocker() {
     submitMutation.mutate({ tripId: trip.id, km: kmValue });
   };
 
+  // Debug logging
+  console.log('[KmBlocker] isLoading:', isLoading, 'data:', JSON.stringify(data), 'queryError:', queryError);
+
   // Don't show for non-drivers
-  if (!isDriver) return null;
+  if (!isDriver) {
+    console.log('[KmBlocker] Not a driver, returning null');
+    return null;
+  }
 
   // Loading state - show nothing while checking
-  if (isLoading) return null;
+  if (isLoading) {
+    console.log('[KmBlocker] Loading, returning null');
+    return null;
+  }
 
   // No pending km submission - don't block
   const trip = data?.trip;
-  if (!trip && !success) return null;
+  if (!trip && !success) {
+    console.log('[KmBlocker] No trip awaiting km, returning null');
+    return null;
+  }
+
+  console.log('[KmBlocker] Showing blocker for trip:', trip?.trip_number);
 
   // Success state - show briefly then disappear
   if (success) {
