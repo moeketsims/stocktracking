@@ -63,18 +63,21 @@ async def get_suppliers(user_data: dict = Depends(require_auth)):
 
 @router.get("/locations")
 async def get_locations(user_data: dict = Depends(require_auth)):
-    """Get all locations."""
+    """Get all locations including stock thresholds."""
     supabase = get_supabase_admin_client()
 
     try:
         result = supabase.table("locations").select(
-            "*, zones(name)"
+            "*, critical_stock_threshold, low_stock_threshold, zones(name)"
         ).order("type", desc=True).order("name").execute()
 
         locations = [
             {
                 **loc,
-                "zone_name": loc.get("zones", {}).get("name") if loc.get("zones") else None
+                "zone_name": loc.get("zones", {}).get("name") if loc.get("zones") else None,
+                # Ensure thresholds have defaults
+                "critical_stock_threshold": loc.get("critical_stock_threshold") or 20,
+                "low_stock_threshold": loc.get("low_stock_threshold") or 50,
             }
             for loc in (result.data or [])
         ]

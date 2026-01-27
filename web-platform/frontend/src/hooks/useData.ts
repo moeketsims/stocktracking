@@ -18,6 +18,7 @@ import {
   usersApi,
   invitationsApi,
   pendingDeliveriesApi,
+  locationsApi,
 } from '../lib/api';
 import type {
   DashboardData,
@@ -435,14 +436,14 @@ export function useQualityScores() {
 }
 
 // Vehicles
-export function useVehicles(activeOnly: boolean = true) {
+export function useVehicles(activeOnly: boolean = true, includeTripStatus: boolean = false) {
   return useQuery<{ vehicles: Vehicle[] }>({
-    queryKey: ['vehicles', activeOnly],
+    queryKey: ['vehicles', activeOnly, includeTripStatus],
     queryFn: async () => {
-      const response = await vehiclesApi.list(activeOnly);
+      const response = await vehiclesApi.list(activeOnly, includeTripStatus);
       return response.data;
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: includeTripStatus ? 30 * 1000 : 5 * 60 * 1000, // Shorter cache when checking trip status
   });
 }
 
@@ -889,6 +890,41 @@ export function useDeleteLocation() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['locations'] });
+    },
+  });
+}
+
+// Location Thresholds
+export function useLocationThresholds(locationId: string) {
+  return useQuery({
+    queryKey: ['location-thresholds', locationId],
+    queryFn: async () => {
+      const response = await locationsApi.getThresholds(locationId);
+      return response.data;
+    },
+    enabled: !!locationId,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+}
+
+export function useUpdateLocationThresholds() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      locationId,
+      data,
+    }: {
+      locationId: string;
+      data: { critical_stock_threshold: number; low_stock_threshold: number };
+    }) => {
+      const response = await locationsApi.updateThresholds(locationId, data);
+      return response.data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['location-thresholds', variables.locationId] });
+      queryClient.invalidateQueries({ queryKey: ['locations'] });
+      queryClient.invalidateQueries({ queryKey: ['alerts'] });
     },
   });
 }

@@ -443,6 +443,15 @@ export interface VehicleHealth {
   updated_by: string | null;
 }
 
+// Vehicle Trip Status (when include_trip_status=true)
+export interface VehicleCurrentTrip {
+  trip_id: string;
+  trip_number: string;
+  driver_name: string | null;
+  status: 'planned' | 'in_progress' | 'completed';
+  awaiting_km: boolean;
+}
+
 // Vehicle Types
 export interface Vehicle {
   id: string;
@@ -458,6 +467,9 @@ export interface Vehicle {
   created_at: string;
   // Health fields (optional - populated when fetched with health data)
   health?: VehicleHealth;
+  // Trip status fields (optional - populated when include_trip_status=true)
+  current_trip?: VehicleCurrentTrip | null;
+  is_available?: boolean;
 }
 
 export interface CreateVehicleForm {

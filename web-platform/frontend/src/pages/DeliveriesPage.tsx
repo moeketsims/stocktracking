@@ -17,10 +17,15 @@ import {
   Navigation,
   Timer,
   PackageCheck,
+  Mail,
+  Edit3,
+  MoreVertical,
+  Gauge,
 } from 'lucide-react';
 import { Button } from '../components/ui';
 import { pendingDeliveriesApi, tripsApi } from '../lib/api';
 import ConfirmDeliveryModal from '../components/modals/ConfirmDeliveryModal';
+import { useAuthStore } from '../stores/authStore';
 import type { PendingDelivery, Trip } from '../types';
 
 const KG_PER_BAG = 10;
@@ -79,6 +84,13 @@ export default function DeliveriesPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [dateRange, setDateRange] = useState<'7days' | '30days' | 'all'>('7days');
   const [completingTripId, setCompletingTripId] = useState<string | null>(null);
+  const [showCorrectKmModal, setShowCorrectKmModal] = useState(false);
+  const [selectedTripForCorrection, setSelectedTripForCorrection] = useState<{ tripId: string; currentKm: number; startingKm: number } | null>(null);
+  const [resendingEmailId, setResendingEmailId] = useState<string | null>(null);
+
+  // Check user role for admin actions
+  const user = useAuthStore((state) => state.user);
+  const isVehicleManager = user?.role && ['admin', 'vehicle_manager'].includes(user.role);
 
   // Mutation to complete a trip by completing its dropoff stop
   const completeTripMutation = useMutation({
@@ -121,6 +133,39 @@ export default function DeliveriesPage() {
       console.error('Failed to complete trip:', error);
       alert(error.response?.data?.detail || 'Failed to mark trip as arrived');
       setCompletingTripId(null);
+    },
+  });
+
+  // Feature 2: Resend KM email mutation
+  const resendKmEmailMutation = useMutation({
+    mutationFn: (deliveryId: string) => pendingDeliveriesApi.resendKmEmail(deliveryId),
+    onSuccess: (response) => {
+      alert(`KM submission email sent to ${response.data.driver_email}`);
+      setResendingEmailId(null);
+    },
+    onError: (error: any) => {
+      alert(error.response?.data?.detail || 'Failed to resend email');
+      setResendingEmailId(null);
+    },
+  });
+
+  // Feature 4: Correct KM mutation
+  const correctKmMutation = useMutation({
+    mutationFn: (data: { tripId: string; new_closing_km: number; reason: string }) =>
+      pendingDeliveriesApi.correctKm(data.tripId, {
+        new_closing_km: data.new_closing_km,
+        reason: data.reason,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pending-deliveries'] });
+      queryClient.invalidateQueries({ queryKey: ['trips'] });
+      queryClient.invalidateQueries({ queryKey: ['vehicles'] });
+      setShowCorrectKmModal(false);
+      setSelectedTripForCorrection(null);
+      alert('Closing km corrected successfully');
+    },
+    onError: (error: any) => {
+      alert(error.response?.data?.detail || 'Failed to correct km');
     },
   });
 
@@ -389,7 +434,20 @@ export default function DeliveriesPage() {
             </div>
           ) : (
             historyDeliveries.map((delivery) => (
-              <DeliveryHistoryCard key={delivery.id} delivery={delivery} />
+              <DeliveryHistoryCard
+                key={delivery.id}
+                delivery={delivery}
+                isVehicleManager={isVehicleManager}
+                onResendKmEmail={(id) => {
+                  setResendingEmailId(id);
+                  resendKmEmailMutation.mutate(id);
+                }}
+                onCorrectKm={(tripId, currentKm, startingKm) => {
+                  setSelectedTripForCorrection({ tripId, currentKm, startingKm });
+                  setShowCorrectKmModal(true);
+                }}
+                isResending={resendingEmailId === delivery.id}
+              />
             ))
           )}
         </div>
@@ -405,6 +463,27 @@ export default function DeliveriesPage() {
         onSuccess={handleConfirmSuccess}
         delivery={selectedDelivery}
       />
+
+      {/* Feature 4: Correct KM Modal */}
+      {showCorrectKmModal && selectedTripForCorrection && (
+        <CorrectKmModal
+          isOpen={showCorrectKmModal}
+          onClose={() => {
+            setShowCorrectKmModal(false);
+            setSelectedTripForCorrection(null);
+          }}
+          onSubmit={(newKm, reason) => {
+            correctKmMutation.mutate({
+              tripId: selectedTripForCorrection.tripId,
+              new_closing_km: newKm,
+              reason,
+            });
+          }}
+          currentKm={selectedTripForCorrection.currentKm}
+          startingKm={selectedTripForCorrection.startingKm}
+          isSubmitting={correctKmMutation.isPending}
+        />
+      )}
     </div>
   );
 }
@@ -554,12 +633,31 @@ function PendingDeliveryCard({
 }
 
 // History Card - Shows confirmed/rejected deliveries
-function DeliveryHistoryCard({ delivery }: { delivery: PendingDelivery }) {
+function DeliveryHistoryCard({
+  delivery,
+  isVehicleManager,
+  onResendKmEmail,
+  onCorrectKm,
+  isResending,
+}: {
+  delivery: PendingDelivery;
+  isVehicleManager?: boolean;
+  onResendKmEmail?: (id: string) => void;
+  onCorrectKm?: (tripId: string, currentKm: number, startingKm: number) => void;
+  isResending?: boolean;
+}) {
+  const [showMenu, setShowMenu] = useState(false);
   const isConfirmed = delivery.status === 'confirmed';
   const isRejected = delivery.status === 'rejected';
 
   const confirmedBags = (delivery.confirmed_qty_kg || 0) / KG_PER_BAG;
   const driverClaimedBags = delivery.driver_claimed_qty_kg / KG_PER_BAG;
+
+  // Check if km has been submitted (Feature 6)
+  const trip = delivery.trip as any;
+  const kmSubmitted = trip?.km_submitted || trip?.odometer_end;
+  const canResendEmail = isConfirmed && !kmSubmitted && isVehicleManager;
+  const canCorrectKm = isConfirmed && kmSubmitted && isVehicleManager;
 
   return (
     <div className={`bg-white rounded-xl border p-4 ${isConfirmed ? 'border-emerald-100' : 'border-red-100'
@@ -584,6 +682,13 @@ function DeliveryHistoryCard({ delivery }: { delivery: PendingDelivery }) {
             <span className="text-sm font-mono text-gray-600">
               {delivery.trip?.trip_number || 'Unknown'}
             </span>
+            {/* Feature 6: Show km submission status */}
+            {isConfirmed && (
+              <span className={`text-xs px-1.5 py-0.5 rounded ${kmSubmitted ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
+                <Gauge className="w-3 h-3 inline mr-0.5" />
+                {kmSubmitted ? 'Km Logged' : 'Awaiting Km'}
+              </span>
+            )}
           </div>
 
           {/* Details */}
@@ -616,20 +721,222 @@ function DeliveryHistoryCard({ delivery }: { delivery: PendingDelivery }) {
           )}
         </div>
 
-        {/* Timestamp */}
-        <div className="text-right">
-          <p className="text-xs text-gray-400">
-            {delivery.confirmed_at
-              ? formatDate(delivery.confirmed_at)
-              : formatDate(delivery.created_at)}
-          </p>
-          {delivery.confirmer && (
+        {/* Actions and Timestamp */}
+        <div className="flex items-start gap-2">
+          {/* Timestamp */}
+          <div className="text-right">
             <p className="text-xs text-gray-400">
-              by {delivery.confirmer.full_name}
+              {delivery.confirmed_at
+                ? formatDate(delivery.confirmed_at)
+                : formatDate(delivery.created_at)}
             </p>
+            {delivery.confirmer && (
+              <p className="text-xs text-gray-400">
+                by {delivery.confirmer.full_name}
+              </p>
+            )}
+          </div>
+
+          {/* Action Menu for Vehicle Managers */}
+          {isVehicleManager && isConfirmed && (canResendEmail || canCorrectKm) && (
+            <div className="relative">
+              <button
+                onClick={() => setShowMenu(!showMenu)}
+                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+              >
+                <MoreVertical className="w-4 h-4" />
+              </button>
+              {showMenu && (
+                <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                  {canResendEmail && (
+                    <button
+                      onClick={() => {
+                        setShowMenu(false);
+                        onResendKmEmail?.(delivery.id);
+                      }}
+                      disabled={isResending}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                    >
+                      <Mail className="w-4 h-4" />
+                      {isResending ? 'Sending...' : 'Resend Km Email'}
+                    </button>
+                  )}
+                  {canCorrectKm && (
+                    <button
+                      onClick={() => {
+                        setShowMenu(false);
+                        onCorrectKm?.(
+                          trip?.id,
+                          trip?.odometer_end || 0,
+                          trip?.odometer_start || 0
+                        );
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                      Correct Km
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>
     </div>
+  );
+}
+
+// Feature 4: Correct KM Modal
+function CorrectKmModal({
+  isOpen,
+  onClose,
+  onSubmit,
+  currentKm,
+  startingKm,
+  isSubmitting,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onSubmit: (newKm: number, reason: string) => void;
+  currentKm: number;
+  startingKm: number;
+  isSubmitting: boolean;
+}) {
+  const [newKm, setNewKm] = useState(currentKm.toString());
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const MAX_TRIP_DISTANCE = 2000;
+  const newKmNum = parseInt(newKm, 10) || 0;
+  const isValid = newKmNum >= startingKm && newKmNum <= startingKm + MAX_TRIP_DISTANCE && newKmNum !== currentKm;
+  const tripDistance = newKmNum - startingKm;
+
+  const handleSubmit = () => {
+    if (!reason.trim() || reason.length < 5) {
+      setError('Please provide a reason (at least 5 characters)');
+      return;
+    }
+    if (!isValid) {
+      setError('Invalid closing km value');
+      return;
+    }
+    setError(null);
+    onSubmit(newKmNum, reason);
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/50 z-50" onClick={onClose} />
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl w-full max-w-md shadow-xl">
+          {/* Header */}
+          <div className="flex items-center justify-between p-5 border-b border-gray-100">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
+                <Edit3 className="w-5 h-5 text-amber-600" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Correct Closing Km</h2>
+                <p className="text-sm text-gray-500">Update the odometer reading</p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center"
+            >
+              <XCircle className="w-5 h-5 text-gray-400" />
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="p-5 space-y-4">
+            {/* Current Values */}
+            <div className="bg-gray-50 rounded-xl p-4 space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Starting Km</span>
+                <span className="font-medium">{startingKm.toLocaleString()} km</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Current Closing Km</span>
+                <span className="font-medium">{currentKm.toLocaleString()} km</span>
+              </div>
+              <div className="flex justify-between text-sm border-t pt-2">
+                <span className="text-gray-500">Current Trip Distance</span>
+                <span className="font-medium">{(currentKm - startingKm).toLocaleString()} km</span>
+              </div>
+            </div>
+
+            {/* New Km Input */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                New Closing Km
+              </label>
+              <input
+                type="number"
+                value={newKm}
+                onChange={(e) => setNewKm(e.target.value)}
+                min={startingKm}
+                max={startingKm + MAX_TRIP_DISTANCE}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-lg font-semibold"
+              />
+              {newKmNum >= startingKm && (
+                <p className={`text-sm mt-1 ${tripDistance === (currentKm - startingKm) ? 'text-gray-400' : 'text-amber-600'}`}>
+                  New trip distance: {tripDistance.toLocaleString()} km
+                  {tripDistance !== (currentKm - startingKm) && (
+                    <span className="ml-1">
+                      ({tripDistance > (currentKm - startingKm) ? '+' : ''}{(tripDistance - (currentKm - startingKm)).toLocaleString()} km)
+                    </span>
+                  )}
+                </p>
+              )}
+            </div>
+
+            {/* Reason */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Reason for Correction *
+              </label>
+              <textarea
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                rows={3}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent resize-none"
+                placeholder="Explain why the km reading needs to be corrected..."
+              />
+            </div>
+
+            {error && (
+              <div className="p-3 bg-red-50 text-red-600 rounded-xl text-sm flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                {error}
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-3 pt-2">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={onClose}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleSubmit}
+                disabled={isSubmitting || !isValid || reason.length < 5}
+                className="flex-1 bg-amber-600 hover:bg-amber-700"
+              >
+                {isSubmitting ? 'Correcting...' : 'Correct Km'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }

@@ -1618,6 +1618,108 @@ Potato Stock Tracking System
     return send_email(to_email, subject, html_content, text_content)
 
 
+def send_km_submitted_notification(
+    to_email: str,
+    manager_name: str,
+    driver_name: str,
+    vehicle_reg: str,
+    trip_number: str,
+    starting_km: int,
+    closing_km: int,
+    trip_distance: int
+) -> bool:
+    """Notify vehicle manager when driver submits closing km."""
+    settings = get_settings()
+
+    subject = f"Closing Km Submitted - Trip #{trip_number}"
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ background: linear-gradient(135deg, #059669 0%, #10b981 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+            .content {{ background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; }}
+            .footer {{ text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px; }}
+            .info-box {{ background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin: 16px 0; }}
+            .info-row {{ display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }}
+            .info-row:last-child {{ border-bottom: none; }}
+            .distance-badge {{ background: #d1fae5; color: #059669; padding: 8px 16px; border-radius: 20px; display: inline-block; font-weight: bold; font-size: 18px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1 style="margin: 0;">Km Submitted</h1>
+                <p style="margin: 10px 0 0 0; opacity: 0.9;">Driver has logged their closing odometer</p>
+            </div>
+            <div class="content">
+                <h2>Hi {manager_name}!</h2>
+                <p>A driver has submitted their closing odometer reading for a completed trip.</p>
+
+                <div class="info-box">
+                    <div class="info-row">
+                        <span>👤 Driver</span>
+                        <strong>{driver_name}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>🚗 Vehicle</span>
+                        <strong>{vehicle_reg}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>🎫 Trip</span>
+                        <strong>#{trip_number}</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>📊 Starting Km</span>
+                        <strong>{starting_km:,} km</strong>
+                    </div>
+                    <div class="info-row">
+                        <span>📊 Closing Km</span>
+                        <strong>{closing_km:,} km</strong>
+                    </div>
+                </div>
+
+                <p style="text-align: center; margin-top: 20px;">
+                    <span class="distance-badge">{trip_distance:,} km traveled</span>
+                </p>
+
+                <p style="color: #6b7280; font-size: 14px; text-align: center; margin-top: 16px;">
+                    Vehicle kilometers have been updated automatically.
+                </p>
+            </div>
+            <div class="footer">
+                <p>Potato Stock Tracking System</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    text_content = f"""
+Hi {manager_name}!
+
+A driver has submitted their closing odometer reading for a completed trip.
+
+👤 Driver: {driver_name}
+🚗 Vehicle: {vehicle_reg}
+🎫 Trip: #{trip_number}
+📊 Starting Km: {starting_km:,} km
+📊 Closing Km: {closing_km:,} km
+
+Trip Distance: {trip_distance:,} km
+
+Vehicle kilometers have been updated automatically.
+
+---
+Potato Stock Tracking System
+    """
+
+    return send_email(to_email, subject, html_content, text_content)
+
+
 def send_trip_started_with_eta_notification(
     to_email: str,
     manager_name: str,

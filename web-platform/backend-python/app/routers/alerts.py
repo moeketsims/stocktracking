@@ -25,11 +25,13 @@ def generate_alerts(supabase, location_id: str = None) -> list:
     items_result = supabase.table("items").select("id, name").execute()
     items_map = {i["id"]: i["name"] for i in (items_result.data or [])}
 
-    # Get locations for names
-    locations_result = supabase.table("locations").select("id, name").execute()
-    locations_map = {l["id"]: l["name"] for l in (locations_result.data or [])}
+    # Get locations with thresholds
+    locations_result = supabase.table("locations").select(
+        "id, name, critical_stock_threshold, low_stock_threshold"
+    ).execute()
+    locations_map = {l["id"]: l for l in (locations_result.data or [])}
 
-    # Get reorder policies
+    # Get reorder policies (fallback when location thresholds not set)
     policies_query = supabase.table("reorder_policies").select("*")
     if location_id:
         policies_query = policies_query.eq("location_id", location_id)
@@ -43,15 +45,24 @@ def generate_alerts(supabase, location_id: str = None) -> list:
 
     # Check each stock item for alerts
     for item in (balance.data or []):
-        loc_name = locations_map.get(item.get("location_id"), "Unknown")
+        loc_data = locations_map.get(item.get("location_id"), {})
+        loc_name = loc_data.get("name", "Unknown") if isinstance(loc_data, dict) else "Unknown"
         item_name = items_map.get(item.get("item_id"), "Unknown")
         on_hand = item.get("on_hand_qty", 0)
 
         policy_key = f"{item['location_id']}_{item['item_id']}"
         policy = policy_map.get(policy_key, {})
 
-        safety_stock = policy.get("safety_stock_qty", 20)
-        reorder_point = policy.get("reorder_point_qty", 50)
+        # Use location-specific thresholds if set, otherwise fall back to reorder_policies or defaults
+        # Location thresholds take priority
+        safety_stock = loc_data.get("critical_stock_threshold") if isinstance(loc_data, dict) else None
+        reorder_point = loc_data.get("low_stock_threshold") if isinstance(loc_data, dict) else None
+
+        # Fall back to reorder_policies if location thresholds not set
+        if safety_stock is None:
+            safety_stock = policy.get("safety_stock_qty", 20)
+        if reorder_point is None:
+            reorder_point = policy.get("reorder_point_qty", 50)
 
         # Low stock alert
         if on_hand < safety_stock:

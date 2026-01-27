@@ -29,21 +29,27 @@ type Mode = 'withdraw' | 'return';
 
 const QUICK_AMOUNTS = [1, 2, 5, 10];
 
-// Target stock levels (in kg) - matching StockPage
-const TARGET_STOCK_KG = 150000; // 150 tons for shop/kitchen
+// Conversion: 1 bag = 10 kg
+const KG_PER_BAG = 10;
 
-// Status thresholds based on % of target
+// Status thresholds based on location-specific thresholds
 type StockStatus = 'healthy' | 'low' | 'critical';
 
-function getStockStatus(qty: number): StockStatus {
-    const percent = (qty / TARGET_STOCK_KG) * 100;
-    if (percent >= 85) return 'healthy';
-    if (percent >= 65) return 'low';
-    return 'critical';
+function getStockStatus(
+    qtyKg: number,
+    criticalThresholdBags: number = 20,
+    lowThresholdBags: number = 50
+): StockStatus {
+    const bags = Math.floor(qtyKg / KG_PER_BAG);
+    if (bags < criticalThresholdBags) return 'critical';
+    if (bags < lowThresholdBags) return 'low';
+    return 'healthy';
 }
 
-function getCapacityPercent(qty: number): number {
-    return Math.min(100, Math.round((qty / TARGET_STOCK_KG) * 100));
+function getCapacityPercent(qtyKg: number, lowThresholdBags: number = 50): number {
+    const bags = Math.floor(qtyKg / KG_PER_BAG);
+    const percent = (bags / lowThresholdBags) * 100;
+    return Math.min(100, Math.round(percent));
 }
 
 // Helper to get relative time
@@ -88,7 +94,10 @@ interface KitchenListItemProps {
 }
 
 function KitchenListItem({ location, isSelected, onClick, stockData }: KitchenListItemProps) {
-    const stockStatus = stockData ? getStockStatus(stockData.totalKg) : 'healthy';
+    // Use location-specific thresholds
+    const criticalThreshold = location.critical_stock_threshold || 20;
+    const lowThreshold = location.low_stock_threshold || 50;
+    const stockStatus = stockData ? getStockStatus(stockData.totalKg, criticalThreshold, lowThreshold) : 'healthy';
     const statusStyle = STATUS_CONFIG[stockStatus];
     const bags = stockData ? Math.floor(stockData.totalKg / 10) : 0;
 
@@ -342,10 +351,12 @@ export default function KitchenPage() {
     const newKg = mode === 'withdraw' ? currentKg - (quantity * 10) : currentKg + (quantity * 10);
     const isValidQuantity = quantity > 0 && (mode === 'return' || quantity <= currentBags);
 
-    // Stock status calculations
-    const stockStatus = getStockStatus(currentKg);
+    // Stock status calculations using location-specific thresholds
+    const criticalThreshold = selectedLocation?.critical_stock_threshold || 20;
+    const lowThreshold = selectedLocation?.low_stock_threshold || 50;
+    const stockStatus = getStockStatus(currentKg, criticalThreshold, lowThreshold);
     const statusStyle = STATUS_CONFIG[stockStatus];
-    const capacityPercent = getCapacityPercent(currentKg);
+    const capacityPercent = getCapacityPercent(currentKg, lowThreshold);
 
     // Filter kitchen list
     const filteredLocations = useMemo(() => {

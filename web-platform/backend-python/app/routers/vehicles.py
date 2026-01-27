@@ -10,9 +10,10 @@ router = APIRouter(prefix="/vehicles", tags=["Vehicles"])
 @router.get("")
 async def list_vehicles(
     active_only: bool = Query(True, description="Only show active vehicles"),
+    include_trip_status: bool = Query(False, description="Include current trip status for each vehicle"),
     user_data: dict = Depends(get_current_user)
 ):
-    """List all vehicles."""
+    """List all vehicles with optional trip status."""
     supabase = get_supabase_admin_client()
 
     try:
@@ -22,10 +23,42 @@ async def list_vehicles(
             query = query.eq("is_active", True)
 
         result = query.execute()
+        vehicles = result.data or []
+
+        # If trip status requested, check which vehicles are currently on trips
+        if include_trip_status and vehicles:
+            vehicle_ids = [v["id"] for v in vehicles]
+
+            # A vehicle is "on a trip" if:
+            # 1. There's a trip with status='planned' (assigned but not started), OR
+            # 2. There's a trip with status='in_progress'
+            # Note: completed trips are no longer considered "on trip"
+            active_trips = supabase.table("trips").select(
+                "id, trip_number, vehicle_id, driver_id, driver_name, status"
+            ).in_("vehicle_id", vehicle_ids).in_(
+                "status", ["planned", "in_progress"]
+            ).execute()
+
+            # Build a map of vehicle_id -> trip info for vehicles currently on trips
+            vehicles_on_trips = {}
+            for trip in (active_trips.data or []):
+                vehicles_on_trips[trip["vehicle_id"]] = {
+                    "trip_id": trip["id"],
+                    "trip_number": trip["trip_number"],
+                    "driver_name": trip["driver_name"],
+                    "status": trip["status"],
+                    "awaiting_km": False
+                }
+
+            # Add trip status to each vehicle
+            for vehicle in vehicles:
+                trip_info = vehicles_on_trips.get(vehicle["id"])
+                vehicle["current_trip"] = trip_info
+                vehicle["is_available"] = trip_info is None
 
         return {
-            "vehicles": result.data or [],
-            "total": len(result.data or [])
+            "vehicles": vehicles,
+            "total": len(vehicles)
         }
 
     except Exception as e:

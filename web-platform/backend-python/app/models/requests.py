@@ -287,3 +287,9 @@ class FulfillRemainingRequest(BaseModel):
 class SubmitClosingKmRequest(BaseModel):
     closing_km: int = Field(ge=0, description="Closing odometer reading in km")
     notes: Optional[str] = None
+
+
+# KM Correction (Feature 4)
+class CorrectClosingKmRequest(BaseModel):
+    new_closing_km: int = Field(ge=0, le=999999, description="Corrected closing km")
+    reason: str = Field(min_length=5, max_length=500, description="Reason for correction")

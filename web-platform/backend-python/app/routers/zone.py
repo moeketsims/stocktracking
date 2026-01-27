@@ -30,10 +30,10 @@ async def get_zone_overview(user_data: dict = Depends(require_manager)):
         if not zone.data:
             raise HTTPException(status_code=404, detail="Zone not found")
 
-        # Get all locations in zone
-        locations = supabase.table("locations").select("*").eq(
-            "zone_id", zone_id
-        ).execute()
+        # Get all locations in zone (including thresholds)
+        locations = supabase.table("locations").select(
+            "*, critical_stock_threshold, low_stock_threshold"
+        ).eq("zone_id", zone_id).execute()
 
         # Get stock balance for all locations
         balance = supabase.table("stock_balance").select("*").execute()
@@ -69,11 +69,15 @@ async def get_zone_overview(user_data: dict = Depends(require_manager)):
             avg_daily = total_usage / 7 if total_usage > 0 else 0
             days_of_cover = on_hand / avg_daily if avg_daily > 0 else 999
 
-            # Determine status
-            if on_hand < 20:
+            # Get location-specific thresholds (or use defaults)
+            critical_threshold = loc.get("critical_stock_threshold") or 20
+            low_threshold = loc.get("low_stock_threshold") or 50
+
+            # Determine status based on location thresholds
+            if on_hand < critical_threshold:
                 status = "low_stock"
                 low_stock_count += 1
-            elif on_hand < 50:
+            elif on_hand < low_threshold:
                 status = "reorder"
             else:
                 status = "ok"
@@ -100,13 +104,23 @@ async def get_zone_overview(user_data: dict = Depends(require_manager)):
         # Generate reallocation suggestions
         suggestions = []
 
+        # Build location threshold lookup for reallocation calculations
+        location_thresholds = {
+            loc["id"]: {
+                "critical": loc.get("critical_stock_threshold") or 20,
+                "low": loc.get("low_stock_threshold") or 50
+            }
+            for loc in (locations.data or [])
+        }
+
         # Find shops with excess and shops in need
         if warehouse:
             for shop in shops:
+                shop_thresholds = location_thresholds.get(shop.location_id, {"critical": 20, "low": 50})
                 if shop.status == "low_stock" and warehouse.on_hand_qty > 100:
-                    needed = 50 - shop.on_hand_qty
+                    needed = shop_thresholds["low"] - shop.on_hand_qty
                     if needed > 0 and warehouse.on_hand_qty > needed:
-                        transfer_qty = round(min(needed, 50), 2)
+                        transfer_qty = round(min(needed, shop_thresholds["low"]), 2)
                         suggestions.append(ReallocationSuggestion(
                             from_location_id=warehouse.location_id,
                             from_location_name=warehouse.location_name,
@@ -124,8 +138,9 @@ async def get_zone_overview(user_data: dict = Depends(require_manager)):
         for high_shop in high_stock_shops:
             for low_shop in low_stock_shops:
                 if high_shop.location_id != low_shop.location_id:
+                    low_shop_thresholds = location_thresholds.get(low_shop.location_id, {"critical": 20, "low": 50})
                     excess = high_shop.on_hand_qty - 80
-                    needed = 50 - low_shop.on_hand_qty
+                    needed = low_shop_thresholds["low"] - low_shop.on_hand_qty
                     transfer_amount = min(excess, needed)
 
                     if transfer_amount > 10:

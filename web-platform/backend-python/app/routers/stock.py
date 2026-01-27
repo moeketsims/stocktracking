@@ -175,8 +175,10 @@ async def get_stock_by_location(user_data: dict = Depends(require_auth)):
         user_location_id = profile.data.get("location_id") if profile.data else None
         user_zone_id = profile.data.get("zone_id") if profile.data else None
 
-        # Get all locations based on user role
-        locations_query = supabase.table("locations").select("*")
+        # Get all locations based on user role (including thresholds)
+        locations_query = supabase.table("locations").select(
+            "*, critical_stock_threshold, low_stock_threshold"
+        )
 
         # Filter locations based on role
         if user_role == "staff" and user_location_id:
@@ -232,10 +234,20 @@ async def get_stock_by_location(user_data: dict = Depends(require_auth)):
             stock_qty = balance_map.get(loc_id, 0)
             total_stock_kg += stock_qty
 
-            # Determine status
+            # Get location-specific thresholds (in bags, convert to kg)
+            # Default: critical=20 bags, low=50 bags
+            critical_threshold_bags = loc.get("critical_stock_threshold") or 20
+            low_threshold_bags = loc.get("low_stock_threshold") or 50
+            # Convert to kg (1 bag = 10 kg)
+            critical_threshold_kg = critical_threshold_bags * 10
+            low_threshold_kg = low_threshold_bags * 10
+
+            # Determine status using location thresholds
             if stock_qty <= 0:
                 status = "out"
-            elif stock_qty < 100:
+            elif stock_qty < critical_threshold_kg:
+                status = "critical"
+            elif stock_qty < low_threshold_kg:
                 status = "low"
             else:
                 status = "in_stock"
@@ -251,6 +263,8 @@ async def get_stock_by_location(user_data: dict = Depends(require_auth)):
                 "location_type": loc["type"],
                 "on_hand_qty": stock_qty,
                 "status": status,
+                "critical_stock_threshold": critical_threshold_bags,
+                "low_stock_threshold": low_threshold_bags,
                 "last_activity": last_activity,
                 "recent_activity": [
                     {

@@ -15,6 +15,15 @@ import {
 } from 'lucide-react';
 import { Drawer, Button, Input, Badge } from './ui';
 import { useAuthStore } from '../stores/authStore';
+import {
+  calculateServiceStatus,
+  calculateTyreStatus,
+  calculateBrakeStatus,
+  calculateOverallTyreStatus,
+  calculateOverallBrakeStatus,
+  getKmUntilService,
+  SERVICE_THRESHOLDS,
+} from '../utils/vehicleHealth';
 import type { Vehicle, HealthStatus, TyreHealth, BrakePadHealth, VehicleHealth } from '../types';
 
 interface VehicleHealthDrawerProps {
@@ -65,10 +74,12 @@ function HealthTile({
 // Tyre position grid component
 function TyreGrid({
   tyres,
+  currentKm,
   onEdit,
   canEdit,
 }: {
   tyres: TyreHealth[];
+  currentKm: number | null;
   onEdit?: (position: TyreHealth['position']) => void;
   canEdit: boolean;
 }) {
@@ -90,9 +101,11 @@ function TyreGrid({
 
   return (
     <div className="grid grid-cols-2 gap-3">
-      {positions.map(({ position, label, fullLabel }) => {
+      {positions.map(({ position, fullLabel }) => {
         const tyre = getTyre(position);
-        const colors = STATUS_COLORS[tyre.status];
+        // Calculate status based on km
+        const status = calculateTyreStatus(currentKm, tyre.last_replaced_km);
+        const colors = STATUS_COLORS[status];
         const Icon = colors.icon;
 
         return (
@@ -111,7 +124,7 @@ function TyreGrid({
             <div className="flex items-center gap-2">
               <Circle className={`w-8 h-8 ${colors.text}`} strokeWidth={3} />
               <div className="text-left">
-                <span className={`text-sm font-bold ${colors.text}`}>{STATUS_LABELS[tyre.status]}</span>
+                <span className={`text-sm font-bold ${colors.text}`}>{STATUS_LABELS[status]}</span>
                 {tyre.last_replaced_km && (
                   <p className="text-xs text-gray-500">{tyre.last_replaced_km.toLocaleString()} km</p>
                 )}
@@ -127,10 +140,12 @@ function TyreGrid({
 // Brake pads grid component (front/rear)
 function BrakePadsGrid({
   brakePads,
+  currentKm,
   onEdit,
   canEdit,
 }: {
   brakePads: BrakePadHealth[];
+  currentKm: number | null;
   onEdit?: (position: BrakePadHealth['position']) => void;
   canEdit: boolean;
 }) {
@@ -152,7 +167,9 @@ function BrakePadsGrid({
     <div className="grid grid-cols-2 gap-3">
       {positions.map(({ position, label }) => {
         const pad = getBrakePad(position);
-        const colors = STATUS_COLORS[pad.status];
+        // Calculate status based on km
+        const status = calculateBrakeStatus(currentKm, pad.last_replaced_km);
+        const colors = STATUS_COLORS[status];
         const Icon = colors.icon;
 
         return (
@@ -173,7 +190,7 @@ function BrakePadsGrid({
                 <AlertTriangle className={`w-5 h-5 ${colors.text}`} />
               </div>
               <div className="text-left">
-                <span className={`text-sm font-bold ${colors.text}`}>{STATUS_LABELS[pad.status]}</span>
+                <span className={`text-sm font-bold ${colors.text}`}>{STATUS_LABELS[status]}</span>
                 {pad.last_replaced_km && (
                   <p className="text-xs text-gray-500">{pad.last_replaced_km.toLocaleString()} km</p>
                 )}
@@ -313,6 +330,18 @@ export default function VehicleHealthDrawer({
     updated_by: null,
   };
 
+  // Calculate statuses based on kilometers thresholds
+  const currentKm = vehicle.kilometers_traveled;
+  const serviceStatus = calculateServiceStatus(currentKm, health.last_service_km);
+  const tyresStatus = calculateOverallTyreStatus(currentKm, health.tyres);
+  const brakesStatus = calculateOverallBrakeStatus(currentKm, health.brake_pads);
+
+  // Calculate km until next service
+  const kmUntilService = getKmUntilService(currentKm, health.last_service_km);
+  const nextServiceDueKm = health.last_service_km
+    ? health.last_service_km + SERVICE_THRESHOLDS.SOON
+    : null;
+
   const handleSaveService = () => {
     if (onSave) {
       onSave(vehicle.id, {
@@ -404,11 +433,17 @@ export default function VehicleHealthDrawer({
           <div className="grid grid-cols-3 gap-3">
             <HealthTile
               label="Service"
-              status={health.service_status}
-              subtitle={health.next_service_due_km ? `Due at ${formatKm(health.next_service_due_km)}` : undefined}
+              status={serviceStatus}
+              subtitle={
+                kmUntilService !== null
+                  ? kmUntilService <= 0
+                    ? 'Service overdue'
+                    : `${kmUntilService.toLocaleString()} km until service`
+                  : undefined
+              }
             />
-            <HealthTile label="Tyres" status={health.tyres_status} />
-            <HealthTile label="Brakes" status={health.brake_pads_status} />
+            <HealthTile label="Tyres" status={tyresStatus} />
+            <HealthTile label="Brakes" status={brakesStatus} />
           </div>
         </div>
 
@@ -420,7 +455,7 @@ export default function VehicleHealthDrawer({
             <EditableSection
               title="Service"
               icon={Wrench}
-              status={health.service_status}
+              status={serviceStatus}
               canEdit={canEdit}
               isEditing={editingSection === 'service'}
               onEditToggle={() => {
@@ -494,27 +529,28 @@ export default function VehicleHealthDrawer({
 
             {/* Brake Pads Section */}
             <div className="border border-gray-200 rounded-xl overflow-hidden">
-              <div className={`flex items-center justify-between p-4 ${STATUS_COLORS[health.brake_pads_status].bg}`}>
+              <div className={`flex items-center justify-between p-4 ${STATUS_COLORS[brakesStatus].bg}`}>
                 <div className="flex items-center gap-3">
-                  <AlertTriangle className={`w-5 h-5 ${STATUS_COLORS[health.brake_pads_status].text}`} />
+                  <AlertTriangle className={`w-5 h-5 ${STATUS_COLORS[brakesStatus].text}`} />
                   <span className="font-semibold text-gray-900">Brake Pads</span>
                   <Badge
                     variant={
-                      health.brake_pads_status === 'ok'
+                      brakesStatus === 'ok'
                         ? 'success'
-                        : health.brake_pads_status === 'soon'
+                        : brakesStatus === 'soon'
                         ? 'warning'
                         : 'error'
                     }
                     size="sm"
                   >
-                    {STATUS_LABELS[health.brake_pads_status]}
+                    {STATUS_LABELS[brakesStatus]}
                   </Badge>
                 </div>
               </div>
               <div className="p-4 bg-white">
                 <BrakePadsGrid
                   brakePads={health.brake_pads}
+                  currentKm={currentKm}
                   canEdit={canEdit}
                   onEdit={(position) => {
                     const pad = health.brake_pads.find((b) => b.position === position);
@@ -534,27 +570,28 @@ export default function VehicleHealthDrawer({
           {/* Right Column - Tyres */}
           <div className="space-y-6">
             <div className="border border-gray-200 rounded-xl overflow-hidden">
-              <div className={`flex items-center justify-between p-4 ${STATUS_COLORS[health.tyres_status].bg}`}>
+              <div className={`flex items-center justify-between p-4 ${STATUS_COLORS[tyresStatus].bg}`}>
                 <div className="flex items-center gap-3">
-                  <Circle className={`w-5 h-5 ${STATUS_COLORS[health.tyres_status].text}`} strokeWidth={3} />
+                  <Circle className={`w-5 h-5 ${STATUS_COLORS[tyresStatus].text}`} strokeWidth={3} />
                   <span className="font-semibold text-gray-900">Tyres</span>
                   <Badge
                     variant={
-                      health.tyres_status === 'ok'
+                      tyresStatus === 'ok'
                         ? 'success'
-                        : health.tyres_status === 'soon'
+                        : tyresStatus === 'soon'
                         ? 'warning'
                         : 'error'
                     }
                     size="sm"
                   >
-                    {STATUS_LABELS[health.tyres_status]}
+                    {STATUS_LABELS[tyresStatus]}
                   </Badge>
                 </div>
               </div>
               <div className="p-4 bg-white">
                 <TyreGrid
                   tyres={health.tyres}
+                  currentKm={currentKm}
                   canEdit={canEdit}
                   onEdit={(position) => {
                     const tyre = health.tyres.find((t) => t.position === position);

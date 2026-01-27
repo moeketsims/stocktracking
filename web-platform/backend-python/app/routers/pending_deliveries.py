@@ -11,8 +11,8 @@ import os
 logger = logging.getLogger(__name__)
 from ..config import get_supabase_admin_client, get_settings
 from ..routers.auth import require_auth, require_manager, get_current_user
-from ..models.requests import ConfirmDeliveryRequest, RejectDeliveryRequest, SubmitClosingKmRequest
-from ..email import send_delivery_arrived_notification, send_delivery_confirmed_notification, send_driver_km_submission_request
+from ..models.requests import ConfirmDeliveryRequest, RejectDeliveryRequest, SubmitClosingKmRequest, CorrectClosingKmRequest
+from ..email import send_delivery_arrived_notification, send_delivery_confirmed_notification, send_driver_km_submission_request, send_km_submitted_notification
 
 # Secret key for JWT tokens (use environment variable in production)
 KM_SUBMISSION_SECRET = os.environ.get("KM_SUBMISSION_SECRET", "km-submission-secret-key-change-in-production")
@@ -371,6 +371,9 @@ async def confirm_delivery(
                     "status": "partially_fulfilled"
                 })
 
+        # Feature 5: Track km email status
+        km_email_status = {"sent": False, "reason": None}
+
         # Send notifications to driver and store manager
         try:
             print(f"[NOTIFICATION] Starting notification process for delivery {delivery_id}")
@@ -441,7 +444,7 @@ async def confirm_delivery(
 
                             # Send km submission request email
                             print(f"[NOTIFICATION] Sending km submission email to driver: {driver_email}")
-                            send_driver_km_submission_request(
+                            email_sent = send_driver_km_submission_request(
                                 to_email=driver_email,
                                 driver_name=driver_name,
                                 location_name=location_name,
@@ -450,7 +453,11 @@ async def confirm_delivery(
                                 starting_km=starting_km,
                                 submission_token=km_submission_token
                             )
+                            km_email_status["sent"] = email_sent
+                            if not email_sent:
+                                km_email_status["reason"] = "Email delivery failed"
                         elif driver_email:
+                            km_email_status["reason"] = "Trip has no starting odometer reading"
                             # If no starting km, send regular confirmation
                             send_delivery_confirmed_notification(
                                 to_email=driver_email,
@@ -464,12 +471,17 @@ async def confirm_delivery(
                                 discrepancy_kg=discrepancy_kg,
                                 confirmed_by_name=confirmed_by_name
                             )
+                        else:
+                            km_email_status["reason"] = "Driver has no email address"
                     except Exception as driver_email_err:
                         print(f"[NOTIFICATION ERROR] Failed to notify driver: {driver_email_err}")
+                        km_email_status["reason"] = f"Error: {str(driver_email_err)}"
                 else:
                     print(f"[NOTIFICATION WARNING] No driver_user_id found for trip")
+                    km_email_status["reason"] = "Driver has no linked user account"
             else:
                 print(f"[NOTIFICATION WARNING] No trip_id in delivery data - cannot send driver email")
+                km_email_status["reason"] = "No trip linked to this delivery"
 
             # Get store manager email (the person who confirmed)
             try:
@@ -504,7 +516,8 @@ async def confirm_delivery(
             "request_status": request_status,
             "total_delivered_bags": total_delivered_bags,
             "requested_bags": requested_bags,
-            "remaining_bags": max(0, requested_bags - total_delivered_bags)
+            "remaining_bags": max(0, requested_bags - total_delivered_bags),
+            "km_email_status": km_email_status  # Feature 5: Email status tracking
         }
 
     except HTTPException:
@@ -642,6 +655,15 @@ async def submit_closing_km(token: str, request: SubmitClosingKmRequest):
                 detail=f"Closing km ({closing_km:,}) cannot be less than starting km ({starting_km:,})"
             )
 
+        # Feature 3: Upper bound validation - max 2000 km per trip
+        MAX_SINGLE_TRIP_DISTANCE_KM = 2000
+        max_allowed_km = starting_km + MAX_SINGLE_TRIP_DISTANCE_KM
+        if closing_km > max_allowed_km:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Closing km ({closing_km:,}) exceeds maximum expected ({max_allowed_km:,} km). Contact your manager if this is correct."
+            )
+
         # Calculate trip distance
         trip_distance = closing_km - starting_km
 
@@ -650,9 +672,11 @@ async def submit_closing_km(token: str, request: SubmitClosingKmRequest):
         if trip_check.data and trip_check.data.get("odometer_end"):
             raise HTTPException(status_code=400, detail="Closing km has already been submitted for this trip")
 
-        # 1. Update trip with odometer_end
+        # 1. Update trip with odometer_end and km_submitted status (Feature 6)
         supabase.table("trips").update({
-            "odometer_end": closing_km
+            "odometer_end": closing_km,
+            "km_submitted": True,
+            "km_submitted_at": datetime.now().isoformat()
         }).eq("id", trip_id).execute()
 
         # 2. Get current vehicle data and update kilometers_traveled
@@ -687,6 +711,38 @@ async def submit_closing_km(token: str, request: SubmitClosingKmRequest):
 
             logger.info(f"[KM_SUBMISSION] Trip {trip_id}: {starting_km} -> {closing_km} = {trip_distance} km. Vehicle total: {new_total_km} km")
 
+            # Feature 1: Notify vehicle managers and admins
+            try:
+                # Get trip number and vehicle reg for notification
+                trip_info = supabase.table("trips").select("trip_number").eq("id", trip_id).single().execute()
+                vehicle_info = supabase.table("vehicles").select("registration_number").eq("id", vehicle_id).single().execute()
+
+                trip_number = trip_info.data.get("trip_number", "N/A") if trip_info.data else "N/A"
+                vehicle_reg = vehicle_info.data.get("registration_number", "Unknown") if vehicle_info.data else "Unknown"
+
+                # Get all vehicle managers and admins
+                managers = supabase.table("profiles_with_email").select(
+                    "email, full_name"
+                ).eq("is_active", True).in_(
+                    "role", ["vehicle_manager", "admin"]
+                ).execute()
+
+                for manager in (managers.data or []):
+                    if manager.get("email"):
+                        send_km_submitted_notification(
+                            to_email=manager["email"],
+                            manager_name=manager.get("full_name", "Manager"),
+                            driver_name=driver_name,
+                            vehicle_reg=vehicle_reg,
+                            trip_number=trip_number,
+                            starting_km=starting_km,
+                            closing_km=closing_km,
+                            trip_distance=trip_distance
+                        )
+                        logger.info(f"[KM_SUBMISSION] Notified {manager['email']} about km submission")
+            except Exception as notify_err:
+                logger.error(f"[KM_SUBMISSION] Failed to notify managers: {notify_err}")
+
             return {
                 "success": True,
                 "message": f"Thank you! Your closing km of {closing_km:,} has been recorded.",
@@ -702,6 +758,262 @@ async def submit_closing_km(token: str, request: SubmitClosingKmRequest):
         raise
     except Exception as e:
         logger.error(f"[KM_SUBMISSION] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{delivery_id}/resend-km-email")
+async def resend_km_submission_email(
+    delivery_id: str,
+    user_data: dict = Depends(require_auth)
+):
+    """Resend KM submission email to driver. Admin/vehicle_manager only.
+
+    Feature 2: Allows resending the km submission link if driver lost the email.
+    """
+    supabase = get_supabase_admin_client()
+    user = user_data["user"]
+
+    try:
+        # Verify user role
+        profile = supabase.table("profiles").select("role").eq(
+            "user_id", user.id
+        ).single().execute()
+
+        if not profile.data or profile.data["role"] not in ("admin", "vehicle_manager"):
+            raise HTTPException(status_code=403, detail="Only admins and vehicle managers can resend km emails")
+
+        # Get delivery with trip info
+        delivery = supabase.table("pending_deliveries").select(
+            "*, trip:trips(id, trip_number, driver_id, vehicle_id, odometer_start, odometer_end, km_submitted)"
+        ).eq("id", delivery_id).single().execute()
+
+        if not delivery.data:
+            raise HTTPException(status_code=404, detail="Delivery not found")
+
+        if delivery.data["status"] != "confirmed":
+            raise HTTPException(status_code=400, detail="Can only resend km email for confirmed deliveries")
+
+        trip = delivery.data.get("trip")
+        if not trip:
+            raise HTTPException(status_code=400, detail="No trip linked to this delivery")
+
+        if trip.get("km_submitted") or trip.get("odometer_end"):
+            raise HTTPException(status_code=400, detail="Closing km has already been submitted for this trip")
+
+        if trip.get("odometer_start") is None:
+            raise HTTPException(status_code=400, detail="Trip has no starting odometer reading")
+
+        # Get driver info
+        driver_id = trip.get("driver_id")
+        if not driver_id:
+            raise HTTPException(status_code=400, detail="Trip has no assigned driver")
+
+        driver_profile = supabase.table("profiles").select(
+            "id, full_name, user_id"
+        ).eq("id", driver_id).single().execute()
+
+        if not driver_profile.data or not driver_profile.data.get("user_id"):
+            raise HTTPException(status_code=400, detail="Driver has no linked user account")
+
+        driver_name = driver_profile.data.get("full_name", "Driver")
+        driver_user_id = driver_profile.data["user_id"]
+
+        # Get driver email
+        driver_auth = supabase.auth.admin.get_user_by_id(driver_user_id)
+        driver_email = driver_auth.user.email if driver_auth and driver_auth.user else None
+
+        if not driver_email:
+            raise HTTPException(status_code=400, detail="Driver has no email address")
+
+        # Get vehicle info
+        vehicle_id = trip.get("vehicle_id")
+        vehicle_reg = "Unknown"
+        if vehicle_id:
+            vehicle_info = supabase.table("vehicles").select(
+                "registration_number"
+            ).eq("id", vehicle_id).single().execute()
+            if vehicle_info.data:
+                vehicle_reg = vehicle_info.data.get("registration_number", "Unknown")
+
+        # Get location name
+        location_name = "Unknown Location"
+        if delivery.data.get("location_id"):
+            location = supabase.table("locations").select("name").eq(
+                "id", delivery.data["location_id"]
+            ).single().execute()
+            if location.data:
+                location_name = location.data.get("name", "Unknown Location")
+
+        starting_km = trip["odometer_start"]
+        trip_number = trip.get("trip_number", "N/A")
+
+        # Generate new JWT token for km submission (valid for 7 days)
+        km_token_payload = {
+            "trip_id": trip["id"],
+            "delivery_id": delivery_id,
+            "driver_id": driver_id,
+            "driver_name": driver_name,
+            "vehicle_id": vehicle_id,
+            "starting_km": starting_km,
+            "exp": datetime.utcnow() + timedelta(days=7)
+        }
+        km_submission_token = jwt.encode(km_token_payload, KM_SUBMISSION_SECRET, algorithm="HS256")
+
+        # Send email
+        email_sent = send_driver_km_submission_request(
+            to_email=driver_email,
+            driver_name=driver_name,
+            location_name=location_name,
+            vehicle_reg=vehicle_reg,
+            trip_number=trip_number,
+            starting_km=starting_km,
+            submission_token=km_submission_token
+        )
+
+        if not email_sent:
+            raise HTTPException(status_code=500, detail="Failed to send email")
+
+        logger.info(f"[RESEND_KM_EMAIL] Resent km submission email to {driver_email} for delivery {delivery_id}")
+
+        return {
+            "success": True,
+            "message": f"KM submission email resent to {driver_email}",
+            "driver_email": driver_email,
+            "driver_name": driver_name
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[RESEND_KM_EMAIL] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/trips/{trip_id}/correct-km")
+async def correct_closing_km(
+    trip_id: str,
+    request: CorrectClosingKmRequest,
+    user_data: dict = Depends(require_auth)
+):
+    """Correct a submitted closing km reading. Admin/vehicle_manager only.
+
+    Feature 4: Allows correction of wrong closing km with audit trail.
+    Updates vehicle total km and logs the correction.
+    """
+    supabase = get_supabase_admin_client()
+    user = user_data["user"]
+
+    try:
+        # Verify user role
+        profile = supabase.table("profiles").select("id, role, full_name").eq(
+            "user_id", user.id
+        ).single().execute()
+
+        if not profile.data or profile.data["role"] not in ("admin", "vehicle_manager"):
+            raise HTTPException(status_code=403, detail="Only admins and vehicle managers can correct km readings")
+
+        # Get trip with current odometer readings
+        trip = supabase.table("trips").select(
+            "id, trip_number, odometer_start, odometer_end, vehicle_id, km_submitted"
+        ).eq("id", trip_id).single().execute()
+
+        if not trip.data:
+            raise HTTPException(status_code=404, detail="Trip not found")
+
+        if not trip.data.get("odometer_end"):
+            raise HTTPException(status_code=400, detail="Trip has no closing km to correct")
+
+        old_odometer_end = trip.data["odometer_end"]
+        starting_km = trip.data.get("odometer_start")
+        vehicle_id = trip.data["vehicle_id"]
+        new_closing_km = request.new_closing_km
+
+        if not starting_km:
+            raise HTTPException(status_code=400, detail="Trip has no starting km")
+
+        if not vehicle_id:
+            raise HTTPException(status_code=400, detail="Trip has no vehicle assigned")
+
+        # Validate new closing km
+        if new_closing_km < starting_km:
+            raise HTTPException(
+                status_code=400,
+                detail=f"New closing km ({new_closing_km:,}) cannot be less than starting km ({starting_km:,})"
+            )
+
+        # Upper bound validation
+        MAX_SINGLE_TRIP_DISTANCE_KM = 2000
+        if new_closing_km > starting_km + MAX_SINGLE_TRIP_DISTANCE_KM:
+            raise HTTPException(
+                status_code=400,
+                detail=f"New closing km ({new_closing_km:,}) exceeds maximum expected ({starting_km + MAX_SINGLE_TRIP_DISTANCE_KM:,} km)"
+            )
+
+        if new_closing_km == old_odometer_end:
+            raise HTTPException(status_code=400, detail="New closing km is the same as current value")
+
+        # Get current vehicle km
+        vehicle = supabase.table("vehicles").select(
+            "kilometers_traveled"
+        ).eq("id", vehicle_id).single().execute()
+
+        if not vehicle.data:
+            raise HTTPException(status_code=404, detail="Vehicle not found")
+
+        old_vehicle_total_km = vehicle.data.get("kilometers_traveled") or 0
+
+        # Calculate the difference and new totals
+        old_trip_distance = old_odometer_end - starting_km
+        new_trip_distance = new_closing_km - starting_km
+        distance_difference = new_trip_distance - old_trip_distance
+        new_vehicle_total_km = old_vehicle_total_km + distance_difference
+
+        # Update trip with new closing km
+        supabase.table("trips").update({
+            "odometer_end": new_closing_km
+        }).eq("id", trip_id).execute()
+
+        # Update vehicle total km
+        supabase.table("vehicles").update({
+            "kilometers_traveled": new_vehicle_total_km
+        }).eq("id", vehicle_id).execute()
+
+        # Log the correction
+        correction_record = {
+            "trip_id": trip_id,
+            "vehicle_id": vehicle_id,
+            "corrected_by": profile.data["id"],
+            "old_odometer_end": old_odometer_end,
+            "old_vehicle_total_km": old_vehicle_total_km,
+            "new_odometer_end": new_closing_km,
+            "new_vehicle_total_km": new_vehicle_total_km,
+            "distance_difference": distance_difference,
+            "reason": request.reason
+        }
+
+        supabase.table("km_corrections").insert(correction_record).execute()
+
+        logger.info(
+            f"[KM_CORRECTION] Trip {trip_id}: {old_odometer_end} -> {new_closing_km} "
+            f"(diff: {distance_difference:+} km) by {profile.data['full_name']}. "
+            f"Reason: {request.reason}"
+        )
+
+        return {
+            "success": True,
+            "message": f"Closing km corrected from {old_odometer_end:,} to {new_closing_km:,} km",
+            "old_closing_km": old_odometer_end,
+            "new_closing_km": new_closing_km,
+            "distance_difference": distance_difference,
+            "old_vehicle_total_km": old_vehicle_total_km,
+            "new_vehicle_total_km": new_vehicle_total_km,
+            "corrected_by": profile.data["full_name"]
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[KM_CORRECTION] Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

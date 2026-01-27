@@ -13,6 +13,7 @@ import {
   PackageCheck,
   UtensilsCrossed,
   MapPin,
+  Navigation,
 } from 'lucide-react';
 import { useAuthStore } from './stores/authStore';
 import { useLogout } from './hooks/useAuth';
@@ -40,6 +41,7 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import LocationsPage from './pages/LocationsPage';
 import SubmitKmPage from './pages/SubmitKmPage';
+import FleetStatusPage from './pages/FleetStatusPage';
 
 type PublicPage = 'login' | 'forgot-password' | 'accept-invite' | 'reset-password' | 'submit-km';
 
@@ -57,16 +59,59 @@ type TabId =
   | 'locations'
   | 'notifications'
   | 'kitchen'
+  | 'fleet-status'
   | 'settings';
+
+// Helper to parse URL params for initial state (avoids race condition)
+function getInitialPublicPageState(): { publicPage: PublicPage; inviteToken: string; resetToken: string; kmSubmissionToken: string } {
+  const params = new URLSearchParams(window.location.search);
+  const invite = params.get('invite');
+  const reset = params.get('reset');
+  const type = params.get('type');
+  const token = params.get('token');
+  const pathname = window.location.pathname;
+
+  // Handle submit-km page (public, no auth required)
+  if (pathname === '/submit-km' && token) {
+    return { publicPage: 'submit-km', inviteToken: '', resetToken: '', kmSubmissionToken: token };
+  }
+
+  // Handle invitation
+  if (invite) {
+    return { publicPage: 'accept-invite', inviteToken: invite, resetToken: '', kmSubmissionToken: '' };
+  }
+
+  // Handle password reset
+  if (reset || type === 'recovery') {
+    const hash = window.location.hash;
+    if (hash) {
+      const hashParams = new URLSearchParams(hash.substring(1));
+      const accessToken = hashParams.get('access_token');
+      if (accessToken) {
+        return { publicPage: 'reset-password', inviteToken: '', resetToken: accessToken, kmSubmissionToken: '' };
+      }
+    } else if (reset) {
+      return { publicPage: 'reset-password', inviteToken: '', resetToken: reset, kmSubmissionToken: '' };
+    }
+  }
+
+  return { publicPage: 'login', inviteToken: '', resetToken: '', kmSubmissionToken: '' };
+}
+
+// Parse URL params once outside component to avoid race condition with auth state
+const initialUrlState = getInitialPublicPageState();
 
 function App() {
   const { isAuthenticated, isManager, isDriver, isVehicleManager, user } = useAuthStore();
   const logoutMutation = useLogout();
   const [activeTab, setActiveTab] = useState<TabId>('stock');
-  const [publicPage, setPublicPage] = useState<PublicPage>('login');
-  const [inviteToken, setInviteToken] = useState<string>('');
-  const [resetToken, setResetToken] = useState<string>('');
-  const [kmSubmissionToken, setKmSubmissionToken] = useState<string>('');
+
+  // Initialize from URL params immediately (parsed once above)
+  const [publicPage, setPublicPage] = useState<PublicPage>(initialUrlState.publicPage);
+  const [inviteToken, setInviteToken] = useState<string>(initialUrlState.inviteToken);
+  const [resetToken, setResetToken] = useState<string>(initialUrlState.resetToken);
+  const [kmSubmissionToken, setKmSubmissionToken] = useState<string>(initialUrlState.kmSubmissionToken);
+
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [pendingTripRequest, setPendingTripRequest] = useState<string | null>(null);
   const { data: notificationsData } = useNotifications();
@@ -76,6 +121,8 @@ function App() {
   useEffect(() => {
     if (isVehicleManager()) {
       setActiveTab('vehicles');
+    } else if (user?.role === 'staff') {
+      setActiveTab('kitchen');
     }
   }, [user?.role]);
 
@@ -91,38 +138,8 @@ function App() {
     setActiveTab('trips');
   };
 
-  // Check URL for invite/reset/km-submission tokens on load
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const invite = params.get('invite');
-    const reset = params.get('reset');
-    const type = params.get('type');
-    const token = params.get('token');
-    const pathname = window.location.pathname;
-
-    // Handle submit-km page (public, no auth required)
-    if (pathname === '/submit-km' && token) {
-      setKmSubmissionToken(token);
-      setPublicPage('submit-km');
-    } else if (invite) {
-      setInviteToken(invite);
-      setPublicPage('accept-invite');
-    } else if (reset || type === 'recovery') {
-      // Handle Supabase recovery token from hash
-      const hash = window.location.hash;
-      if (hash) {
-        const hashParams = new URLSearchParams(hash.substring(1));
-        const accessToken = hashParams.get('access_token');
-        if (accessToken) {
-          setResetToken(accessToken);
-          setPublicPage('reset-password');
-        }
-      } else if (reset) {
-        setResetToken(reset);
-        setPublicPage('reset-password');
-      }
-    }
-  }, []);
+  // URL params are now parsed during state initialization (getInitialPublicPageState)
+  // to avoid race conditions with auth state on first render
 
   const clearUrlParams = () => {
     window.history.replaceState({}, document.title, '/');
@@ -186,14 +203,21 @@ function App() {
     return <LoginPage onForgotPassword={() => setPublicPage('forgot-password')} />;
   }
 
-  // Filter main tabs based on role - drivers and vehicle managers have limited access
+  // Filter main tabs based on role - drivers, vehicle managers, and staff have limited access
   const isAdmin = user?.role === 'admin';
   const isVehicleMgr = isVehicleManager();
+  const isStaffUser = user?.role === 'staff';
 
-  // Vehicle Manager only sees Vehicles in main tabs
-  const mainTabs = isVehicleMgr
+  // Staff only sees Kitchen
+  // Vehicle Manager only sees Vehicles and Fleet Status
+  const mainTabs = isStaffUser
+    ? [
+        { id: 'kitchen' as const, label: 'Kitchen', icon: UtensilsCrossed },
+      ]
+    : isVehicleMgr
     ? [
         { id: 'vehicles' as const, label: 'Vehicles', icon: Truck },
+        { id: 'fleet-status' as const, label: 'Fleet Status', icon: Navigation },
       ]
     : [
         { id: 'stock' as const, label: 'Stock', icon: Package },
@@ -205,8 +229,13 @@ function App() {
       ];
 
   // Filter more tabs based on role
+  // Staff only sees Settings
   // Vehicle Manager sees: Drivers, User Management, Notifications, Settings
-  const moreTabs = isVehicleMgr
+  const moreTabs = isStaffUser
+    ? [
+        { id: 'settings' as const, label: 'Settings', icon: Settings },
+      ]
+    : isVehicleMgr
     ? [
         { id: 'drivers' as const, label: 'Drivers', icon: Users },
         { id: 'users' as const, label: 'User Management', icon: UserCog },
@@ -274,6 +303,8 @@ function App() {
         return <SettingsPage />;
       case 'kitchen':
         return <KitchenPage />;
+      case 'fleet-status':
+        return <FleetStatusPage />;
       default:
         return <DashboardPage />;
     }

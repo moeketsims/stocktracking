@@ -189,8 +189,8 @@ export const returnsApi = {
 
 // Vehicles API
 export const vehiclesApi = {
-  list: (activeOnly: boolean = true) =>
-    api.get('/api/vehicles', { params: { active_only: activeOnly } }),
+  list: (activeOnly: boolean = true, includeTripStatus: boolean = false) =>
+    api.get('/api/vehicles', { params: { active_only: activeOnly, include_trip_status: includeTripStatus } }),
   get: (id: string) => api.get(`/api/vehicles/${id}`),
   create: (data: any) => api.post('/api/vehicles', data),
   update: (id: string, data: any) => api.patch(`/api/vehicles/${id}`, data),
@@ -301,6 +301,21 @@ export const pendingDeliveriesApi = {
     api.post(`/api/pending-deliveries/${id}/confirm`, data),
   reject: (id: string, data: { reason: string }) =>
     api.post(`/api/pending-deliveries/${id}/reject`, data),
+  // Feature 2: Resend KM submission email
+  resendKmEmail: (id: string) =>
+    api.post(`/api/pending-deliveries/${id}/resend-km-email`),
+  // Feature 4: Correct closing km
+  correctKm: (tripId: string, data: { new_closing_km: number; reason: string }) =>
+    api.post(`/api/pending-deliveries/trips/${tripId}/correct-km`, data),
+};
+
+// Locations API
+export const locationsApi = {
+  list: (type?: string) => api.get('/api/locations', { params: type ? { type } : undefined }),
+  get: (id: string) => api.get(`/api/locations/${id}`),
+  getThresholds: (id: string) => api.get(`/api/locations/${id}/thresholds`),
+  updateThresholds: (id: string, data: { critical_stock_threshold: number; low_stock_threshold: number }) =>
+    api.patch(`/api/locations/${id}/thresholds`, data),
 };
 
 // Barcode Scanning API

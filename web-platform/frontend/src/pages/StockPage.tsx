@@ -36,34 +36,39 @@ import StockRequestModal from '../components/modals/StockRequestModal';
 import ConfirmDeliveryModal from '../components/modals/ConfirmDeliveryModal';
 import type { LocationStockItem, RecentActivity, PendingDelivery } from '../types';
 
-// Target stock levels by location type (in kg)
-const TARGET_STOCK = {
-  warehouse: 1500000, // 1,500 tons
-  shop: 150000,       // 150 tons
-};
-
-// Status thresholds based on % of target
-// Healthy: ≥ 85%, Low: 65-84%, Critical: < 65%
+// Stock status type
 type StockStatus = 'healthy' | 'low' | 'critical';
 
-function getStockStatus(qty: number, locationType: 'warehouse' | 'shop'): StockStatus {
-  const target = TARGET_STOCK[locationType];
-  const percent = (qty / target) * 100;
-
-  if (percent >= 85) return 'healthy';
-  if (percent >= 65) return 'low';
-  return 'critical';
+// Get stock status using location-specific thresholds (in bags)
+function getStockStatus(
+  qtyKg: number,
+  criticalThresholdBags: number = 20,
+  lowThresholdBags: number = 50
+): StockStatus {
+  const bags = Math.floor(qtyKg / 10); // Convert kg to bags
+  if (bags < criticalThresholdBags) return 'critical';
+  if (bags < lowThresholdBags) return 'low';
+  return 'healthy';
 }
 
-function getCapacityPercent(qty: number, locationType: 'warehouse' | 'shop'): number {
-  const target = TARGET_STOCK[locationType];
-  return Math.min(100, Math.round((qty / target) * 100));
+// Get capacity percent based on low threshold (healthy = at or above low threshold)
+function getCapacityPercent(
+  qtyKg: number,
+  lowThresholdBags: number = 50
+): number {
+  const bags = Math.floor(qtyKg / 10);
+  // Use low threshold as 100% capacity indicator
+  const percent = (bags / lowThresholdBags) * 100;
+  return Math.min(100, Math.round(percent));
 }
 
-// Calculate how much needed to reach target
-function getNeededToTarget(qty: number, locationType: 'warehouse' | 'shop'): number {
-  const target = TARGET_STOCK[locationType];
-  return Math.max(0, target - qty);
+// Calculate how much needed to reach low threshold (healthy level)
+function getNeededToTarget(
+  qtyKg: number,
+  lowThresholdBags: number = 50
+): number {
+  const bags = Math.floor(qtyKg / 10);
+  return Math.max(0, (lowThresholdBags - bags) * 10); // Return in kg
 }
 
 // Conversion: 1 bag = 10 kg
@@ -171,12 +176,19 @@ export default function StockPage() {
 
   const pendingDeliveries = pendingDeliveriesData?.deliveries || [];
 
-  // Compute status for all locations
+  // Compute status for all locations using location-specific thresholds
   const locationsWithStatus = useMemo(() =>
     (data?.locations || []).map(loc => ({
       ...loc,
-      computedStatus: getStockStatus(loc.on_hand_qty, loc.location_type as 'warehouse' | 'shop'),
-      capacityPercent: getCapacityPercent(loc.on_hand_qty, loc.location_type as 'warehouse' | 'shop'),
+      computedStatus: getStockStatus(
+        loc.on_hand_qty,
+        loc.critical_stock_threshold || 20,
+        loc.low_stock_threshold || 50
+      ),
+      capacityPercent: getCapacityPercent(
+        loc.on_hand_qty,
+        loc.low_stock_threshold || 50
+      ),
     })),
     [data?.locations]
   );
@@ -517,9 +529,7 @@ export default function StockPage() {
         locationId={user?.location_id || selectedLocation?.location_id}
         locationName={user?.location_name || selectedLocation?.location_name}
         currentStockKg={selectedLocation?.on_hand_qty || 0}
-        targetStockKg={TARGET_STOCK[
-          (selectedLocation?.location_type as 'warehouse' | 'shop') || 'shop'
-        ]}
+        targetStockKg={(selectedLocation?.low_stock_threshold || 50) * 10}
       />
       <ConfirmDeliveryModal
         isOpen={showConfirmDeliveryModal}
@@ -613,12 +623,15 @@ function LocationCard({
   capacityPercent: number;
   onClick: () => void;
 }) {
+  // Use location-specific thresholds
+  const lowThreshold = location.low_stock_threshold || 50;
+
   const statusStyle = STATUS_CONFIG[status];
   const LocationIcon = location.location_type === 'warehouse' ? Warehouse : Store;
   const stockFormatted = formatStockValue(location.on_hand_qty);
-  const targetFormatted = formatStockValue(TARGET_STOCK[location.location_type as 'warehouse' | 'shop']);
+  const targetFormatted = formatStockValue(lowThreshold * 10); // Convert bags to kg
   const stale = isStaleData(location.last_activity);
-  const neededToTarget = getNeededToTarget(location.on_hand_qty, location.location_type as 'warehouse' | 'shop');
+  const neededToTarget = getNeededToTarget(location.on_hand_qty, lowThreshold);
   const neededFormatted = formatStockValue(neededToTarget);
 
   return (
@@ -791,15 +804,20 @@ function DetailsDrawer({
 
   if (!location) return null;
 
-  const status = getStockStatus(location.on_hand_qty, location.location_type as 'warehouse' | 'shop');
+  // Use location-specific thresholds
+  const criticalThreshold = location.critical_stock_threshold || 20;
+  const lowThreshold = location.low_stock_threshold || 50;
+
+  const status = getStockStatus(location.on_hand_qty, criticalThreshold, lowThreshold);
   const statusStyle = STATUS_CONFIG[status];
   const LocationIcon = location.location_type === 'warehouse' ? Warehouse : Store;
   const stockFormatted = formatStockValue(location.on_hand_qty);
-  const capacityPercent = getCapacityPercent(location.on_hand_qty, location.location_type as 'warehouse' | 'shop');
-  const target = TARGET_STOCK[location.location_type as 'warehouse' | 'shop'];
-  const targetFormatted = formatStockValue(target);
+  const capacityPercent = getCapacityPercent(location.on_hand_qty, lowThreshold);
+  // Target is now based on the low threshold (healthy level)
+  const targetKg = lowThreshold * 10; // Convert bags to kg
+  const targetFormatted = formatStockValue(targetKg);
   const stale = isStaleData(location.last_activity);
-  const neededToTarget = getNeededToTarget(location.on_hand_qty, location.location_type as 'warehouse' | 'shop');
+  const neededToTarget = getNeededToTarget(location.on_hand_qty, lowThreshold);
   const neededFormatted = formatStockValue(neededToTarget);
 
   return (

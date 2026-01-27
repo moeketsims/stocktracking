@@ -1,9 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { X, Truck, Package, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
+import { X, Truck, Package, AlertTriangle, CheckCircle, XCircle, Mail } from 'lucide-react';
 import { Button } from '../ui';
 import { pendingDeliveriesApi } from '../../lib/api';
 import type { PendingDelivery } from '../../types';
+
+interface KmEmailStatus {
+  sent: boolean;
+  reason: string | null;
+}
 
 interface ConfirmDeliveryModalProps {
   isOpen: boolean;
@@ -27,6 +32,8 @@ export default function ConfirmDeliveryModal({
   const [error, setError] = useState<string | null>(null);
   const [showRejectConfirm, setShowRejectConfirm] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
+  const [kmEmailWarning, setKmEmailWarning] = useState<string | null>(null);
+  const [showSuccess, setShowSuccess] = useState(false);
 
   // Reset form when modal opens
   useEffect(() => {
@@ -37,18 +44,28 @@ export default function ConfirmDeliveryModal({
       setError(null);
       setShowRejectConfirm(false);
       setRejectReason('');
+      setKmEmailWarning(null);
+      setShowSuccess(false);
     }
   }, [isOpen, delivery]);
 
   const confirmMutation = useMutation({
     mutationFn: (data: { confirmed_qty_kg: number; notes?: string }) =>
       pendingDeliveriesApi.confirm(delivery!.id, data),
-    onSuccess: () => {
+    onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['pending-deliveries'] });
       queryClient.invalidateQueries({ queryKey: ['stock'] });
       queryClient.invalidateQueries({ queryKey: ['stock-requests'] });
-      onSuccess();
-      onClose();
+
+      // Feature 5: Check km_email_status for warnings
+      const kmEmailStatus = response.data?.km_email_status as KmEmailStatus | undefined;
+      if (kmEmailStatus && !kmEmailStatus.sent && kmEmailStatus.reason) {
+        setKmEmailWarning(kmEmailStatus.reason);
+        setShowSuccess(true);
+      } else {
+        onSuccess();
+        onClose();
+      }
     },
     onError: (err: any) => {
       setError(err.response?.data?.detail || 'Failed to confirm delivery');
@@ -152,7 +169,43 @@ export default function ConfirmDeliveryModal({
             </div>
           </div>
 
-          {showRejectConfirm ? (
+          {showSuccess ? (
+            // Success with Warning
+            <div className="p-5 space-y-4">
+              <div className="text-center">
+                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <CheckCircle className="w-6 h-6 text-green-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">Delivery Confirmed</h3>
+                <p className="text-sm text-gray-500 mt-1">Stock has been added to inventory</p>
+              </div>
+
+              {kmEmailWarning && (
+                <div className="p-4 bg-amber-50 rounded-xl">
+                  <div className="flex items-start gap-3">
+                    <Mail className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-medium text-amber-800">KM Submission Email Not Sent</p>
+                      <p className="text-sm text-amber-700 mt-1">{kmEmailWarning}</p>
+                      <p className="text-xs text-amber-600 mt-2">
+                        The driver will need to manually submit their closing km, or you can resend the email from the deliveries page.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <Button
+                onClick={() => {
+                  onSuccess();
+                  onClose();
+                }}
+                className="w-full bg-emerald-600 hover:bg-emerald-700"
+              >
+                Done
+              </Button>
+            </div>
+          ) : showRejectConfirm ? (
             // Reject Confirmation
             <div className="p-5 space-y-4">
               <div className="p-4 bg-red-50 rounded-xl">

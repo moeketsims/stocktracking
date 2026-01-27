@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   User,
   Bell,
@@ -12,17 +12,71 @@ import {
   Info,
   LogOut,
   ChevronRight,
+  AlertTriangle,
+  Package,
+  Save,
+  Loader2,
 } from 'lucide-react';
 import { Card, Badge, Button } from '../components/ui';
-import { useSettings } from '../hooks/useData';
+import { useSettings, useLocationThresholds, useUpdateLocationThresholds } from '../hooks/useData';
 import { useLogout } from '../hooks/useAuth';
 import { useAuthStore } from '../stores/authStore';
 
 export default function SettingsPage() {
   const { data, isLoading } = useSettings();
   const logoutMutation = useLogout();
-  const { user, isAdmin } = useAuthStore();
+  const { user, isAdmin, isLocationManager } = useAuthStore();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
+  // Location manager threshold settings
+  const isLocMgr = isLocationManager();
+  const locationId = user?.location_id;
+  const { data: thresholdsData, isLoading: thresholdsLoading } = useLocationThresholds(
+    isLocMgr && locationId ? locationId : ''
+  );
+  const updateThresholdsMutation = useUpdateLocationThresholds();
+
+  const [criticalThreshold, setCriticalThreshold] = useState<number>(20);
+  const [lowThreshold, setLowThreshold] = useState<number>(50);
+  const [thresholdError, setThresholdError] = useState<string>('');
+  const [thresholdSuccess, setThresholdSuccess] = useState<string>('');
+
+  // Update form when thresholds data loads
+  useEffect(() => {
+    if (thresholdsData) {
+      setCriticalThreshold(thresholdsData.critical_stock_threshold || 20);
+      setLowThreshold(thresholdsData.low_stock_threshold || 50);
+    }
+  }, [thresholdsData]);
+
+  const handleSaveThresholds = async () => {
+    setThresholdError('');
+    setThresholdSuccess('');
+
+    if (criticalThreshold >= lowThreshold) {
+      setThresholdError('Critical threshold must be less than low stock threshold');
+      return;
+    }
+
+    if (!locationId) {
+      setThresholdError('No location assigned');
+      return;
+    }
+
+    try {
+      await updateThresholdsMutation.mutateAsync({
+        locationId,
+        data: {
+          critical_stock_threshold: criticalThreshold,
+          low_stock_threshold: lowThreshold,
+        },
+      });
+      setThresholdSuccess('Thresholds updated successfully');
+      setTimeout(() => setThresholdSuccess(''), 3000);
+    } catch (err: any) {
+      setThresholdError(err.response?.data?.detail || 'Failed to update thresholds');
+    }
+  };
 
   if (isLoading) {
     return (
@@ -77,6 +131,95 @@ export default function SettingsPage() {
           </p>
         )}
       </Card>
+
+      {/* Stock Thresholds - Location Manager Only */}
+      {isLocMgr && locationId && (
+        <Card>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center">
+              <Package className="w-5 h-5 text-amber-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">Stock Thresholds</h3>
+              <p className="text-sm text-gray-500">Configure alert levels for your location</p>
+            </div>
+          </div>
+
+          {thresholdsLoading ? (
+            <div className="flex justify-center py-4">
+              <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Critical Stock Level (bags)
+                </label>
+                <p className="text-xs text-gray-500 mb-2">
+                  Below this level triggers critical alerts (red)
+                </p>
+                <input
+                  type="number"
+                  min={0}
+                  max={1000}
+                  value={criticalThreshold}
+                  onChange={(e) => setCriticalThreshold(parseInt(e.target.value) || 0)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Low Stock Level (bags)
+                </label>
+                <p className="text-xs text-gray-500 mb-2">
+                  Below this level triggers low stock warnings (amber)
+                </p>
+                <input
+                  type="number"
+                  min={0}
+                  max={2000}
+                  value={lowThreshold}
+                  onChange={(e) => setLowThreshold(parseInt(e.target.value) || 0)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                />
+              </div>
+
+              {thresholdError && (
+                <div className="flex items-center gap-2 text-red-600 text-sm">
+                  <AlertTriangle className="w-4 h-4" />
+                  {thresholdError}
+                </div>
+              )}
+
+              {thresholdSuccess && (
+                <div className="flex items-center gap-2 text-green-600 text-sm">
+                  <Save className="w-4 h-4" />
+                  {thresholdSuccess}
+                </div>
+              )}
+
+              <Button
+                onClick={handleSaveThresholds}
+                disabled={updateThresholdsMutation.isPending}
+                className="w-full"
+              >
+                {updateThresholdsMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4 mr-2" />
+                    Save Thresholds
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
+        </Card>
+      )}
 
       {/* Menu Sections */}
       <Card padding="none">

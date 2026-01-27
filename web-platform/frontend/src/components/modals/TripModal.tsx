@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MapPin, AlertCircle, Truck, Package, User, Plus, Trash2, CheckCircle, Clock } from 'lucide-react';
+import { MapPin, AlertCircle, Truck, Package, User, Plus, Trash2, CheckCircle, Clock, AlertTriangle } from 'lucide-react';
 import { Modal, Button, Select } from '../ui';
 import { useCreateTrip, useCreateMultiStopTrip, useVehicles, useDrivers, useLocations, useSuppliers } from '../../hooks/useData';
 import { stockRequestsApi } from '../../lib/api';
@@ -61,7 +61,8 @@ export default function TripModal({
 
   const createMutation = useCreateTrip();
   const createMultiStopMutation = useCreateMultiStopTrip();
-  const { data: vehiclesData } = useVehicles(true);
+  // Fetch vehicles with trip status to show availability
+  const { data: vehiclesData } = useVehicles(true, true);
   const { data: driversData } = useDrivers(true);
   const { data: locationsData } = useLocations();
   const { data: suppliersData } = useSuppliers();
@@ -134,6 +135,10 @@ export default function TripModal({
     if (isOpen && !hasInitialized && vehiclesData?.vehicles?.length && drivers.length && suppliers.length && warehouses.length) {
       setHasInitialized(true);
 
+      // Get first available vehicle (not on a trip)
+      const firstAvailableVehicle = vehiclesData.vehicles.find((v) => v.is_available !== false);
+      const defaultVehicleId = firstAvailableVehicle?.id || '';
+
       // Check if a specific request is pre-selected (from RequestsPage navigation)
       const preSelectedRequest = preSelectedRequestId
         ? acceptedRequests.find((r: StockRequest) => r.id === preSelectedRequestId)
@@ -145,7 +150,7 @@ export default function TripModal({
         setSelectedRequests([preSelectedRequest]);
         setIsMultiStop(false);
         setForm({
-          vehicle_id: vehiclesData.vehicles[0]?.id || '',
+          vehicle_id: defaultVehicleId,
           driver_id: currentUser?.id,
           driver_name: '',
           origin_description: '',
@@ -160,7 +165,7 @@ export default function TripModal({
         setSelectedRequests(acceptedRequests);
         setIsMultiStop(false);
         setForm({
-          vehicle_id: vehiclesData.vehicles[0]?.id || '',
+          vehicle_id: defaultVehicleId,
           driver_id: currentUser?.id, // Driver is current user (who accepted)
           driver_name: '',
           origin_description: '',
@@ -175,7 +180,7 @@ export default function TripModal({
         // Regular trip mode - no accepted requests
         setSelectedRequests([]);
         setForm({
-          vehicle_id: vehiclesData.vehicles[0]?.id || '',
+          vehicle_id: defaultVehicleId,
           driver_id: drivers[0]?.id,
           driver_name: '',
           origin_description: '',
@@ -469,7 +474,12 @@ export default function TripModal({
     }
   };
 
-  const vehicleOptions = (vehiclesData?.vehicles || []).map((v) => ({
+  // Separate available vehicles from those on trips
+  const allVehicles = vehiclesData?.vehicles || [];
+  const availableVehicles = allVehicles.filter((v) => v.is_available !== false);
+  const vehiclesOnTrips = allVehicles.filter((v) => v.is_available === false && v.current_trip);
+
+  const vehicleOptions = availableVehicles.map((v) => ({
     value: v.id,
     label: `${v.registration_number} - ${v.make || ''} ${v.model || ''}`.trim(),
   }));
@@ -905,18 +915,65 @@ export default function TripModal({
             </span>
           </div>
 
-          {vehicleOptions.length === 0 ? (
+          {allVehicles.length === 0 ? (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-800 text-sm">
               No active vehicles found. Please add a vehicle first.
             </div>
+          ) : vehicleOptions.length === 0 ? (
+            // All vehicles are on trips
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-amber-800">
+              <div className="flex items-center gap-2 font-medium mb-2">
+                <AlertTriangle className="w-5 h-5" />
+                All vehicles are currently on trips
+              </div>
+              <p className="text-sm mb-3">
+                Please wait for a driver to submit their closing km before starting a new trip.
+              </p>
+              <div className="space-y-2">
+                {vehiclesOnTrips.map((v) => (
+                  <div key={v.id} className="flex items-center justify-between text-sm bg-white/50 rounded-lg p-2">
+                    <div className="flex items-center gap-2">
+                      <Truck className="w-4 h-4 text-amber-600" />
+                      <span className="font-medium">{v.registration_number}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-amber-700">
+                      <User className="w-3.5 h-3.5" />
+                      <span>{v.current_trip?.driver_name || 'Unknown driver'}</span>
+                      {v.current_trip?.awaiting_km && (
+                        <span className="text-xs bg-amber-200 px-1.5 py-0.5 rounded">Awaiting Km</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           ) : (
-            <Select
-              label="Vehicle *"
-              options={vehicleOptions}
-              value={form.vehicle_id}
-              onChange={(e) => setForm({ ...form, vehicle_id: e.target.value })}
-              placeholder="Select a vehicle"
-            />
+            <>
+              <Select
+                label="Vehicle *"
+                options={vehicleOptions}
+                value={form.vehicle_id}
+                onChange={(e) => setForm({ ...form, vehicle_id: e.target.value })}
+                placeholder="Select a vehicle"
+              />
+              {/* Show vehicles currently on trips */}
+              {vehiclesOnTrips.length > 0 && (
+                <div className="bg-gray-100 rounded-lg p-3">
+                  <p className="text-xs font-medium text-gray-500 mb-2">Vehicles on trips:</p>
+                  <div className="space-y-1">
+                    {vehiclesOnTrips.map((v) => (
+                      <div key={v.id} className="flex items-center justify-between text-xs text-gray-600">
+                        <span className="font-medium">{v.registration_number}</span>
+                        <span className="flex items-center gap-1">
+                          <User className="w-3 h-3" />
+                          {v.current_trip?.driver_name || 'Unknown'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
           {/* When fulfilling a stock request, driver is automatically the current user */}

@@ -76,6 +76,13 @@ export default function SubmitKmPage() {
       return;
     }
 
+    // Feature 3: Upper bound validation - max 2000 km per trip
+    const MAX_TRIP_DISTANCE = 2000;
+    if (info && closingKmNum > info.starting_km + MAX_TRIP_DISTANCE) {
+      setError(`Closing km (${closingKmNum.toLocaleString()}) exceeds maximum expected (${(info.starting_km + MAX_TRIP_DISTANCE).toLocaleString()} km). Contact your manager if this is correct.`);
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
 

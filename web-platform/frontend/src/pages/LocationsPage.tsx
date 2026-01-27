@@ -7,10 +7,12 @@ import {
   Building2,
   Warehouse,
   Search,
+  Sliders,
 } from 'lucide-react';
 import { Card, Button, Badge, Select } from '../components/ui';
 import CreateLocationModal from '../components/modals/CreateLocationModal';
 import EditLocationModal from '../components/modals/EditLocationModal';
+import EditThresholdsModal from '../components/modals/EditThresholdsModal';
 import ConfirmationModal from '../components/modals/ConfirmationModal';
 import { useLocations, useZones, useDeleteLocation } from '../hooks/useData';
 
@@ -22,6 +24,8 @@ interface Location {
   zone_name?: string;
   address?: string;
   created_at: string;
+  critical_stock_threshold?: number;
+  low_stock_threshold?: number;
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -37,6 +41,7 @@ const TYPE_COLORS: Record<string, string> = {
 export default function LocationsPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
+  const [editingThresholdsLocation, setEditingThresholdsLocation] = useState<Location | null>(null);
   const [deletingLocation, setDeletingLocation] = useState<Location | null>(null);
   const [deleteError, setDeleteError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -188,9 +193,20 @@ export default function LocationsPage() {
                         {loc.address}
                       </span>
                     )}
+                    <span className="flex items-center gap-1 text-xs">
+                      <Sliders className="w-3 h-3" />
+                      Critical: {loc.critical_stock_threshold || 20} | Low: {loc.low_stock_threshold || 50}
+                    </span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setEditingThresholdsLocation(loc)}
+                    className="p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                    title="Edit Stock Thresholds"
+                  >
+                    <Sliders className="w-4 h-4" />
+                  </button>
                   <button
                     onClick={() => setEditingLocation(loc)}
                     className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -248,6 +264,13 @@ export default function LocationsPage() {
         cancelText="Cancel"
         type="danger"
         isLoading={deleteMutation.isPending}
+      />
+
+      <EditThresholdsModal
+        isOpen={!!editingThresholdsLocation}
+        onClose={() => setEditingThresholdsLocation(null)}
+        onSuccess={handleSuccess}
+        location={editingThresholdsLocation}
       />
     </div>
   );

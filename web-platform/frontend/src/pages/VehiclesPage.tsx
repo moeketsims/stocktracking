@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Truck, Plus, Edit2, CheckCircle, XCircle, ChevronRight, AlertTriangle } from 'lucide-react';
+import { Truck, Plus, Edit2, CheckCircle, XCircle, ChevronRight, AlertTriangle, Navigation, Clock } from 'lucide-react';
 import { Card, Button, Badge } from '../components/ui';
 import VehicleModal from '../components/modals/VehicleModal';
 import VehicleHealthDrawer from '../components/VehicleHealthDrawer';
 import { useVehicles, useDeleteVehicle, useUpdateVehicle } from '../hooks/useData';
 import { useAuthStore } from '../stores/authStore';
+import { calculateVehicleHealth } from '../utils/vehicleHealth';
 import type { Vehicle, HealthStatus, VehicleHealth } from '../types';
 
 // Status color/icon mappings for health tiles
@@ -39,7 +40,7 @@ export default function VehiclesPage() {
   const isAdminUser = isAdmin();
   const isManager = user?.role && ['admin', 'zone_manager', 'location_manager', 'vehicle_manager'].includes(user.role);
 
-  const { data, isLoading, error, refetch } = useVehicles(!showInactive);
+  const { data, isLoading, error, refetch } = useVehicles(!showInactive, true); // Include trip status
   const deleteMutation = useDeleteVehicle();
   const updateMutation = useUpdateVehicle();
 
@@ -113,6 +114,10 @@ export default function VehiclesPage() {
 
   const vehicles = data?.vehicles || [];
 
+  // Calculate summary stats
+  const availableCount = vehicles.filter((v) => v.is_active && v.is_available !== false).length;
+  const onTripCount = vehicles.filter((v) => v.is_active && v.is_available === false).length;
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -145,14 +150,54 @@ export default function VehiclesPage() {
         </div>
       </div>
 
+      {/* Summary Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
+              <CheckCircle className="w-5 h-5 text-emerald-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-gray-900">{availableCount}</p>
+              <p className="text-sm text-gray-500">Available</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+              <Navigation className="w-5 h-5 text-blue-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-gray-900">{onTripCount}</p>
+              <p className="text-sm text-gray-500">On Trip</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="hidden sm:block bg-white rounded-xl border border-gray-200 p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+              <Truck className="w-5 h-5 text-gray-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-gray-900">{vehicles.filter((v) => v.is_active).length}</p>
+              <p className="text-sm text-gray-500">Total Active</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Vehicles List */}
       <Card padding="none">
         <div className="divide-y divide-gray-200">
           {vehicles.map((vehicle) => {
-            // Get health status (default to ok if not available)
-            const serviceStatus = vehicle.health?.service_status || 'ok';
-            const tyresStatus = vehicle.health?.tyres_status || 'ok';
-            const brakesStatus = vehicle.health?.brake_pads_status || 'ok';
+            // Calculate health statuses based on km thresholds
+            const { serviceStatus, tyresStatus, brakesStatus } = calculateVehicleHealth(
+              vehicle.kilometers_traveled,
+              vehicle.health
+            );
 
             // Determine if this row should be clickable (for vehicle manager or admin viewing health)
             const isClickable = isVehicleMgr || isAdminUser;
@@ -177,13 +222,29 @@ export default function VehiclesPage() {
                     <Badge variant="info" size="sm">
                       {vehicle.fuel_type}
                     </Badge>
+                    {/* Trip status badge */}
+                    {vehicle.is_available === false && vehicle.current_trip && (
+                      <Badge
+                        variant={vehicle.current_trip.status === 'in_progress' ? 'warning' : vehicle.current_trip.status === 'planned' ? 'info' : 'default'}
+                        size="sm"
+                      >
+                        <Navigation className="w-3 h-3 mr-1" />
+                        {vehicle.current_trip.status === 'planned' ? 'Assigned' : vehicle.current_trip.status === 'in_progress' ? 'On Trip' : 'Awaiting Km'}
+                      </Badge>
+                    )}
                   </div>
                   <p className="text-sm text-gray-500">
                     {vehicle.make && vehicle.model
                       ? `${vehicle.make} ${vehicle.model}`
                       : vehicle.make || vehicle.model || 'No make/model specified'}
                   </p>
-                  {vehicle.notes && (
+                  {/* Show trip info when on trip */}
+                  {vehicle.is_available === false && vehicle.current_trip && (
+                    <p className="text-xs text-blue-600 mt-1">
+                      Trip {vehicle.current_trip.trip_number} • Driver: {vehicle.current_trip.driver_name || 'Unknown'}
+                    </p>
+                  )}
+                  {vehicle.notes && !vehicle.current_trip && (
                     <p className="text-xs text-gray-400 mt-1 truncate">{vehicle.notes}</p>
                   )}
 
