@@ -20,7 +20,6 @@ import {
   ExternalLink,
   ChevronDown,
   Send,
-  Flame,
 } from 'lucide-react';
 import { Button } from '../components/ui';
 import { stockRequestsApi, vehiclesApi, referenceApi } from '../lib/api';
@@ -114,6 +113,8 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
     mutationFn: (requestId: string) => stockRequestsApi.reRequest(requestId),
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['stock-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['my-requests'] });
+      queryClient.refetchQueries({ queryKey: ['stock-requests'] });
       const emailsSent = response.data?.emails_sent || 0;
       setReRequestSuccess(`Notification sent to ${emailsSent} driver(s)`);
       setReRequestError(null);
@@ -123,14 +124,6 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
       setReRequestError(error.response?.data?.detail || 'Failed to send notifications');
       setReRequestSuccess(null);
       setTimeout(() => setReRequestError(null), 5000);
-    },
-  });
-
-  // Mark urgent mutation
-  const markUrgentMutation = useMutation({
-    mutationFn: (requestId: string) => stockRequestsApi.update(requestId, { urgency: 'urgent' }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['stock-requests'] });
     },
   });
 
@@ -678,9 +671,7 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
                 onViewTrip={(tripId: string) => onNavigateToTrip?.(tripId)}
                 onTrackDelivery={() => onNavigateToDeliveries?.()}
                 onReRequest={() => reRequestMutation.mutate(request.id)}
-                onMarkUrgent={() => markUrgentMutation.mutate(request.id)}
                 isReRequesting={reRequestMutation.isPending && reRequestMutation.variables === request.id}
-                isMarkingUrgent={markUrgentMutation.isPending && markUrgentMutation.variables === request.id}
                 getRelativeTime={getRelativeTime}
               />
             ))}
@@ -696,6 +687,7 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ['stock-requests'] });
           queryClient.invalidateQueries({ queryKey: ['my-requests'] });
+          queryClient.refetchQueries({ queryKey: ['stock-requests'] });
           setCancelSuccess(true);
           setTimeout(() => setCancelSuccess(false), 3000);
         }}
@@ -748,9 +740,7 @@ function RequestRow({
   onViewTrip,
   onTrackDelivery,
   onReRequest,
-  onMarkUrgent,
   isReRequesting,
-  isMarkingUrgent,
   getRelativeTime,
 }: {
   request: StockRequest;
@@ -767,9 +757,7 @@ function RequestRow({
   onViewTrip: (tripId: string) => void;
   onTrackDelivery: () => void;
   onReRequest?: () => void;
-  onMarkUrgent?: () => void;
   isReRequesting?: boolean;
-  isMarkingUrgent?: boolean;
   getRelativeTime: (date: string) => string;
 }) {
   const [showMenu, setShowMenu] = useState(false);
@@ -895,8 +883,6 @@ function RequestRow({
       return <span className="text-gray-300 text-sm">—</span>;
     }
 
-    const isAlreadyUrgent = request.urgency === 'urgent';
-
     return (
       <div className="relative inline-flex" ref={managerMenuRef}>
         {/* Primary action: Re-request */}
@@ -920,19 +906,6 @@ function RequestRow({
         {/* Dropdown menu */}
         {showManagerMenu && (
           <div className="absolute right-0 top-full mt-1 w-36 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
-            {!isAlreadyUrgent && request.status === 'pending' && (
-              <button
-                onClick={() => {
-                  setShowManagerMenu(false);
-                  onMarkUrgent?.();
-                }}
-                disabled={isMarkingUrgent}
-                className="w-full px-3 py-1.5 text-left text-xs text-amber-700 hover:bg-amber-50 flex items-center gap-2"
-              >
-                <Flame className="w-3 h-3" />
-                {isMarkingUrgent ? 'Marking...' : 'Mark Urgent'}
-              </button>
-            )}
             <button
               onClick={() => {
                 setShowManagerMenu(false);
