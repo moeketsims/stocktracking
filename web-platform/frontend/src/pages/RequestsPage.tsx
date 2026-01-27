@@ -107,6 +107,9 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
   const [reRequestSuccess, setReRequestSuccess] = useState<string | null>(null);
   const [reRequestError, setReRequestError] = useState<string | null>(null);
 
+  // Cancel success notification
+  const [cancelSuccess, setCancelSuccess] = useState(false);
+
   const reRequestMutation = useMutation({
     mutationFn: (requestId: string) => stockRequestsApi.reRequest(requestId),
     onSuccess: (response) => {
@@ -221,12 +224,24 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
   };
 
   // Calculate "needs attention" requests: partial, urgent pending, or pending > 3 days
+  // Exclude requests that were recently re-requested (updated within last 3 days)
   const needsAttentionRequests = useMemo(() => {
     const allRequests = allRequestsData?.requests || [];
     const now = new Date();
     const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
 
     return allRequests.filter((r: StockRequest) => {
+      // Skip if recently updated (re-requested)
+      if (r.updated_at) {
+        const updatedAt = new Date(r.updated_at);
+        const createdAt = new Date(r.created_at);
+        // If updated_at is different from created_at and within last 3 days, skip
+        if (updatedAt.getTime() !== createdAt.getTime() &&
+            now.getTime() - updatedAt.getTime() < threeDaysMs) {
+          return false;
+        }
+      }
+
       // Partial fulfillment
       if (r.status === 'partially_fulfilled') return true;
 
@@ -356,6 +371,15 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
             <AlertTriangle className="w-4 h-4 text-red-600" />
           </div>
           <span className="text-sm text-red-800">{reRequestError}</span>
+        </div>
+      )}
+      {/* Cancel Success Toast */}
+      {cancelSuccess && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center gap-3">
+          <div className="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center flex-shrink-0">
+            <Check className="w-4 h-4 text-emerald-600" />
+          </div>
+          <span className="text-sm text-emerald-800">Request cancelled</span>
         </div>
       )}
 
@@ -664,7 +688,11 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
         isOpen={showCancelModal}
         onClose={() => { setShowCancelModal(false); setSelectedRequest(null); }}
         request={selectedRequest}
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['stock-requests'] })}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['stock-requests'] });
+          setCancelSuccess(true);
+          setTimeout(() => setCancelSuccess(false), 3000);
+        }}
       />
 
       <EditRequestModal

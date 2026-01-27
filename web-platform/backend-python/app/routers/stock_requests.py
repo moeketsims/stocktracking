@@ -1320,6 +1320,11 @@ async def re_request_stock_request(
     This is used by managers to re-notify drivers about pending requests
     that need attention (e.g., old pending requests or partially fulfilled ones).
     Only admins and location managers can use this endpoint.
+
+    After re-requesting:
+    - Status is reset to 'pending'
+    - Urgency is reset to 'normal'
+    - The request is removed from 'Needs Attention' and appears fresh in 'All'
     """
     supabase = get_supabase_admin_client()
 
@@ -1341,11 +1346,19 @@ async def re_request_stock_request(
 
         location = existing.data.get("location", {})
         quantity_bags = existing.data["quantity_bags"]
-        urgency = existing.data["urgency"]
         current_stock_kg = existing.data.get("current_stock_kg", 0)
         target_stock_kg = existing.data.get("target_stock_kg", TARGET_STOCK_KG["shop"])
 
-        # Send notification to all active drivers
+        # Reset the request status to pending and urgency to normal
+        supabase.table("stock_requests").update({
+            "status": "pending",
+            "urgency": "normal",
+            "accepted_by": None,
+            "accepted_at": None,
+            "updated_at": datetime.now().isoformat()
+        }).eq("id", request_id).execute()
+
+        # Send notification to all active drivers (with normal urgency)
         try:
             drivers_result = supabase.table("profiles_with_email").select(
                 "email, full_name"
@@ -1361,7 +1374,7 @@ async def re_request_stock_request(
                             recipient_name=recipient.get("full_name", "Team Member"),
                             location_name=location.get("name", "Unknown"),
                             quantity_bags=quantity_bags,
-                            urgency=urgency,
+                            urgency="normal",
                             current_stock_pct=round((current_stock_kg / target_stock_kg) * 100, 1) if target_stock_kg > 0 else 0,
                             request_id=request_id
                         )
