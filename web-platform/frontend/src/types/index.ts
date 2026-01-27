@@ -733,7 +733,7 @@ export interface AcceptInviteForm {
 }
 
 // Stock Request Types (Replenishment Workflow)
-export type StockRequestStatus = 'pending' | 'accepted' | 'trip_created' | 'in_delivery' | 'fulfilled' | 'cancelled' | 'partially_fulfilled' | 'expired';
+export type StockRequestStatus = 'pending' | 'accepted' | 'trip_created' | 'in_delivery' | 'fulfilled' | 'delivered' | 'cancelled' | 'partially_fulfilled' | 'expired';
 export type StockRequestUrgency = 'urgent' | 'normal';
 
 export interface StockRequest {

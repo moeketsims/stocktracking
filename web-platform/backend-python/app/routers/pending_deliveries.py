@@ -347,7 +347,7 @@ async def confirm_delivery(
                     supabase.table("trip_requests").eq("id", trip_request.data[0]["id"]).update({
                         "delivered_qty_bags": int(confirmed_bags),
                         "status": "delivered"
-                    })
+                    }).execute()
 
             # Calculate total delivered across ALL trips for this request
             all_trip_requests = supabase.table("trip_requests").select(
@@ -360,16 +360,16 @@ async def confirm_delivery(
             )
 
             # Determine request status based on total delivered
-            if total_delivered_bags >= requested_bags * 0.95:  # 95% threshold for "fulfilled"
-                request_status = "fulfilled"
+            if total_delivered_bags >= requested_bags * 0.95:  # 95% threshold for "delivered"
+                request_status = "delivered"
                 supabase.table("stock_requests").eq("id", request_id).update({
-                    "status": "fulfilled"
-                })
+                    "status": "delivered"
+                }).execute()
             else:
                 request_status = "partially_fulfilled"
                 supabase.table("stock_requests").eq("id", request_id).update({
                     "status": "partially_fulfilled"
-                })
+                }).execute()
 
         # Feature 5: Track km email status
         km_email_status = {"sent": False, "reason": None}

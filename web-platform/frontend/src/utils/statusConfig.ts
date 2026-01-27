@@ -20,6 +20,7 @@ export const REQUEST_STATUS_CONFIG: Record<StockRequestStatus, StatusStyle> = {
   trip_created: { label: 'Trip Created', color: 'text-slate-700', bgColor: 'bg-slate-100', borderColor: 'border-slate-300' },
   in_delivery: { label: 'In Transit', color: 'text-indigo-700', bgColor: 'bg-indigo-50', borderColor: 'border-indigo-200' },
   fulfilled: { label: 'Fulfilled', color: 'text-emerald-700', bgColor: 'bg-emerald-50', borderColor: 'border-emerald-200' },
+  delivered: { label: 'Delivered', color: 'text-emerald-700', bgColor: 'bg-emerald-50', borderColor: 'border-emerald-200' },
   cancelled: { label: 'Cancelled', color: 'text-gray-600', bgColor: 'bg-gray-100', borderColor: 'border-gray-300' },
   partially_fulfilled: { label: 'Partial', color: 'text-orange-700', bgColor: 'bg-orange-50', borderColor: 'border-orange-200' },
   expired: { label: 'Expired', color: 'text-red-700', bgColor: 'bg-red-50', borderColor: 'border-red-200' },
