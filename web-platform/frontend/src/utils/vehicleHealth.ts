@@ -147,8 +147,8 @@ export function calculateVehicleHealth(
 
   return {
     serviceStatus: calculateServiceStatus(currentKm, health.last_service_km),
-    tyresStatus: calculateOverallTyreStatus(currentKm, health.tyres),
-    brakesStatus: calculateOverallBrakeStatus(currentKm, health.brake_pads),
+    tyresStatus: calculateOverallTyreStatus(currentKm, health.tyres || []),
+    brakesStatus: calculateOverallBrakeStatus(currentKm, health.brake_pads || []),
   };
 }
 

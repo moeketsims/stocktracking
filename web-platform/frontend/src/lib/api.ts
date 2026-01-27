@@ -230,6 +230,10 @@ export const tripsApi = {
   addStop: (tripId: string, stop: any) => api.post(`/api/trips/${tripId}/stops`, stop),
   arriveAtStop: (stopId: string) => api.post(`/api/trips/stops/${stopId}/arrive`),
   completeStop: (stopId: string, data?: any) => api.post(`/api/trips/stops/${stopId}/complete`, data || {}),
+  // Driver km submission
+  getDriverAwaitingKm: () => api.get('/api/trips/driver/awaiting-km'),
+  submitKm: (tripId: string, closingKm: number) =>
+    api.post(`/api/trips/${tripId}/submit-km`, null, { params: { closing_km: closingKm } }),
 };
 
 // Demo Data API (for seeding test data)

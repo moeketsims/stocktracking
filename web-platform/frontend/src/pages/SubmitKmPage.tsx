@@ -46,7 +46,7 @@ export default function SubmitKmPage() {
     // Fetch submission info
     const fetchInfo = async () => {
       try {
-        const response = await api.get(`/pending-deliveries/km-submission/${token}`);
+        const response = await api.get(`/api/pending-deliveries/km-submission/${token}`);
         setInfo(response.data);
         setLoading(false);
       } catch (err: unknown) {
@@ -87,7 +87,7 @@ export default function SubmitKmPage() {
     setError(null);
 
     try {
-      const response = await api.post(`/pending-deliveries/km-submission/${token}`, {
+      const response = await api.post(`/api/pending-deliveries/km-submission/${token}`, {
         closing_km: closingKmNum
       });
       setResult(response.data);

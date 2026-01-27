@@ -29,32 +29,59 @@ async def list_vehicles(
         if include_trip_status and vehicles:
             vehicle_ids = [v["id"] for v in vehicles]
 
-            # A vehicle is "on a trip" if:
-            # 1. There's a trip with status='planned' (assigned but not started), OR
-            # 2. There's a trip with status='in_progress'
-            # Note: completed trips are no longer considered "on trip"
+            # Get all relevant trips for these vehicles:
+            # 1. planned (assigned but not started)
+            # 2. in_progress (currently on trip)
+            # 3. completed (may be awaiting km or recently submitted)
             active_trips = supabase.table("trips").select(
-                "id, trip_number, vehicle_id, driver_id, driver_name, status"
+                "id, trip_number, vehicle_id, driver_id, driver_name, status, odometer_start, odometer_end, completed_at"
             ).in_("vehicle_id", vehicle_ids).in_(
-                "status", ["planned", "in_progress"]
-            ).execute()
+                "status", ["planned", "in_progress", "completed"]
+            ).order("created_at", desc=True).execute()
 
-            # Build a map of vehicle_id -> trip info for vehicles currently on trips
+            # Build a map of vehicle_id -> most recent ACTIVE trip (for availability check)
+            # Also build a list of ALL trips for Fleet Status display
             vehicles_on_trips = {}
+            all_trips = []
+
             for trip in (active_trips.data or []):
-                vehicles_on_trips[trip["vehicle_id"]] = {
+                vehicle_id = trip["vehicle_id"]
+                has_odometer_end = trip.get("odometer_end") is not None
+                is_completed = trip["status"] == "completed"
+                awaiting_km = is_completed and not has_odometer_end
+
+                trip_info = {
                     "trip_id": trip["id"],
                     "trip_number": trip["trip_number"],
+                    "vehicle_id": vehicle_id,
                     "driver_name": trip["driver_name"],
                     "status": trip["status"],
-                    "awaiting_km": False
+                    "odometer_start": trip.get("odometer_start"),
+                    "odometer_end": trip.get("odometer_end"),
+                    "km_submitted": has_odometer_end,
+                    "awaiting_km": awaiting_km
                 }
+
+                # Add to all_trips list (for Fleet Status)
+                all_trips.append(trip_info)
+
+                # For vehicle availability, only consider non-completed trips
+                # or completed trips that are awaiting km
+                if vehicle_id not in vehicles_on_trips:
+                    if not is_completed or awaiting_km:
+                        vehicles_on_trips[vehicle_id] = trip_info
 
             # Add trip status to each vehicle
             for vehicle in vehicles:
                 trip_info = vehicles_on_trips.get(vehicle["id"])
                 vehicle["current_trip"] = trip_info
+
+                # Vehicle is available if no blocking trip
                 vehicle["is_available"] = trip_info is None
+
+            # Add all_trips to response for Fleet Status page
+            for vehicle in vehicles:
+                vehicle["all_trips"] = [t for t in all_trips if t["vehicle_id"] == vehicle["id"]]
 
         return {
             "vehicles": vehicles,

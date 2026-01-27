@@ -673,16 +673,22 @@ async def submit_closing_km(token: str, request: SubmitClosingKmRequest):
             raise HTTPException(status_code=400, detail="Closing km has already been submitted for this trip")
 
         # 1. Update trip with odometer_end and km_submitted status (Feature 6)
-        supabase.table("trips").update({
-            "odometer_end": closing_km,
-            "km_submitted": True,
-            "km_submitted_at": datetime.now().isoformat()
-        }).eq("id", trip_id).execute()
+        supabase.table("trips").eq("id", trip_id).update({
+            "odometer_end": closing_km
+        })
 
         # 2. Get current vehicle data and update kilometers_traveled
-        vehicle_result = supabase.table("vehicles").select(
-            "kilometers_traveled, health"
-        ).eq("id", vehicle_id).single().execute()
+        logger.info(f"[KM_SUBMISSION] Looking up vehicle_id: {vehicle_id}")
+
+        try:
+            vehicle_result = supabase.table("vehicles").select(
+                "kilometers_traveled, health"
+            ).eq("id", vehicle_id).single().execute()
+        except Exception as vehicle_err:
+            logger.error(f"[KM_SUBMISSION] Vehicle query error: {vehicle_err}")
+            raise HTTPException(status_code=404, detail=f"Vehicle not found (id: {vehicle_id})")
+
+        logger.info(f"[KM_SUBMISSION] Vehicle result: {vehicle_result.data}")
 
         if vehicle_result.data:
             current_km = vehicle_result.data.get("kilometers_traveled") or 0
@@ -704,10 +710,10 @@ async def submit_closing_km(token: str, request: SubmitClosingKmRequest):
                 }
 
             # Update vehicle
-            supabase.table("vehicles").update({
+            supabase.table("vehicles").eq("id", vehicle_id).update({
                 "kilometers_traveled": new_total_km,
                 "health": current_health
-            }).eq("id", vehicle_id).execute()
+            })
 
             logger.info(f"[KM_SUBMISSION] Trip {trip_id}: {starting_km} -> {closing_km} = {trip_distance} km. Vehicle total: {new_total_km} km")
 
@@ -752,7 +758,9 @@ async def submit_closing_km(token: str, request: SubmitClosingKmRequest):
                 "closing_km": closing_km
             }
 
-        raise HTTPException(status_code=404, detail="Vehicle not found")
+        # Vehicle data was empty
+        logger.error(f"[KM_SUBMISSION] No vehicle data found for id: {vehicle_id}")
+        raise HTTPException(status_code=404, detail=f"Vehicle not found (id: {vehicle_id})")
 
     except HTTPException:
         raise
@@ -969,14 +977,14 @@ async def correct_closing_km(
         new_vehicle_total_km = old_vehicle_total_km + distance_difference
 
         # Update trip with new closing km
-        supabase.table("trips").update({
+        supabase.table("trips").eq("id", trip_id).update({
             "odometer_end": new_closing_km
-        }).eq("id", trip_id).execute()
+        })
 
         # Update vehicle total km
-        supabase.table("vehicles").update({
+        supabase.table("vehicles").eq("id", vehicle_id).update({
             "kilometers_traveled": new_vehicle_total_km
-        }).eq("id", vehicle_id).execute()
+        })
 
         # Log the correction
         correction_record = {

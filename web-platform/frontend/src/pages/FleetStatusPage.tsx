@@ -46,7 +46,15 @@ export default function FleetStatusPage() {
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 
-  // Get only vehicles currently on trips
+  // Get all trips from all vehicles (flatten the all_trips arrays)
+  const allTrips = (data?.vehicles || []).flatMap((v: Vehicle) =>
+    (v.all_trips || []).map((trip: any) => ({
+      ...trip,
+      vehicle: v
+    }))
+  );
+
+  // Get only vehicles currently on trips (for backwards compatibility)
   const vehiclesOnTrips = (data?.vehicles || []).filter(
     (v: Vehicle) => v.is_available === false && v.current_trip
   );
@@ -91,7 +99,7 @@ export default function FleetStatusPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
@@ -99,7 +107,7 @@ export default function FleetStatusPage() {
             </div>
             <div>
               <p className="text-2xl font-bold text-gray-900">
-                {vehiclesOnTrips.filter((v) => v.current_trip?.status === 'planned').length}
+                {allTrips.filter((t) => t.status === 'planned').length}
               </p>
               <p className="text-sm text-gray-500">Assigned</p>
             </div>
@@ -113,7 +121,7 @@ export default function FleetStatusPage() {
             </div>
             <div>
               <p className="text-2xl font-bold text-gray-900">
-                {vehiclesOnTrips.filter((v) => v.current_trip?.status === 'in_progress').length}
+                {allTrips.filter((t) => t.status === 'in_progress').length}
               </p>
               <p className="text-sm text-gray-500">In Progress</p>
             </div>
@@ -127,9 +135,23 @@ export default function FleetStatusPage() {
             </div>
             <div>
               <p className="text-2xl font-bold text-gray-900">
-                {vehiclesOnTrips.filter((v) => v.current_trip?.awaiting_km).length}
+                {allTrips.filter((t) => t.awaiting_km).length}
               </p>
               <p className="text-sm text-gray-500">Awaiting Km</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
+              <CheckCircle className="w-5 h-5 text-emerald-600" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-gray-900">
+                {allTrips.filter((t) => t.km_submitted).length}
+              </p>
+              <p className="text-sm text-gray-500">Km Submitted</p>
             </div>
           </div>
         </div>
@@ -141,16 +163,16 @@ export default function FleetStatusPage() {
             </div>
             <div>
               <p className="text-2xl font-bold text-gray-900">
-                {vehiclesOnTrips.length}
+                {allTrips.length}
               </p>
-              <p className="text-sm text-gray-500">Total on Trips</p>
+              <p className="text-sm text-gray-500">Total Trips</p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Vehicles List */}
-      {vehiclesOnTrips.length === 0 ? (
+      {/* Trips List */}
+      {allTrips.length === 0 ? (
         <div className="text-center py-16 bg-gray-50 rounded-2xl">
           <Truck className="w-12 h-12 mx-auto mb-4 text-gray-300" />
           <h3 className="text-lg font-medium text-gray-600">All vehicles available</h3>
@@ -169,22 +191,114 @@ export default function FleetStatusPage() {
             <div className="col-span-2">Km Status</div>
           </div>
 
-          {/* Vehicle Rows */}
+          {/* Trip Rows */}
           <div className="divide-y divide-gray-100">
-            {vehiclesOnTrips.map((vehicle) => (
-              <VehicleRow
-                key={vehicle.id}
-                vehicle={vehicle}
-                isResending={resendingTripId === vehicle.current_trip?.trip_id}
-                onResendEmail={() => {
-                  // We'd need the delivery_id to resend, which we don't have here
-                  // This could be enhanced later
-                }}
+            {allTrips.map((tripData) => (
+              <TripRow
+                key={tripData.trip_id}
+                trip={tripData}
+                vehicle={tripData.vehicle}
               />
             ))}
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function TripRow({
+  trip,
+  vehicle,
+}: {
+  trip: any;
+  vehicle: Vehicle;
+}) {
+  const isInProgress = trip.status === 'in_progress';
+  const isCompleted = trip.status === 'completed';
+  const isAwaitingKm = trip.awaiting_km;
+  const isKmSubmitted = trip.km_submitted || false;
+
+  return (
+    <div className="px-6 py-4 hover:bg-gray-50 transition-colors">
+      {/* Mobile Layout */}
+      <div className="sm:hidden space-y-3">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+              isKmSubmitted ? 'bg-emerald-100' : isInProgress ? 'bg-blue-100' : isAwaitingKm ? 'bg-amber-100' : 'bg-indigo-100'
+            }`}>
+              <Truck className={`w-5 h-5 ${
+                isKmSubmitted ? 'text-emerald-600' : isInProgress ? 'text-blue-600' : isAwaitingKm ? 'text-amber-600' : 'text-indigo-600'
+              }`} />
+            </div>
+            <div>
+              <p className="font-semibold text-gray-900">{vehicle.registration_number}</p>
+              <p className="text-sm text-gray-500">{vehicle.make} {vehicle.model}</p>
+            </div>
+          </div>
+          <StatusBadge status={trip.status} awaitingKm={isAwaitingKm} kmSubmitted={isKmSubmitted} />
+        </div>
+
+        <div className="flex items-center gap-4 text-sm">
+          <div className="flex items-center gap-1.5 text-gray-600">
+            <User className="w-4 h-4 text-gray-400" />
+            <span>{trip.driver_name || 'Unknown driver'}</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-gray-500">
+            <span className="font-mono text-xs bg-gray-100 px-2 py-0.5 rounded">
+              {trip.trip_number}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <KmStatusBadge awaitingKm={isAwaitingKm} kmSubmitted={isKmSubmitted} />
+        </div>
+      </div>
+
+      {/* Desktop Layout */}
+      <div className="hidden sm:grid grid-cols-12 gap-4 items-center">
+        {/* Vehicle */}
+        <div className="col-span-3 flex items-center gap-3">
+          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+            isKmSubmitted ? 'bg-emerald-100' : isInProgress ? 'bg-blue-100' : isAwaitingKm ? 'bg-amber-100' : 'bg-indigo-100'
+          }`}>
+            <Truck className={`w-5 h-5 ${
+              isKmSubmitted ? 'text-emerald-600' : isInProgress ? 'text-blue-600' : isAwaitingKm ? 'text-amber-600' : 'text-indigo-600'
+            }`} />
+          </div>
+          <div>
+            <p className="font-semibold text-gray-900">{vehicle.registration_number}</p>
+            <p className="text-xs text-gray-500">{vehicle.make} {vehicle.model}</p>
+          </div>
+        </div>
+
+        {/* Driver */}
+        <div className="col-span-3">
+          <div className="flex items-center gap-2">
+            <User className="w-4 h-4 text-gray-400" />
+            <span className="text-gray-900">{trip.driver_name || 'Unknown driver'}</span>
+          </div>
+        </div>
+
+        {/* Trip Number */}
+        <div className="col-span-2">
+          <span className="font-mono text-sm bg-gray-100 px-2 py-1 rounded">
+            {trip.trip_number}
+          </span>
+        </div>
+
+        {/* Status */}
+        <div className="col-span-2">
+          <StatusBadge status={trip.status} awaitingKm={isAwaitingKm} kmSubmitted={isKmSubmitted} />
+        </div>
+
+        {/* Km Status */}
+        <div className="col-span-2">
+          <KmStatusBadge awaitingKm={isAwaitingKm} kmSubmitted={isKmSubmitted} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -203,6 +317,7 @@ function VehicleRow({
 
   const isInProgress = trip.status === 'in_progress';
   const isAwaitingKm = trip.awaiting_km;
+  const isKmSubmitted = trip.km_submitted || false;
 
   return (
     <div className="px-6 py-4 hover:bg-gray-50 transition-colors">
@@ -238,7 +353,7 @@ function VehicleRow({
         </div>
 
         <div className="flex items-center justify-between">
-          <KmStatusBadge awaitingKm={isAwaitingKm} />
+          <KmStatusBadge awaitingKm={isAwaitingKm} kmSubmitted={isKmSubmitted} />
         </div>
       </div>
 
@@ -281,14 +396,14 @@ function VehicleRow({
 
         {/* Km Status */}
         <div className="col-span-2">
-          <KmStatusBadge awaitingKm={isAwaitingKm} />
+          <KmStatusBadge awaitingKm={isAwaitingKm} kmSubmitted={isKmSubmitted} />
         </div>
       </div>
     </div>
   );
 }
 
-function StatusBadge({ status, awaitingKm }: { status: string; awaitingKm: boolean }) {
+function StatusBadge({ status, awaitingKm, kmSubmitted }: { status: string; awaitingKm: boolean; kmSubmitted?: boolean }) {
   if (status === 'planned') {
     return (
       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 text-indigo-700 text-xs font-medium rounded-full">
@@ -307,24 +422,42 @@ function StatusBadge({ status, awaitingKm }: { status: string; awaitingKm: boole
     );
   }
 
+  if (status === 'completed' && kmSubmitted) {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-medium rounded-full">
+        <CheckCircle className="w-3.5 h-3.5" />
+        Completed
+      </span>
+    );
+  }
+
   if (awaitingKm) {
     return (
       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-700 text-xs font-medium rounded-full">
         <MapPin className="w-3.5 h-3.5" />
-        Arrived
+        Awaiting Km
       </span>
     );
   }
 
   return (
-    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-medium rounded-full">
-      <CheckCircle className="w-3.5 h-3.5" />
-      Completed
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-50 text-gray-700 text-xs font-medium rounded-full">
+      <Clock className="w-3.5 h-3.5" />
+      Pending
     </span>
   );
 }
 
-function KmStatusBadge({ awaitingKm }: { awaitingKm: boolean }) {
+function KmStatusBadge({ awaitingKm, kmSubmitted }: { awaitingKm: boolean; kmSubmitted?: boolean }) {
+  if (kmSubmitted) {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-100 text-emerald-800 text-xs font-medium rounded-full">
+        <CheckCircle className="w-3.5 h-3.5" />
+        Submitted
+      </span>
+    );
+  }
+
   if (awaitingKm) {
     return (
       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-100 text-amber-800 text-xs font-medium rounded-full">

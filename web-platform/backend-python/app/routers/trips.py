@@ -209,6 +209,220 @@ async def get_my_deliveries_to_location(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/driver/awaiting-km")
+async def get_driver_awaiting_km_trip(user_data: dict = Depends(get_current_user)):
+    """Get driver's trip that is awaiting km submission.
+
+    Returns the most recent completed trip assigned to this driver
+    that has no odometer_end (km not yet submitted).
+    """
+    supabase = get_supabase_admin_client()
+
+    if not user_data:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    user = user_data["user"]
+
+    try:
+        # Get the driver record linked to this user
+        driver_result = supabase.table("drivers").select("id, full_name").eq(
+            "user_id", user.id
+        ).execute()
+
+        if not driver_result.data:
+            # Try getting from profiles (user might not have a driver record in drivers table)
+            profile_result = supabase.table("profiles").select("id, full_name, role").eq(
+                "user_id", user.id
+            ).execute()
+
+            if not profile_result.data or profile_result.data[0].get("role") != "driver":
+                return {"trip": None, "message": "Not a driver"}
+
+            # Find trips by driver_id matching profile id
+            driver_id = profile_result.data[0]["id"]
+            driver_name = profile_result.data[0].get("full_name")
+        else:
+            driver_id = driver_result.data[0]["id"]
+            driver_name = driver_result.data[0].get("full_name")
+
+        # Find the most recent completed trip that needs km submission
+        # (has odometer_start but no odometer_end)
+        # Note: Can't use .is_() for null check, so we fetch and filter
+        result = supabase.table("trips").select(
+            "id, trip_number, status, vehicle_id, driver_id, driver_name, "
+            "odometer_start, odometer_end, completed_at, created_at, "
+            "vehicles(id, registration_number, make, model), "
+            "to_location:locations!trips_to_location_id_fkey(id, name)"
+        ).eq("driver_id", driver_id).eq(
+            "status", "completed"
+        ).order("completed_at", desc=True).execute()
+
+        # Filter for trips without odometer_end (awaiting km submission)
+        awaiting_km_trips = [t for t in (result.data or []) if t.get("odometer_end") is None]
+
+        if not awaiting_km_trips:
+            # No trips awaiting km
+            return {"trip": None}
+
+        trip = awaiting_km_trips[0]
+
+        return {
+            "trip": {
+                "id": trip["id"],
+                "trip_number": trip["trip_number"],
+                "vehicle_id": trip["vehicle_id"],
+                "vehicle_registration": trip.get("vehicles", {}).get("registration_number") if trip.get("vehicles") else None,
+                "vehicle_name": f"{trip.get('vehicles', {}).get('make', '')} {trip.get('vehicles', {}).get('model', '')}".strip() if trip.get("vehicles") else None,
+                "destination": trip.get("to_location", {}).get("name") if trip.get("to_location") else None,
+                "driver_name": trip.get("driver_name") or driver_name,
+                "odometer_start": trip.get("odometer_start"),
+                "completed_at": trip.get("completed_at"),
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting driver awaiting km trip: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{trip_id}/submit-km")
+async def submit_trip_km(
+    trip_id: str,
+    closing_km: int = Query(..., ge=0, le=999999, description="Closing odometer reading"),
+    user_data: dict = Depends(get_current_user)
+):
+    """Submit closing km for a trip (authenticated driver).
+
+    This endpoint allows logged-in drivers to submit their closing km
+    directly from the app instead of using the email link.
+    """
+    supabase = get_supabase_admin_client()
+
+    if not user_data:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    user = user_data["user"]
+
+    try:
+        # Get the driver record to verify this user can submit for this trip
+        driver = supabase.table("drivers").select("id, full_name").eq(
+            "user_id", user.id
+        ).single().execute()
+
+        if not driver.data:
+            # Try getting from profiles
+            profile = supabase.table("profiles").select("id, full_name, role").eq(
+                "user_id", user.id
+            ).single().execute()
+
+            if not profile.data:
+                raise HTTPException(status_code=403, detail="User profile not found")
+
+            driver_id = profile.data["id"]
+            driver_name = profile.data.get("full_name")
+        else:
+            driver_id = driver.data["id"]
+            driver_name = driver.data.get("full_name")
+
+        # Get the trip and verify it belongs to this driver
+        trip_result = supabase.table("trips").select(
+            "id, trip_number, status, driver_id, vehicle_id, odometer_start, odometer_end"
+        ).eq("id", trip_id).single().execute()
+
+        if not trip_result.data:
+            raise HTTPException(status_code=404, detail="Trip not found")
+
+        trip = trip_result.data
+
+        # Verify this driver is assigned to the trip
+        if trip["driver_id"] != driver_id:
+            raise HTTPException(status_code=403, detail="You are not assigned to this trip")
+
+        # Check trip is completed
+        if trip["status"] != "completed":
+            raise HTTPException(status_code=400, detail="Trip is not completed yet")
+
+        # Check km not already submitted
+        if trip.get("odometer_end") is not None:
+            raise HTTPException(status_code=400, detail="Closing km has already been submitted for this trip")
+
+        starting_km = trip.get("odometer_start")
+        if starting_km is None:
+            raise HTTPException(status_code=400, detail="Trip has no starting odometer reading")
+
+        # Validate closing km is greater than starting km
+        if closing_km < starting_km:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Closing km ({closing_km:,}) cannot be less than starting km ({starting_km:,})"
+            )
+
+        # Upper bound validation - max 2000 km per trip
+        MAX_SINGLE_TRIP_DISTANCE_KM = 2000
+        max_allowed_km = starting_km + MAX_SINGLE_TRIP_DISTANCE_KM
+        if closing_km > max_allowed_km:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Closing km ({closing_km:,}) exceeds maximum expected ({max_allowed_km:,} km). Contact your manager if this is correct."
+            )
+
+        # Calculate trip distance
+        trip_distance = closing_km - starting_km
+        vehicle_id = trip["vehicle_id"]
+
+        # 1. Update trip with odometer_end
+        supabase.table("trips").eq("id", trip_id).update({
+            "odometer_end": closing_km
+        })
+
+        # 2. Get current vehicle data and update kilometers_traveled
+        vehicle_result = supabase.table("vehicles").select(
+            "kilometers_traveled, health"
+        ).eq("id", vehicle_id).single().execute()
+
+        if vehicle_result.data:
+            current_km = vehicle_result.data.get("kilometers_traveled") or 0
+            current_health = vehicle_result.data.get("health") or {}
+
+            # Update kilometers_traveled
+            new_total_km = current_km + trip_distance
+
+            # Update last_driver info in health
+            if isinstance(current_health, dict):
+                current_health["last_driver_id"] = driver_id
+                current_health["last_driver_name"] = driver_name
+                current_health["last_trip_at"] = datetime.now().isoformat()
+            else:
+                current_health = {
+                    "last_driver_id": driver_id,
+                    "last_driver_name": driver_name,
+                    "last_trip_at": datetime.now().isoformat()
+                }
+
+            # Update vehicle
+            supabase.table("vehicles").eq("id", vehicle_id).update({
+                "kilometers_traveled": new_total_km,
+                "health": current_health
+            })
+
+            logger.info(f"[KM_SUBMISSION_AUTH] Trip {trip_id}: {starting_km} -> {closing_km} = {trip_distance} km. Vehicle total: {new_total_km} km")
+
+        return {
+            "success": True,
+            "message": "Closing km submitted successfully",
+            "trip_number": trip["trip_number"],
+            "starting_km": starting_km,
+            "closing_km": closing_km,
+            "distance": trip_distance
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error submitting km: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{trip_id}")
 async def get_trip(trip_id: str, user_data: dict = Depends(get_current_user)):
     """Get trip details."""

@@ -312,8 +312,8 @@ export default function VehicleHealthDrawer({
 
   if (!vehicle) return null;
 
-  // Default health data if not available
-  const health: VehicleHealth = vehicle.health || {
+  // Default health data merged with actual data
+  const health: VehicleHealth = {
     last_service_date: null,
     last_service_km: null,
     next_service_due_km: null,
@@ -328,6 +328,7 @@ export default function VehicleHealthDrawer({
     last_trip_at: null,
     updated_at: null,
     updated_by: null,
+    ...(vehicle.health || {}),
   };
 
   // Calculate statuses based on kilometers thresholds

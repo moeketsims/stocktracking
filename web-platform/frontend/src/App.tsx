@@ -20,6 +20,7 @@ import { useLogout } from './hooks/useAuth';
 import { useNotifications, usePendingDeliveriesCount } from './hooks/useData';
 import Sidebar from './components/Sidebar';
 import { MobileMenuButton, MobileDrawer } from './components/MobileMenu';
+import KmSubmissionBlocker from './components/KmSubmissionBlocker';
 import {
   LoginPage,
   DashboardPage,
@@ -312,6 +313,9 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-100 flex">
+      {/* KM Submission Blocker - blocks driver navigation until km is submitted */}
+      <KmSubmissionBlocker />
+
       {/* Mobile Drawer Overlay */}
       <MobileDrawer
         mainTabs={mainTabs}
