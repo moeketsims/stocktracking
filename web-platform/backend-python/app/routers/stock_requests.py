@@ -1011,12 +1011,12 @@ async def cancel_stock_request(
             raise HTTPException(status_code=403, detail="Not authorized to cancel this request")
 
         # Cancel the request with cancellation details
-        result = supabase.table("stock_requests").eq("id", request_id).update({
+        result = supabase.table("stock_requests").update({
             "status": "cancelled",
             "cancelled_at": datetime.now().isoformat(),
             "cancelled_by": profile.data["id"],
             "cancellation_reason": cancel_request.reason
-        })
+        }).eq("id", request_id).execute()
 
         # Remove escalation tracking
         try:
