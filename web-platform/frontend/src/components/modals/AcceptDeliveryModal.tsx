@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Truck, MapPin, Clock, AlertCircle, Package, Gauge, AlertTriangle, User } from 'lucide-react';
+import { Truck, MapPin, Clock, AlertCircle, Package, Gauge, AlertTriangle, User, CheckCircle } from 'lucide-react';
 import { Modal, Button, Select } from '../ui';
 import { useVehicles, useSuppliers } from '../../hooks/useData';
 import { stockRequestsApi } from '../../lib/api';
@@ -28,6 +28,7 @@ export default function AcceptDeliveryModal({
   const [etaTime, setEtaTime] = useState('');
   const [odometerStart, setOdometerStart] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
 
   const { data: vehiclesData } = useVehicles(true, true); // Include trip status
   const { data: suppliersData } = useSuppliers();
@@ -56,7 +57,12 @@ export default function AcceptDeliveryModal({
       queryClient.invalidateQueries({ queryKey: ['stock-requests'] });
       queryClient.invalidateQueries({ queryKey: ['trips'] });
       onSuccess();
-      handleClose();
+      setSuccess(true);
+      // Show success message for 2 seconds then close
+      setTimeout(() => {
+        setSuccess(false);
+        handleClose();
+      }, 2000);
     },
     onError: (err: any) => {
       setError(err.response?.data?.detail || 'Failed to accept and start delivery');
@@ -70,6 +76,7 @@ export default function AcceptDeliveryModal({
     setEtaTime('');
     setOdometerStart('');
     setError('');
+    setSuccess(false);
     onClose();
   };
 
@@ -150,6 +157,28 @@ export default function AcceptDeliveryModal({
   const selectedSupplier = suppliers.find((s) => s.id === supplierId);
 
   if (!request) return null;
+
+  // Success state - show briefly then close
+  if (success) {
+    return (
+      <>
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-8 text-center animate-in fade-in zoom-in duration-300">
+            <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle className="w-8 h-8 text-emerald-600" />
+            </div>
+            <h2 className="text-xl font-bold text-gray-900 mb-2">
+              Request Accepted!
+            </h2>
+            <p className="text-gray-600 text-sm">
+              Your delivery to {request.location?.name} has started. Drive safely!
+            </p>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Accept & Start Delivery" size="md">

@@ -403,7 +403,7 @@ async def submit_trip_km(
         # 1. Update trip with odometer_end
         supabase.table("trips").eq("id", trip_id).update({
             "odometer_end": closing_km
-        }).execute()
+        })
 
         # 2. Get current vehicle data and update kilometers_traveled
         vehicle_result = supabase.table("vehicles").select(
@@ -432,12 +432,12 @@ async def submit_trip_km(
                 }
 
             # Update vehicle
-            update_result = supabase.table("vehicles").eq("id", vehicle_id).update({
+            supabase.table("vehicles").eq("id", vehicle_id).update({
                 "kilometers_traveled": new_total_km,
                 "health": current_health
-            }).execute()
+            })
 
-            logger.info(f"[KM_SUBMISSION_AUTH] Trip {trip_id}: {starting_km} -> {closing_km} = {trip_distance} km. Vehicle total: {new_total_km} km. Update result: {update_result.data}")
+            logger.info(f"[KM_SUBMISSION_AUTH] Trip {trip_id}: {starting_km} -> {closing_km} = {trip_distance} km. Vehicle total: {new_total_km} km")
         else:
             logger.warning(f"[KM_SUBMISSION_AUTH] Vehicle {vehicle_id} not found, skipping km update")
 

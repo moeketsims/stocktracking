@@ -61,10 +61,18 @@ export default function ConfirmDeliveryModal({
       const kmEmailStatus = response.data?.km_email_status as KmEmailStatus | undefined;
       if (kmEmailStatus && !kmEmailStatus.sent && kmEmailStatus.reason) {
         setKmEmailWarning(kmEmailStatus.reason);
-        setShowSuccess(true);
-      } else {
-        onSuccess();
-        onClose();
+      }
+
+      // Always show success popup
+      setShowSuccess(true);
+      onSuccess();
+
+      // Auto-close after 2 seconds if no km email warning (warning requires user acknowledgment)
+      if (!kmEmailStatus || kmEmailStatus.sent || !kmEmailStatus.reason) {
+        setTimeout(() => {
+          setShowSuccess(false);
+          onClose();
+        }, 2000);
       }
     },
     onError: (err: any) => {
@@ -170,40 +178,42 @@ export default function ConfirmDeliveryModal({
           </div>
 
           {showSuccess ? (
-            // Success with Warning
+            // Success screen
             <div className="p-5 space-y-4">
               <div className="text-center">
                 <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
                   <CheckCircle className="w-6 h-6 text-green-600" />
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900">Delivery Confirmed</h3>
+                <h3 className="text-lg font-semibold text-gray-900">Delivery Confirmed!</h3>
                 <p className="text-sm text-gray-500 mt-1">Stock has been added to inventory</p>
               </div>
 
               {kmEmailWarning && (
-                <div className="p-4 bg-amber-50 rounded-xl">
-                  <div className="flex items-start gap-3">
-                    <Mail className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-medium text-amber-800">KM Submission Email Not Sent</p>
-                      <p className="text-sm text-amber-700 mt-1">{kmEmailWarning}</p>
-                      <p className="text-xs text-amber-600 mt-2">
-                        The driver will need to manually submit their closing km, or you can resend the email from the deliveries page.
-                      </p>
+                <>
+                  <div className="p-4 bg-amber-50 rounded-xl">
+                    <div className="flex items-start gap-3">
+                      <Mail className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-medium text-amber-800">KM Submission Email Not Sent</p>
+                        <p className="text-sm text-amber-700 mt-1">{kmEmailWarning}</p>
+                        <p className="text-xs text-amber-600 mt-2">
+                          The driver will need to manually submit their closing km, or you can resend the email from the deliveries page.
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
 
-              <Button
-                onClick={() => {
-                  onSuccess();
-                  onClose();
-                }}
-                className="w-full bg-emerald-600 hover:bg-emerald-700"
-              >
-                Done
-              </Button>
+                  <Button
+                    onClick={() => {
+                      setShowSuccess(false);
+                      onClose();
+                    }}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700"
+                  >
+                    Done
+                  </Button>
+                </>
+              )}
             </div>
           ) : showRejectConfirm ? (
             // Reject Confirmation

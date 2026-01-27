@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { X, Package, AlertTriangle, Clock, MapPin } from 'lucide-react';
+import { X, Package, AlertTriangle, Clock, MapPin, CheckCircle } from 'lucide-react';
 import { Button } from '../ui';
 import { stockRequestsApi } from '../../lib/api';
 import { useLocations } from '../../hooks/useData';
@@ -42,6 +42,7 @@ export default function StockRequestModal({
   });
   const [selectedLocationId, setSelectedLocationId] = useState<string | undefined>(locationId);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
   // Get selected location details
   const selectedLocation = locations?.find((loc: Location) => loc.id === selectedLocationId);
@@ -63,6 +64,7 @@ export default function StockRequestModal({
         notes: '',
       });
       setError(null);
+      setSuccess(false);
     }
   }, [isOpen, locationId, currentStockKg, effectiveTargetStock]);
 
@@ -71,7 +73,12 @@ export default function StockRequestModal({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stock-requests'] });
       onSuccess();
-      onClose();
+      setSuccess(true);
+      // Show success message for 2 seconds then close
+      setTimeout(() => {
+        setSuccess(false);
+        onClose();
+      }, 2000);
     },
     onError: (err: any) => {
       const detail = err.response?.data?.detail;
@@ -113,6 +120,28 @@ export default function StockRequestModal({
   };
 
   if (!isOpen) return null;
+
+  // Success state - show briefly then close
+  if (success) {
+    return (
+      <>
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-8 text-center animate-in fade-in zoom-in duration-300">
+            <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle className="w-8 h-8 text-emerald-600" />
+            </div>
+            <h2 className="text-xl font-bold text-gray-900 mb-2">
+              Request Submitted!
+            </h2>
+            <p className="text-gray-600 text-sm">
+              Your stock request for {formData.quantity_bags.toLocaleString()} bags has been sent to drivers.
+            </p>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   const currentBags = currentStockKg / KG_PER_BAG;
   const targetBags = effectiveTargetStock / KG_PER_BAG;
