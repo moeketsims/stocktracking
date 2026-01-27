@@ -144,9 +144,14 @@ export default function BatchesPage() {
                     <span className="font-mono font-semibold text-gray-900">
                       {batch.batch_id_display}
                     </span>
+                    {batch.expiry_date && isExpired(batch.expiry_date) && (
+                      <Badge variant="danger" size="sm">
+                        Expired
+                      </Badge>
+                    )}
                     {batch.expiry_date && isExpiringSoon(batch.expiry_date) && (
                       <Badge variant="warning" size="sm">
-                        Expiring
+                        Expiring Soon
                       </Badge>
                     )}
                   </div>
@@ -170,10 +175,12 @@ export default function BatchesPage() {
                     </div>
                     {batch.expiry_date && (
                       <div className="text-gray-500">
-                        Expires:{' '}
+                        {isExpired(batch.expiry_date) ? 'Expired:' : 'Expires:'}{' '}
                         <span
                           className={
-                            isExpiringSoon(batch.expiry_date)
+                            isExpired(batch.expiry_date)
+                              ? 'text-red-600 font-medium'
+                              : isExpiringSoon(batch.expiry_date)
                               ? 'text-amber-600 font-medium'
                               : 'text-gray-700'
                           }
@@ -182,7 +189,12 @@ export default function BatchesPage() {
                         </span>
                         {daysUntilExpiry !== null && (
                           <span className="text-gray-400 ml-1">
-                            ({daysUntilExpiry} {daysUntilExpiry === 1 ? 'day' : 'days'})
+                            ({daysUntilExpiry > 0
+                              ? `${daysUntilExpiry} ${daysUntilExpiry === 1 ? 'day' : 'days'} left`
+                              : daysUntilExpiry === 0
+                              ? 'today'
+                              : `${Math.abs(daysUntilExpiry)} ${Math.abs(daysUntilExpiry) === 1 ? 'day' : 'days'} ago`
+                            })
                           </span>
                         )}
                       </div>
@@ -232,9 +244,21 @@ export default function BatchesPage() {
   );
 }
 
+// Expiry logic:
+// - "Expiring Soon": current date >= expiry_date AND current date < expiry_date + 7 days
+// - "Expired": current date >= expiry_date + 7 days
 function isExpiringSoon(expiryDate: string): boolean {
   const expiry = new Date(expiryDate);
   const now = new Date();
-  const daysUntilExpiry = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-  return daysUntilExpiry <= 7;
+  const daysPastExpiry = Math.floor((now.getTime() - expiry.getTime()) / (1000 * 60 * 60 * 24));
+  // Expiring soon: 0 to 6 days past expiry date
+  return daysPastExpiry >= 0 && daysPastExpiry < 7;
+}
+
+function isExpired(expiryDate: string): boolean {
+  const expiry = new Date(expiryDate);
+  const now = new Date();
+  const daysPastExpiry = Math.floor((now.getTime() - expiry.getTime()) / (1000 * 60 * 60 * 24));
+  // Expired: 7+ days past expiry date
+  return daysPastExpiry >= 7;
 }

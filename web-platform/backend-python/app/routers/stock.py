@@ -438,8 +438,10 @@ async def receive_stock(request: ReceiveStockRequest, user_data: dict = Depends(
         conversion_factor = get_conversion_factor(supabase, item_id)
         qty_kg = convert_to_kg(request.quantity, request.unit, conversion_factor)
 
-        # Create batch (no expiry_date for potatoes, quality scoring removed)
+        # Create batch with expiry date (45 days from receipt = start of "expiring soon" window)
         batch_id = str(uuid4())
+        received_at = datetime.utcnow()
+        expiry_date = received_at + timedelta(days=45)  # 1.5 months shelf life
         batch_data = {
             "id": batch_id,
             "item_id": item_id,
@@ -447,7 +449,8 @@ async def receive_stock(request: ReceiveStockRequest, user_data: dict = Depends(
             "supplier_id": request.supplier_id,
             "initial_qty": qty_kg,
             "remaining_qty": qty_kg,
-            "received_at": datetime.utcnow().isoformat(),
+            "received_at": received_at.isoformat(),
+            "expiry_date": expiry_date.isoformat(),
             "quality_score": 1,  # Default to good quality (field kept for backwards compatibility)
             "status": "available",
             "last_edited_by": user.id,
