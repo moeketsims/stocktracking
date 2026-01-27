@@ -102,7 +102,7 @@ export default function KmSubmissionBlocker() {
   // Success state - show briefly then disappear
   if (success) {
     return (
-      <div className="fixed inset-0 z-[100] bg-gradient-to-br from-emerald-900 to-emerald-800 flex items-center justify-center p-4">
+      <div className="fixed inset-0 z-[100] bg-black/30 backdrop-blur-sm flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center animate-in fade-in zoom-in duration-300">
           <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
             <CheckCircle className="w-10 h-10 text-emerald-600" />
@@ -120,7 +120,7 @@ export default function KmSubmissionBlocker() {
 
   // Block screen with km submission form
   return (
-    <div className="fixed inset-0 z-[100] bg-gradient-to-br from-amber-900 via-orange-900 to-red-900 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[100] bg-black/30 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden">
         {/* Header */}
         <div className="bg-amber-500 px-6 py-5">
