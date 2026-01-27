@@ -92,6 +92,26 @@ export default function AcceptDeliveryModal({
       return;
     }
 
+    // Validate odometer start
+    if (!odometerStart) {
+      setError('Please enter the starting odometer reading');
+      return;
+    }
+
+    const selectedVehicle = availableVehicles.find((v) => v.id === vehicleId);
+    const vehicleCurrentKm = selectedVehicle?.kilometers_traveled || 0;
+    const enteredKm = parseInt(odometerStart, 10);
+
+    if (isNaN(enteredKm) || enteredKm < 0) {
+      setError('Please enter a valid odometer reading');
+      return;
+    }
+
+    if (enteredKm < vehicleCurrentKm) {
+      setError(`Starting km cannot be less than vehicle's current odometer (${vehicleCurrentKm.toLocaleString()} km)`);
+      return;
+    }
+
     // Calculate ETA if provided
     let estimatedArrivalTime: string | undefined;
     if (includeEta && etaTime) {
@@ -251,22 +271,33 @@ export default function AcceptDeliveryModal({
             </>
           )}
           {/* Odometer Start */}
-          <div className="mt-3 pt-3 border-t border-gray-200">
-            <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-              <Gauge className="w-4 h-4" />
-              Start KM (Odometer)
-            </label>
-            <input
-              type="number"
-              value={odometerStart}
-              onChange={(e) => setOdometerStart(e.target.value)}
-              placeholder="e.g., 125000"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              Optional: Enter current odometer reading to track distance
-            </p>
-          </div>
+          {(() => {
+            const selectedVehicle = availableVehicles.find((v) => v.id === vehicleId);
+            const minKm = selectedVehicle?.kilometers_traveled || 0;
+            return (
+              <div className="mt-3 pt-3 border-t border-gray-200">
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                  <Gauge className="w-4 h-4" />
+                  Start KM (Odometer) *
+                </label>
+                <input
+                  type="number"
+                  value={odometerStart}
+                  onChange={(e) => setOdometerStart(e.target.value)}
+                  placeholder={minKm > 0 ? `Min: ${minKm.toLocaleString()}` : 'Enter current odometer'}
+                  min={minKm}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  {minKm > 0
+                    ? `Must be at least ${minKm.toLocaleString()} km (vehicle's current reading)`
+                    : 'Enter the current odometer reading before starting the trip'
+                  }
+                </p>
+              </div>
+            );
+          })()}
         </div>
 
         {/* ETA (Optional) */}
@@ -315,7 +346,7 @@ export default function AcceptDeliveryModal({
             type="submit"
             className="flex-1 bg-emerald-600 hover:bg-emerald-700"
             isLoading={createTripMutation.isPending}
-            disabled={vehicleOptions.length === 0 || supplierOptions.length === 0 || !vehicleId}
+            disabled={vehicleOptions.length === 0 || supplierOptions.length === 0 || !vehicleId || !odometerStart}
           >
             Accept & Start Delivery
           </Button>

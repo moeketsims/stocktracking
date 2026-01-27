@@ -622,7 +622,7 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl border border-gray-200 overflow-visible">
           {/* Table Header - Hidden on mobile */}
           <div className="hidden md:block bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
             <div className={`grid ${(isDriver() || (activeTab === 'attention' && showAttentionTab)) ? 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px_120px]' : 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px]'} gap-2 px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider`}>

@@ -265,7 +265,7 @@ def remove_escalation_tracking(request_id: str):
         supabase = get_supabase_admin_client()
         supabase.table("request_escalation_state").delete().eq(
             "request_id", request_id
-        ).execute()
+        )
         logger.info(f"[ESCALATION] Removed tracking for request {request_id}")
     except Exception as e:
         logger.error(f"[ESCALATION] Failed to remove tracking for {request_id}: {e}")

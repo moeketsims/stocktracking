@@ -336,6 +336,7 @@ async def confirm_delivery(
 
             # Update trip_requests junction table with delivered quantity
             trip_id = delivery.data.get("trip_id")
+            current_delivery_recorded = False
             if trip_id:
                 # Find the trip_request record for this delivery
                 trip_request = supabase.table("trip_requests").select("id").eq(
@@ -347,7 +348,8 @@ async def confirm_delivery(
                     supabase.table("trip_requests").eq("id", trip_request.data[0]["id"]).update({
                         "delivered_qty_bags": int(confirmed_bags),
                         "status": "delivered"
-                    }).execute()
+                    })
+                    current_delivery_recorded = True
 
             # Calculate total delivered across ALL trips for this request
             all_trip_requests = supabase.table("trip_requests").select(
@@ -359,17 +361,23 @@ async def confirm_delivery(
                 for tr in (all_trip_requests.data or [])
             )
 
+            # If current delivery wasn't recorded in trip_requests (single trip scenario),
+            # add it to the total for accurate calculation
+            if not current_delivery_recorded:
+                total_delivered_bags += int(confirmed_bags)
+
             # Determine request status based on total delivered
-            if total_delivered_bags >= requested_bags * 0.95:  # 95% threshold for "delivered"
+            # 95% threshold: if >= 95% of requested bags delivered, mark as "delivered"
+            if total_delivered_bags >= requested_bags * 0.95:
                 request_status = "delivered"
                 supabase.table("stock_requests").eq("id", request_id).update({
                     "status": "delivered"
-                }).execute()
+                })
             else:
                 request_status = "partially_fulfilled"
                 supabase.table("stock_requests").eq("id", request_id).update({
                     "status": "partially_fulfilled"
-                }).execute()
+                })
 
         # Feature 5: Track km email status
         km_email_status = {"sent": False, "reason": None}
@@ -506,6 +514,21 @@ async def confirm_delivery(
                 
         except Exception as notify_err:
             logger.error(f"[NOTIFICATION] Error sending delivery confirmation notifications: {notify_err}")
+
+        # Check if closing km was already submitted - if so, mark trip as completed
+        # This ensures the status shows as "delivered" when both conditions are met
+        trip_id = delivery.data.get("trip_id")
+        if trip_id:
+            try:
+                trip_km_check = supabase.table("trips").select("odometer_end").eq("id", trip_id).single().execute()
+                if trip_km_check.data and trip_km_check.data.get("odometer_end"):
+                    # Closing km was already submitted, mark trip as completed
+                    supabase.table("trips").eq("id", trip_id).update({
+                        "status": "completed"
+                    })
+                    logger.info(f"[CONFIRM] Trip {trip_id} marked as completed (closing km was already submitted)")
+            except Exception as trip_status_err:
+                logger.error(f"[CONFIRM] Error updating trip status: {trip_status_err}")
 
         return {
             "success": True,
@@ -677,7 +700,25 @@ async def submit_closing_km(token: str, request: SubmitClosingKmRequest):
             "odometer_end": closing_km
         })
 
-        # 2. Get current vehicle data and update kilometers_traveled
+        # 2. Check if delivery has been confirmed - if so, mark trip as completed
+        # This ensures the status shows as "delivered" not "partial" when both
+        # stock delivery is confirmed AND closing km is submitted
+        try:
+            if delivery_id:
+                delivery_check = supabase.table("pending_deliveries").select(
+                    "status, request_id"
+                ).eq("id", delivery_id).single().execute()
+
+                if delivery_check.data and delivery_check.data.get("status") == "confirmed":
+                    # Delivery is confirmed, update trip status to completed
+                    supabase.table("trips").eq("id", trip_id).update({
+                        "status": "completed"
+                    })
+                    logger.info(f"[KM_SUBMISSION] Trip {trip_id} marked as completed (delivery was confirmed)")
+        except Exception as status_err:
+            logger.error(f"[KM_SUBMISSION] Error updating trip status: {status_err}")
+
+        # 3. Get current vehicle data and update kilometers_traveled
         logger.info(f"[KM_SUBMISSION] Looking up vehicle_id: {vehicle_id}")
 
         try:
