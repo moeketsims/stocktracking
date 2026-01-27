@@ -224,13 +224,18 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
   };
 
   // Calculate "needs attention" requests: partial, urgent pending, or pending > 3 days
-  // Exclude requests that were recently re-requested (updated within last 3 days)
+  // Exclude cancelled requests and recently re-requested items
   const needsAttentionRequests = useMemo(() => {
     const allRequests = allRequestsData?.requests || [];
     const now = new Date();
     const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
 
     return allRequests.filter((r: StockRequest) => {
+      // Exclude cancelled, fulfilled, and other terminal statuses
+      if (r.status === 'cancelled' || r.status === 'fulfilled' || r.status === 'expired') {
+        return false;
+      }
+
       // Skip if recently updated (re-requested)
       if (r.updated_at) {
         const updatedAt = new Date(r.updated_at);
@@ -690,6 +695,7 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
         request={selectedRequest}
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ['stock-requests'] });
+          queryClient.invalidateQueries({ queryKey: ['my-requests'] });
           setCancelSuccess(true);
           setTimeout(() => setCancelSuccess(false), 3000);
         }}
