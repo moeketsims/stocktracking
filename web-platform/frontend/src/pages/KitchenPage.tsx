@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { stockApi, referenceApi, transactionsApi } from '../lib/api';
 import { useAuthStore } from '../stores/authStore';
-import { useLocations } from '../hooks/useData';
+import { useLocations, useStockByLocation } from '../hooks/useData';
 
 type Mode = 'withdraw' | 'return';
 
@@ -169,6 +169,9 @@ export default function KitchenPage() {
 
     // Fetch all locations for admin
     const { data: allLocations, isLoading: isLocationsLoading } = useLocations();
+
+    // Fetch stock by location for all kitchens (admin view)
+    const { data: stockByLocationData } = useStockByLocation();
 
     // Filter to only show shops (not warehouses) for kitchen monitoring
     const shopLocations = useMemo(() =>
@@ -517,15 +520,24 @@ export default function KitchenPage() {
                                 <p className="text-sm text-gray-500">No kitchens found</p>
                             </div>
                         ) : (
-                            filteredLocations.map((loc: any) => (
-                                <KitchenListItem
-                                    key={loc.id}
-                                    location={loc}
-                                    isSelected={selectedLocationId === loc.id}
-                                    onClick={() => setSelectedLocationId(loc.id)}
-                                    stockData={selectedLocationId === loc.id ? { totalKg: currentKg } : undefined}
-                                />
-                            ))
+                            filteredLocations.map((loc: any) => {
+                                // Get stock for this location from the stockByLocationData
+                                const locationStock = stockByLocationData?.locations?.find(
+                                    (l: any) => l.location_id === loc.id
+                                );
+                                const stockKg = selectedLocationId === loc.id
+                                    ? currentKg
+                                    : (locationStock?.on_hand_qty || 0);
+                                return (
+                                    <KitchenListItem
+                                        key={loc.id}
+                                        location={loc}
+                                        isSelected={selectedLocationId === loc.id}
+                                        onClick={() => setSelectedLocationId(loc.id)}
+                                        stockData={{ totalKg: stockKg }}
+                                    />
+                                );
+                            })
                         )}
                     </div>
                 </div>
@@ -638,7 +650,7 @@ export default function KitchenPage() {
                                 </div>
                                 <div className="flex justify-between text-xs text-gray-400 mt-1.5">
                                     <span>0</span>
-                                    <span>Target: {formatNumber(TARGET_STOCK_KG / 10)} bags</span>
+                                    <span>Target: {formatNumber(lowThreshold)} bags</span>
                                 </div>
                             </div>
 
