@@ -18,6 +18,9 @@ import {
   XCircle,
   Store,
   ExternalLink,
+  ChevronDown,
+  Send,
+  Flame,
 } from 'lucide-react';
 import { Button } from '../components/ui';
 import { stockRequestsApi, vehiclesApi, referenceApi } from '../lib/api';
@@ -31,7 +34,7 @@ import type { StockRequest, StockRequestStatus, Vehicle, Supplier } from '../typ
 // Re-export for local use
 const STATUS_CONFIG = REQUEST_STATUS_CONFIG;
 
-type TabFilter = 'available' | 'my' | 'all';
+type TabFilter = 'available' | 'my' | 'attention' | 'all';
 type ViewDensity = 'comfortable' | 'compact';
 
 interface RequestsPageProps {
@@ -42,7 +45,7 @@ interface RequestsPageProps {
 
 export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip, onNavigateToDeliveries }: RequestsPageProps) {
   const queryClient = useQueryClient();
-  const { user, isManager, isDriver } = useAuthStore();
+  const { user, isManager, isDriver, isLocationManager } = useAuthStore();
   const [activeTab, setActiveTab] = useState<TabFilter>('available');
   const [selectedRequest, setSelectedRequest] = useState<StockRequest | null>(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -98,6 +101,22 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
     queryKey: ['stock-request', linkedRequestId],
     queryFn: () => stockRequestsApi.get(linkedRequestId!).then(r => r.data),
     enabled: !!linkedRequestId,
+  });
+
+  // Re-request mutation (resend notification to all drivers)
+  const reRequestMutation = useMutation({
+    mutationFn: (requestId: string) => stockRequestsApi.reRequest(requestId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stock-requests'] });
+    },
+  });
+
+  // Mark urgent mutation
+  const markUrgentMutation = useMutation({
+    mutationFn: (requestId: string) => stockRequestsApi.update(requestId, { urgency: 'urgent' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stock-requests'] });
+    },
   });
 
   useEffect(() => {
@@ -182,6 +201,29 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
     return requests.filter(r => new Date(r.created_at) >= cutoff);
   };
 
+  // Calculate "needs attention" requests: partial, urgent pending, or pending > 3 days
+  const needsAttentionRequests = useMemo(() => {
+    const allRequests = allRequestsData?.requests || [];
+    const now = new Date();
+    const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
+
+    return allRequests.filter((r: StockRequest) => {
+      // Partial fulfillment
+      if (r.status === 'partially_fulfilled') return true;
+
+      // Urgent pending
+      if (r.status === 'pending' && r.urgency === 'urgent') return true;
+
+      // Pending older than 3 days
+      if (r.status === 'pending') {
+        const createdAt = new Date(r.created_at);
+        if (now.getTime() - createdAt.getTime() > threeDaysMs) return true;
+      }
+
+      return false;
+    });
+  }, [allRequestsData]);
+
   const getRequests = (): StockRequest[] => {
     let requests: StockRequest[] = [];
 
@@ -193,11 +235,16 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
       const created = myRequestsData?.created || [];
       const accepted = myRequestsData?.accepted || [];
       requests = [...created, ...accepted];
+    } else if (activeTab === 'attention') {
+      requests = needsAttentionRequests;
     } else {
       requests = allRequestsData?.requests || [];
     }
 
-    requests = filterByDateRange(requests);
+    // Skip date filter for attention tab (we want to see all)
+    if (activeTab !== 'attention') {
+      requests = filterByDateRange(requests);
+    }
 
     if (urgencyFilter !== 'all') {
       requests = requests.filter(r => r.urgency === urgencyFilter);
@@ -220,7 +267,11 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
   ).length;
 
   const myCount = (myRequestsData?.created?.length || 0) + (myRequestsData?.accepted?.length || 0);
+  const attentionCount = needsAttentionRequests.length;
   const allCount = allRequestsData?.requests?.length || 0;
+
+  // Only managers (admin, zone_manager, location_manager) see the Needs Attention tab
+  const showAttentionTab = isManager() || isLocationManager();
 
   const handleRefresh = () => {
     refetchAll();
@@ -442,10 +493,10 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
       )}
 
       {/* Tab Navigation */}
-      <div className="flex items-center gap-1.5 bg-gray-100 p-1 rounded-xl w-fit">
+      <div className="flex items-center gap-1.5 bg-gray-100 p-1 rounded-xl w-fit overflow-x-auto">
         <button
           onClick={() => setActiveTab('available')}
-          className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all flex items-center gap-1.5 ${
+          className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
             activeTab === 'available' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
           }`}
         >
@@ -458,7 +509,7 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
         </button>
         <button
           onClick={() => setActiveTab('my')}
-          className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all flex items-center gap-1.5 ${
+          className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
             activeTab === 'my' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
           }`}
         >
@@ -469,9 +520,27 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
             </span>
           )}
         </button>
+        {showAttentionTab && (
+          <button
+            onClick={() => setActiveTab('attention')}
+            className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
+              activeTab === 'attention' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <AlertTriangle className={`w-3.5 h-3.5 ${attentionCount > 0 ? 'text-red-500' : ''}`} />
+            Needs Attention
+            {attentionCount > 0 && (
+              <span className={`px-1.5 py-0.5 text-xs rounded-full ${
+                activeTab === 'attention' ? 'bg-red-100 text-red-700' : 'bg-red-100 text-red-600'
+              }`}>
+                {attentionCount}
+              </span>
+            )}
+          </button>
+        )}
         <button
           onClick={() => setActiveTab('all')}
-          className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all flex items-center gap-1.5 ${
+          className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
             activeTab === 'all' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
           }`}
         >
@@ -497,7 +566,7 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           {/* Table Header - Hidden on mobile */}
           <div className="hidden md:block bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
-            <div className={`grid ${isDriver() ? (viewDensity === 'compact' ? 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px_120px]' : 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px_120px]') : 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px]'} gap-2 px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider`}>
+            <div className={`grid ${(isDriver() || (activeTab === 'attention' && showAttentionTab)) ? 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px_120px]' : 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px]'} gap-2 px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider`}>
               <div>Req #</div>
               <div>Location</div>
               <div className="text-right pr-1">Qty</div>
@@ -505,7 +574,7 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
               <div>Requested By</div>
               <div className="text-center">Age</div>
               <div className="text-center">Status</div>
-              {isDriver() && <div className="text-right">Action</div>}
+              {(isDriver() || (activeTab === 'attention' && showAttentionTab)) && <div className="text-right">Action</div>}
             </div>
           </div>
 
@@ -516,8 +585,9 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
                 key={request.id}
                 request={request}
                 isOwner={isMyRequest(request)}
-                isManager={isManager}
+                isManager={isManager()}
                 isDriver={isDriver()}
+                showManagerActions={activeTab === 'attention' && showAttentionTab}
                 density={viewDensity}
                 onAcceptAndDeliver={() => {
                   setSelectedRequest(request);
@@ -541,6 +611,10 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
                 }}
                 onViewTrip={(tripId: string) => onNavigateToTrip?.(tripId)}
                 onTrackDelivery={() => onNavigateToDeliveries?.()}
+                onReRequest={() => reRequestMutation.mutate(request.id)}
+                onMarkUrgent={() => markUrgentMutation.mutate(request.id)}
+                isReRequesting={reRequestMutation.isPending && reRequestMutation.variables === request.id}
+                isMarkingUrgent={markUrgentMutation.isPending && markUrgentMutation.variables === request.id}
                 getRelativeTime={getRelativeTime}
               />
             ))}
@@ -593,6 +667,7 @@ function RequestRow({
   isOwner,
   isManager,
   isDriver,
+  showManagerActions,
   density,
   onAcceptAndDeliver,
   onCreateTrip,
@@ -601,12 +676,17 @@ function RequestRow({
   onFulfillRemaining,
   onViewTrip,
   onTrackDelivery,
+  onReRequest,
+  onMarkUrgent,
+  isReRequesting,
+  isMarkingUrgent,
   getRelativeTime,
 }: {
   request: StockRequest;
   isOwner: boolean;
   isManager: boolean;
   isDriver: boolean;
+  showManagerActions?: boolean;
   density: ViewDensity;
   onAcceptAndDeliver: () => void;
   onCreateTrip: () => void;
@@ -615,10 +695,16 @@ function RequestRow({
   onFulfillRemaining: () => void;
   onViewTrip: (tripId: string) => void;
   onTrackDelivery: () => void;
+  onReRequest?: () => void;
+  onMarkUrgent?: () => void;
+  isReRequesting?: boolean;
+  isMarkingUrgent?: boolean;
   getRelativeTime: (date: string) => string;
 }) {
   const [showMenu, setShowMenu] = useState(false);
+  const [showManagerMenu, setShowManagerMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const managerMenuRef = useRef<HTMLDivElement>(null);
 
   const statusConfig = STATUS_CONFIG[request.status];
   const isUrgent = request.urgency === 'urgent';
@@ -646,8 +732,8 @@ function RequestRow({
   const canCreateTrip = request.status === 'accepted' && isOwner && isDriver;
   const canEdit = (request.status === 'pending' || request.status === 'accepted') && isOwner && isDriver;
   const canCancel = (request.status === 'pending' || request.status === 'accepted') && isOwner && isDriver;
-  const canFulfillRemaining = request.status === 'partially_fulfilled' && isDriver;
-  const isInDelivery = request.status === 'in_delivery' && isDriver;
+  const canFulfillRemaining = request.status === 'partially_fulfilled' && isManager;
+  const isInDelivery = request.status === 'in_delivery' && isManager;
   const hasTrip = request.status === 'trip_created' || request.status === 'fulfilled';
   // Only show secondary actions menu for drivers
   const hasSecondaryActions = isDriver && (canEdit || canCancel);
@@ -657,6 +743,9 @@ function RequestRow({
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setShowMenu(false);
+      }
+      if (managerMenuRef.current && !managerMenuRef.current.contains(event.target as Node)) {
+        setShowManagerMenu(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -724,6 +813,69 @@ function RequestRow({
     }
     // No action available
     return <span className="text-gray-300 text-sm">—</span>;
+  };
+
+  // Manager action split-button for "Needs Attention" tab
+  const renderManagerActions = () => {
+    if (!showManagerActions) return null;
+
+    // Only show for pending or partially_fulfilled
+    if (!['pending', 'partially_fulfilled'].includes(request.status)) {
+      return <span className="text-gray-300 text-sm">—</span>;
+    }
+
+    const isAlreadyUrgent = request.urgency === 'urgent';
+
+    return (
+      <div className="relative inline-flex" ref={managerMenuRef}>
+        {/* Primary action: Re-request */}
+        <button
+          onClick={onReRequest}
+          disabled={isReRequesting}
+          className="inline-flex items-center gap-1 h-7 px-2.5 text-xs font-medium text-white bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 rounded-l-md transition-colors whitespace-nowrap"
+        >
+          <Send className="w-3 h-3 flex-shrink-0" />
+          {isReRequesting ? 'Sending...' : 'Resend'}
+        </button>
+
+        {/* Dropdown toggle */}
+        <button
+          onClick={() => setShowManagerMenu(!showManagerMenu)}
+          className="inline-flex items-center justify-center h-7 px-1.5 text-white bg-orange-500 hover:bg-orange-600 border-l border-orange-400 rounded-r-md transition-colors"
+        >
+          <ChevronDown className="w-3 h-3" />
+        </button>
+
+        {/* Dropdown menu */}
+        {showManagerMenu && (
+          <div className="absolute right-0 top-full mt-1 w-36 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+            {!isAlreadyUrgent && request.status === 'pending' && (
+              <button
+                onClick={() => {
+                  setShowManagerMenu(false);
+                  onMarkUrgent?.();
+                }}
+                disabled={isMarkingUrgent}
+                className="w-full px-3 py-1.5 text-left text-xs text-amber-700 hover:bg-amber-50 flex items-center gap-2"
+              >
+                <Flame className="w-3 h-3" />
+                {isMarkingUrgent ? 'Marking...' : 'Mark Urgent'}
+              </button>
+            )}
+            <button
+              onClick={() => {
+                setShowManagerMenu(false);
+                onCancel();
+              }}
+              className="w-full px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 flex items-center gap-2"
+            >
+              <XCircle className="w-3 h-3" />
+              Cancel
+            </button>
+          </div>
+        )}
+      </div>
+    );
   };
 
   const rowPadding = density === 'compact' ? 'py-2' : 'py-3';
@@ -806,13 +958,13 @@ function RequestRow({
           )}
         </div>
 
-        {/* Actions (only for drivers) */}
-        {isDriver && (
+        {/* Actions (for drivers or manager actions) */}
+        {(isDriver || showManagerActions) && (
           <div className="flex items-center gap-2">
             <div className="flex-1">
-              {renderPrimaryAction()}
+              {showManagerActions ? renderManagerActions() : renderPrimaryAction()}
             </div>
-            {hasSecondaryActions && (
+            {hasSecondaryActions && !showManagerActions && (
               <div className="relative" ref={menuRef}>
                 <button
                   onClick={() => setShowMenu(!showMenu)}
@@ -850,7 +1002,7 @@ function RequestRow({
       </div>
 
       {/* Desktop Table Row */}
-      <div className={`hidden md:grid ${isDriver ? 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px_120px]' : 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px]'} gap-2 px-4 ${rowPadding} items-center hover:bg-gray-50 transition-colors ${
+      <div className={`hidden md:grid ${(isDriver || showManagerActions) ? 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px_120px]' : 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px]'} gap-2 px-4 ${rowPadding} items-center hover:bg-gray-50 transition-colors ${
         isUrgent && request.status === 'pending' ? 'bg-red-50/50' : ''
       }`}>
         {/* Request # */}
@@ -939,12 +1091,12 @@ function RequestRow({
           </span>
         </div>
 
-        {/* Actions - right aligned (only for drivers) */}
-        {isDriver && (
+        {/* Actions - right aligned (for drivers or manager actions) */}
+        {(isDriver || showManagerActions) && (
           <div className="flex items-center justify-end gap-1.5">
-            {renderPrimaryAction()}
+            {showManagerActions ? renderManagerActions() : renderPrimaryAction()}
 
-            {hasSecondaryActions && (
+            {hasSecondaryActions && !showManagerActions && (
               <div className="relative" ref={menuRef}>
                 <button
                   onClick={() => setShowMenu(!showMenu)}

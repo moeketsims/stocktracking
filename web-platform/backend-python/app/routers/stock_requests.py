@@ -1305,6 +1305,82 @@ async def update_stock_request(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/{request_id}/re-request")
+async def re_request_stock_request(
+    request_id: str,
+    user_data: dict = Depends(require_manager)
+):
+    """Re-send notification emails to all drivers for a stock request.
+
+    This is used by managers to re-notify drivers about pending requests
+    that need attention (e.g., old pending requests or partially fulfilled ones).
+    Only admins and location managers can use this endpoint.
+    """
+    supabase = get_supabase_admin_client()
+
+    try:
+        # Get the request with location info
+        existing = supabase.table("stock_requests").select(
+            "*, location:locations(id, name, type)"
+        ).eq("id", request_id).single().execute()
+
+        if not existing.data:
+            raise HTTPException(status_code=404, detail="Stock request not found")
+
+        # Only allow re-request for pending or partially_fulfilled requests
+        if existing.data["status"] not in ("pending", "partially_fulfilled"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot re-request for status '{existing.data['status']}'. Only pending or partially fulfilled requests can be re-requested."
+            )
+
+        location = existing.data.get("location", {})
+        quantity_bags = existing.data["quantity_bags"]
+        urgency = existing.data["urgency"]
+        current_stock_kg = existing.data.get("current_stock_kg", 0)
+        target_stock_kg = existing.data.get("target_stock_kg", TARGET_STOCK_KG["shop"])
+
+        # Send notification to all active drivers
+        try:
+            drivers_result = supabase.table("profiles_with_email").select(
+                "email, full_name"
+            ).eq("role", "driver").eq("is_active", True).execute()
+            all_recipients = drivers_result.data or []
+
+            emails_sent = 0
+            for recipient in all_recipients:
+                if recipient.get("email"):
+                    try:
+                        send_stock_request_notification(
+                            to_email=recipient["email"],
+                            recipient_name=recipient.get("full_name", "Team Member"),
+                            location_name=location.get("name", "Unknown"),
+                            quantity_bags=quantity_bags,
+                            urgency=urgency,
+                            current_stock_pct=round((current_stock_kg / target_stock_kg) * 100, 1) if target_stock_kg > 0 else 0,
+                            request_id=request_id
+                        )
+                        emails_sent += 1
+                    except Exception as email_err:
+                        print(f"[RE-REQUEST EMAIL ERROR] Failed to send to {recipient['email']}: {email_err}")
+
+            return {
+                "success": True,
+                "message": f"Re-request notification sent to {emails_sent} driver(s)",
+                "emails_sent": emails_sent,
+                "request_id": request_id
+            }
+
+        except Exception as notify_err:
+            print(f"[RE-REQUEST NOTIFICATION ERROR] {notify_err}")
+            raise HTTPException(status_code=500, detail="Failed to send notifications")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/{request_id}/fulfill-remaining")
 async def fulfill_remaining_request(
     request_id: str,

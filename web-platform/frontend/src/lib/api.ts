@@ -292,6 +292,7 @@ export const stockRequestsApi = {
     api.post(`/api/stock-requests/${id}/fulfill-remaining`, data),
   getMyRequests: (status?: string, limit?: number) =>
     api.get('/api/stock-requests/my/requests', { params: { status, limit } }),
+  reRequest: (id: string) => api.post(`/api/stock-requests/${id}/re-request`),
 };
 
 // Pending Deliveries API
