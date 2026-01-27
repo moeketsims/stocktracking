@@ -5,7 +5,7 @@ import { useBatches } from '../hooks/useData';
 
 const filterOptions = [
   { value: 'all', label: 'All', icon: Boxes },
-  { value: 'expiring_soon', label: 'Expiring Soon', icon: Clock },
+  { value: 'expiring_soon', label: 'Aging', icon: Clock },
 ];
 
 // Conversion: 1 bag = 10 kg
@@ -78,9 +78,9 @@ export default function BatchesPage() {
 
   const { batches: rawBatches, counts } = data || { batches: [], counts: { all: 0, expiring_soon: 0 } };
 
-  // Sort batches by received_at descending (newest first)
+  // Sort batches by received_at ascending (oldest first - FIFO)
   const batches = [...rawBatches].sort((a: any, b: any) => {
-    return new Date(b.received_at).getTime() - new Date(a.received_at).getTime();
+    return new Date(a.received_at).getTime() - new Date(b.received_at).getTime();
   });
 
   const fifoViolations = checkFIFOViolation(batches);
@@ -151,7 +151,7 @@ export default function BatchesPage() {
                     )}
                     {batch.expiry_date && isExpiringSoon(batch.expiry_date) && (
                       <Badge variant="warning" size="sm">
-                        Expiring Soon
+                        Aging
                       </Badge>
                     )}
                   </div>
@@ -175,7 +175,7 @@ export default function BatchesPage() {
                     </div>
                     {batch.expiry_date && (
                       <div className="text-gray-500">
-                        {isExpired(batch.expiry_date) ? 'Expired:' : 'Expires:'}{' '}
+                        {isExpired(batch.expiry_date) ? 'Expired:' : 'Use by:'}{' '}
                         <span
                           className={
                             isExpired(batch.expiry_date)
