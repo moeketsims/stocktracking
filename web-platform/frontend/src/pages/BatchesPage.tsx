@@ -8,6 +8,9 @@ const filterOptions = [
   { value: 'expiring_soon', label: 'Expiring Soon', icon: Clock },
 ];
 
+// Conversion: 1 bag = 10 kg
+const KG_PER_BAG = 10;
+
 function formatBatchAge(receivedAt: string): string {
   const received = new Date(receivedAt);
   const now = new Date();
@@ -73,7 +76,13 @@ export default function BatchesPage() {
     );
   }
 
-  const { batches, counts } = data || { batches: [], counts: { all: 0, expiring_soon: 0 } };
+  const { batches: rawBatches, counts } = data || { batches: [], counts: { all: 0, expiring_soon: 0 } };
+
+  // Sort batches by received_at descending (newest first)
+  const batches = [...rawBatches].sort((a: any, b: any) => {
+    return new Date(b.received_at).getTime() - new Date(a.received_at).getTime();
+  });
+
   const fifoViolations = checkFIFOViolation(batches);
 
   return (
@@ -183,10 +192,10 @@ export default function BatchesPage() {
 
                 <div className="text-right ml-4">
                   <div className="text-2xl font-bold text-gray-900">
-                    {batch.remaining_qty.toFixed(1)} kg
+                    {Math.floor(batch.remaining_qty / KG_PER_BAG)} bags
                   </div>
                   <p className="text-sm text-gray-500">
-                    of {batch.initial_qty.toFixed(1)} kg
+                    of {Math.floor(batch.initial_qty / KG_PER_BAG)} bags
                   </p>
                   <div className="mt-2 h-2 w-24 bg-gray-200 rounded-full overflow-hidden">
                     <div
@@ -197,7 +206,7 @@ export default function BatchesPage() {
                     />
                   </div>
                   <p className="text-xs text-gray-400 mt-1">
-                    {batch.used_qty.toFixed(1)} kg used
+                    {Math.floor(batch.used_qty / KG_PER_BAG)} bags used
                   </p>
                 </div>
               </div>
