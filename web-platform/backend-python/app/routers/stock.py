@@ -812,7 +812,7 @@ async def return_stock(request: IssueStockRequest, user_data: dict = Depends(req
                 "status": "available",
                 "last_edited_by": user.id
             }
-            supabase.table("stock_batches").insert(batch_data)
+            supabase.table("stock_batches").insert(batch_data).execute()
 
         # Create return transaction
         transaction_data = {
@@ -831,7 +831,7 @@ async def return_stock(request: IssueStockRequest, user_data: dict = Depends(req
             }
         }
 
-        transaction = supabase.table("stock_transactions").insert(transaction_data)
+        transaction = supabase.table("stock_transactions").insert(transaction_data).execute()
         print(f"[RETURN] Created transaction: id={transaction.data['id'] if transaction.data else 'NONE'}, location_id_to={location_id}, type=return")
 
         return {
