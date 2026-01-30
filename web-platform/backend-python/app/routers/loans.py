@@ -585,15 +585,18 @@ async def assign_pickup_driver(
     if not vehicle.data:
         raise HTTPException(status_code=404, detail="Vehicle not found")
 
-    # Get driver name
+    # Get driver name - check both drivers and profiles tables
     driver_name = None
+    driver_found = False
     driver_result = supabase.table("drivers").select("full_name").eq("id", request.driver_id).execute()
     if driver_result.data:
         driver_name = driver_result.data[0].get("full_name")
+        driver_found = True
     else:
         profile_result = supabase.table("profiles").select("full_name").eq("id", request.driver_id).execute()
         if profile_result.data:
             driver_name = profile_result.data[0].get("full_name")
+            driver_found = True
 
     # Generate trip number
     year = datetime.now().year
@@ -618,7 +621,7 @@ async def assign_pickup_driver(
         "id": str(uuid4()),
         "trip_number": trip_number,
         "vehicle_id": request.vehicle_id,
-        "driver_id": request.driver_id if driver_result.data else None,
+        "driver_id": request.driver_id if driver_found else None,
         "driver_name": driver_name,
         "status": "planned",  # Driver needs to accept before it becomes in_progress
         "trip_type": "loan_pickup",
@@ -1169,15 +1172,18 @@ async def assign_return_driver(
     if not vehicle.data:
         raise HTTPException(status_code=404, detail="Vehicle not found")
 
-    # Get driver name
+    # Get driver name - check both drivers and profiles tables
     driver_name = None
+    driver_found = False
     driver_result = supabase.table("drivers").select("full_name").eq("id", request.driver_id).execute()
     if driver_result.data:
         driver_name = driver_result.data[0].get("full_name")
+        driver_found = True
     else:
         profile_result = supabase.table("profiles").select("full_name").eq("id", request.driver_id).execute()
         if profile_result.data:
             driver_name = profile_result.data[0].get("full_name")
+            driver_found = True
 
     # Generate trip number
     year = datetime.now().year
@@ -1202,7 +1208,7 @@ async def assign_return_driver(
         "id": str(uuid4()),
         "trip_number": trip_number,
         "vehicle_id": request.vehicle_id,
-        "driver_id": request.driver_id if driver_result.data else None,
+        "driver_id": request.driver_id if driver_found else None,
         "driver_name": driver_name,
         "status": "planned",  # Driver needs to accept before it becomes in_progress
         "trip_type": "loan_return",

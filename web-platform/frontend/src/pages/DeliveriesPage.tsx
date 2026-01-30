@@ -178,8 +178,28 @@ export default function DeliveriesPage() {
   // Loan Collection mutation (Lender confirms driver collected stock)
   const confirmLoanCollectionMutation = useMutation({
     mutationFn: (loanId: string) => loansApi.confirmCollection(loanId),
+    onMutate: async () => {
+      // Cancel any outgoing refetches so they don't overwrite our optimistic update
+      await queryClient.cancelQueries({ queryKey: ['trips', 'in_progress'] });
+
+      // Snapshot the previous value
+      const previousTrips = queryClient.getQueryData(['trips', 'in_progress']);
+
+      // Optimistically remove the trip from the list (it will move to history)
+      if (completingTripId) {
+        queryClient.setQueryData(['trips', 'in_progress'], (old: any) => {
+          if (!old?.trips) return old;
+          return {
+            ...old,
+            trips: old.trips.filter((t: any) => t.id !== completingTripId),
+          };
+        });
+      }
+
+      return { previousTrips };
+    },
     onSuccess: (response) => {
-      // Invalidate all relevant queries to update the UI
+      // Invalidate all relevant queries to update the UI with server data
       queryClient.invalidateQueries({ queryKey: ['trips'] });
       queryClient.invalidateQueries({ queryKey: ['loans'] });
       queryClient.invalidateQueries({ queryKey: ['stock-by-location'] });
@@ -189,9 +209,25 @@ export default function DeliveriesPage() {
       setSuccessMessage(`Collection confirmed! ${qty} bags released to driver.`);
       setTimeout(() => setSuccessMessage(null), 3000);
     },
-    onError: (error: any) => {
-      console.error('Failed to confirm collection:', error);
-      alert(error.response?.data?.detail || 'Failed to confirm collection');
+    onError: (error: any, _, context) => {
+      const errorDetail = error.response?.data?.detail || '';
+      const isAlreadyConfirmed = errorDetail.toLowerCase().includes('already confirmed');
+
+      if (isAlreadyConfirmed) {
+        // Already confirmed - just refresh the data (trip should disappear with our filter)
+        console.log('Collection was already confirmed, refreshing data');
+        queryClient.invalidateQueries({ queryKey: ['trips'] });
+        queryClient.invalidateQueries({ queryKey: ['pending-deliveries'] });
+        setSuccessMessage('Collection already confirmed. Refreshing...');
+        setTimeout(() => setSuccessMessage(null), 2000);
+      } else {
+        // Rollback to previous value on actual error
+        if (context?.previousTrips) {
+          queryClient.setQueryData(['trips', 'in_progress'], context.previousTrips);
+        }
+        console.error('Failed to confirm collection:', error);
+        alert(errorDetail || 'Failed to confirm collection');
+      }
       setCompletingTripId(null);
     },
   });
@@ -199,6 +235,26 @@ export default function DeliveriesPage() {
   // Loan Receipt mutation (Borrower confirms stock arrived)
   const confirmLoanReceiptMutation = useMutation({
     mutationFn: (loanId: string) => loansApi.confirmReceipt(loanId),
+    onMutate: async () => {
+      // Cancel any outgoing refetches so they don't overwrite our optimistic update
+      await queryClient.cancelQueries({ queryKey: ['trips', 'in_progress'] });
+
+      // Snapshot the previous value
+      const previousTrips = queryClient.getQueryData(['trips', 'in_progress']);
+
+      // Optimistically remove the trip from the list (it will move to history)
+      if (completingTripId) {
+        queryClient.setQueryData(['trips', 'in_progress'], (old: any) => {
+          if (!old?.trips) return old;
+          return {
+            ...old,
+            trips: old.trips.filter((t: any) => t.id !== completingTripId),
+          };
+        });
+      }
+
+      return { previousTrips };
+    },
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['trips'] });
       queryClient.invalidateQueries({ queryKey: ['loans'] });
@@ -209,9 +265,25 @@ export default function DeliveriesPage() {
       setSuccessMessage(`Receipt confirmed! ${qty} bags added to your stock.`);
       setTimeout(() => setSuccessMessage(null), 2000);
     },
-    onError: (error: any) => {
-      console.error('Failed to confirm receipt:', error);
-      alert(error.response?.data?.detail || 'Failed to confirm receipt');
+    onError: (error: any, _, context) => {
+      const errorDetail = error.response?.data?.detail || '';
+      const isAlreadyConfirmed = errorDetail.toLowerCase().includes('already confirmed');
+
+      if (isAlreadyConfirmed) {
+        // Already confirmed - just refresh the data
+        console.log('Receipt was already confirmed, refreshing data');
+        queryClient.invalidateQueries({ queryKey: ['trips'] });
+        queryClient.invalidateQueries({ queryKey: ['pending-deliveries'] });
+        setSuccessMessage('Receipt already confirmed. Refreshing...');
+        setTimeout(() => setSuccessMessage(null), 2000);
+      } else {
+        // Rollback to previous value on actual error
+        if (context?.previousTrips) {
+          queryClient.setQueryData(['trips', 'in_progress'], context.previousTrips);
+        }
+        console.error('Failed to confirm receipt:', error);
+        alert(errorDetail || 'Failed to confirm receipt');
+      }
       setCompletingTripId(null);
     },
   });
@@ -245,9 +317,33 @@ export default function DeliveriesPage() {
 
   const isLoading = loadingTrips || loadingPending || loadingAll;
 
-  const inProgressTrips = inProgressTripsData?.trips || [];
+  const rawInProgressTrips = inProgressTripsData?.trips || [];
   const pendingDeliveries = pendingData?.deliveries || [];
   const allDeliveries = allData?.deliveries || [];
+
+  // Filter out loan trips where the current user has already confirmed their part
+  // This prevents the trip from showing again after lender confirms (trip stays in_progress for borrower)
+  const inProgressTrips = useMemo(() => {
+    // Get trip IDs where current user already has a confirmed pending_delivery
+    const confirmedTripIds = new Set(
+      allDeliveries
+        .filter(d => d.status === 'confirmed' && d.location_id === user?.location_id)
+        .map(d => d.trip_id)
+        .filter(Boolean)
+    );
+
+    return rawInProgressTrips.filter(trip => {
+      const tripAny = trip as any;
+      const isLoanTrip = tripAny.trip_type === 'loan_pickup' || tripAny.trip_type === 'loan_return';
+
+      // For loan trips, check if user already confirmed this trip
+      if (isLoanTrip && confirmedTripIds.has(trip.id)) {
+        return false; // Hide trip - user already confirmed their part
+      }
+
+      return true;
+    });
+  }, [rawInProgressTrips, allDeliveries, user?.location_id]);
 
   // Filter deliveries for history
   const historyDeliveries = useMemo(() => {
