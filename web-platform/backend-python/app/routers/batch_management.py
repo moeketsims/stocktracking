@@ -96,12 +96,12 @@ async def edit_batch(batch_id: str, request: BatchEditRequest, user_data: dict =
         updates["last_edited_by"] = user.id
         updates["last_edited_at"] = datetime.utcnow().isoformat()
 
-        supabase.table("stock_batches").eq("id", batch_id).update(updates)
+        supabase.table("stock_batches").update(updates).eq("id", batch_id).execute()
 
         # Record edit history
         if edit_records:
             for record in edit_records:
-                supabase.table("batch_edit_history").insert(record)
+                supabase.table("batch_edit_history").insert(record).execute()
 
         return {
             "success": True,

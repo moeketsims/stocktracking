@@ -214,8 +214,8 @@ async def update_location(
         if data.address is not None:
             update_data["address"] = data.address if data.address else None
 
-        # Update location - must call .eq() before .update() (update executes immediately)
-        result = supabase.table("locations").eq("id", location_id).update(update_data)
+        # Update location
+        result = supabase.table("locations").update(update_data).eq("id", location_id).execute()
 
         if not result.data:
             raise HTTPException(status_code=500, detail="Failed to update location")

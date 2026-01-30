@@ -14,8 +14,10 @@ from ..routers.auth import require_auth, require_manager, get_current_user
 from ..models.requests import ConfirmDeliveryRequest, RejectDeliveryRequest, SubmitClosingKmRequest, CorrectClosingKmRequest
 from ..email import send_delivery_arrived_notification, send_delivery_confirmed_notification, send_driver_km_submission_request, send_km_submitted_notification
 
-# Secret key for JWT tokens (use environment variable in production)
-KM_SUBMISSION_SECRET = os.environ.get("KM_SUBMISSION_SECRET", "km-submission-secret-key-change-in-production")
+# Secret key for JWT tokens - MUST be set in environment variables
+KM_SUBMISSION_SECRET = os.environ.get("KM_SUBMISSION_SECRET")
+if not KM_SUBMISSION_SECRET:
+    raise RuntimeError("KM_SUBMISSION_SECRET environment variable is required but not set")
 
 router = APIRouter(prefix="/pending-deliveries", tags=["Pending Deliveries"])
 
@@ -212,6 +214,18 @@ async def confirm_delivery(
                 detail=f"Delivery cannot be confirmed (status: {delivery.data['status']})"
             )
 
+        # ATOMIC STATUS UPDATE: Mark as "confirming" to prevent duplicate processing
+        # This prevents race conditions where two requests could both pass the status check
+        lock_result = supabase.table("pending_deliveries").update({
+            "status": "confirming"
+        }).eq("id", delivery_id).eq("status", "pending").execute()
+
+        if not lock_result.data:
+            raise HTTPException(
+                status_code=409,
+                detail="Delivery is already being processed by another request"
+            )
+
         # Verify user has access to this location
         is_admin = profile.data["role"] in ("admin", "zone_manager")
         is_location_match = profile.data.get("location_id") == delivery.data["location_id"]
@@ -281,7 +295,7 @@ async def confirm_delivery(
             "delivery_cost_per_kg": delivery_cost_per_kg if total_trip_cost > 0 else None
         }
 
-        batch_result = supabase.table("stock_batches").insert(batch_data)
+        batch_result = supabase.table("stock_batches").insert(batch_data).execute()
 
         if not batch_result.data:
             logger.error(f"[ERROR] Failed to create stock batch: {batch_result.error}")
@@ -309,12 +323,12 @@ async def confirm_delivery(
             "notes": f"Delivery confirmed. {discrepancy_notes or 'No discrepancy.'}"
         }
 
-        supabase.table("stock_transactions").insert(transaction_data)
+        supabase.table("stock_transactions").insert(transaction_data).execute()
 
         # FINALLY: Update delivery status after everything else succeeded
-        update_result = supabase.table("pending_deliveries").eq(
+        update_result = supabase.table("pending_deliveries").update(update_data).eq(
             "id", delivery_id
-        ).update(update_data)
+        ).execute()
 
         if not update_result.data:
             logger.error(f"[ERROR] Failed to update delivery status: {update_result.error}")
@@ -345,10 +359,10 @@ async def confirm_delivery(
 
                 if trip_request.data:
                     # Update the delivered quantity for this trip
-                    supabase.table("trip_requests").eq("id", trip_request.data[0]["id"]).update({
+                    supabase.table("trip_requests").update({
                         "delivered_qty_bags": int(confirmed_bags),
                         "status": "delivered"
-                    })
+                    }).eq("id", trip_request.data[0]["id"]).execute()
                     current_delivery_recorded = True
 
             # Calculate total delivered across ALL trips for this request
@@ -370,14 +384,14 @@ async def confirm_delivery(
             # 95% threshold: if >= 95% of requested bags delivered, mark as "delivered"
             if total_delivered_bags >= requested_bags * 0.95:
                 request_status = "delivered"
-                supabase.table("stock_requests").eq("id", request_id).update({
+                supabase.table("stock_requests").update({
                     "status": "delivered"
-                })
+                }).eq("id", request_id).execute()
             else:
                 request_status = "partially_fulfilled"
-                supabase.table("stock_requests").eq("id", request_id).update({
+                supabase.table("stock_requests").update({
                     "status": "partially_fulfilled"
-                })
+                }).eq("id", request_id).execute()
 
         # Feature 5: Track km email status
         km_email_status = {"sent": False, "reason": None}
@@ -523,9 +537,9 @@ async def confirm_delivery(
                 trip_km_check = supabase.table("trips").select("odometer_end").eq("id", trip_id).single().execute()
                 if trip_km_check.data and trip_km_check.data.get("odometer_end"):
                     # Closing km was already submitted, mark trip as completed
-                    supabase.table("trips").eq("id", trip_id).update({
+                    supabase.table("trips").update({
                         "status": "completed"
-                    })
+                    }).eq("id", trip_id).execute()
                     logger.info(f"[CONFIRM] Trip {trip_id} marked as completed (closing km was already submitted)")
             except Exception as trip_status_err:
                 logger.error(f"[CONFIRM] Error updating trip status: {trip_status_err}")
@@ -544,8 +558,22 @@ async def confirm_delivery(
         }
 
     except HTTPException:
+        # Rollback: Reset status to pending if we locked it but failed
+        try:
+            supabase.table("pending_deliveries").update({
+                "status": "pending"
+            }).eq("id", delivery_id).eq("status", "confirming").execute()
+        except:
+            pass  # Best effort rollback
         raise
     except Exception as e:
+        # Rollback: Reset status to pending if we locked it but failed
+        try:
+            supabase.table("pending_deliveries").update({
+                "status": "pending"
+            }).eq("id", delivery_id).eq("status", "confirming").execute()
+        except:
+            pass  # Best effort rollback
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -590,19 +618,19 @@ async def reject_delivery(
             raise HTTPException(status_code=403, detail="Not authorized to reject this delivery")
 
         # Update delivery status
-        supabase.table("pending_deliveries").eq("id", delivery_id).update({
+        supabase.table("pending_deliveries").update({
             "status": "rejected",
             "confirmed_by": profile.data["id"],
             "confirmed_at": datetime.now().isoformat(),
             "discrepancy_notes": f"REJECTED: {request.reason}"
-        })
+        }).eq("id", delivery_id).execute()
 
         # Update stock request status if linked
         request_id = delivery.data.get("request_id")
         if request_id:
-            supabase.table("stock_requests").eq("id", request_id).update({
+            supabase.table("stock_requests").update({
                 "status": "cancelled"
-            })
+            }).eq("id", request_id).execute()
 
         return {
             "success": True,
@@ -696,9 +724,9 @@ async def submit_closing_km(token: str, request: SubmitClosingKmRequest):
             raise HTTPException(status_code=400, detail="Closing km has already been submitted for this trip")
 
         # 1. Update trip with odometer_end and km_submitted status (Feature 6)
-        supabase.table("trips").eq("id", trip_id).update({
+        supabase.table("trips").update({
             "odometer_end": closing_km
-        })
+        }).eq("id", trip_id).execute()
 
         # 2. Check if delivery has been confirmed - if so, mark trip as completed
         # This ensures the status shows as "delivered" not "partial" when both
@@ -711,9 +739,9 @@ async def submit_closing_km(token: str, request: SubmitClosingKmRequest):
 
                 if delivery_check.data and delivery_check.data.get("status") == "confirmed":
                     # Delivery is confirmed, update trip status to completed
-                    supabase.table("trips").eq("id", trip_id).update({
+                    supabase.table("trips").update({
                         "status": "completed"
-                    })
+                    }).eq("id", trip_id).execute()
                     logger.info(f"[KM_SUBMISSION] Trip {trip_id} marked as completed (delivery was confirmed)")
         except Exception as status_err:
             logger.error(f"[KM_SUBMISSION] Error updating trip status: {status_err}")
@@ -735,8 +763,9 @@ async def submit_closing_km(token: str, request: SubmitClosingKmRequest):
             current_km = vehicle_result.data.get("kilometers_traveled") or 0
             current_health = vehicle_result.data.get("health") or {}
 
-            # Update kilometers_traveled
-            new_total_km = current_km + trip_distance
+            # Update kilometers_traveled to the actual odometer reading (closing km)
+            # This represents the vehicle's current odometer, not cumulative distance
+            new_total_km = closing_km
 
             # Update last_driver info in health (flat fields to match frontend types)
             if isinstance(current_health, dict):
@@ -751,10 +780,10 @@ async def submit_closing_km(token: str, request: SubmitClosingKmRequest):
                 }
 
             # Update vehicle
-            supabase.table("vehicles").eq("id", vehicle_id).update({
+            supabase.table("vehicles").update({
                 "kilometers_traveled": new_total_km,
                 "health": current_health
-            })
+            }).eq("id", vehicle_id).execute()
 
             logger.info(f"[KM_SUBMISSION] Trip {trip_id}: {starting_km} -> {closing_km} = {trip_distance} km. Vehicle total: {new_total_km} km")
 
@@ -1011,21 +1040,22 @@ async def correct_closing_km(
 
         old_vehicle_total_km = vehicle.data.get("kilometers_traveled") or 0
 
-        # Calculate the difference and new totals
+        # Calculate the distance for logging purposes
         old_trip_distance = old_odometer_end - starting_km
         new_trip_distance = new_closing_km - starting_km
         distance_difference = new_trip_distance - old_trip_distance
-        new_vehicle_total_km = old_vehicle_total_km + distance_difference
+        # Set vehicle km to the new closing km (actual odometer reading)
+        new_vehicle_total_km = new_closing_km
 
         # Update trip with new closing km
-        supabase.table("trips").eq("id", trip_id).update({
+        supabase.table("trips").update({
             "odometer_end": new_closing_km
-        })
+        }).eq("id", trip_id).execute()
 
         # Update vehicle total km
-        supabase.table("vehicles").eq("id", vehicle_id).update({
+        supabase.table("vehicles").update({
             "kilometers_traveled": new_vehicle_total_km
-        })
+        }).eq("id", vehicle_id).execute()
 
         # Log the correction
         correction_record = {
@@ -1090,7 +1120,7 @@ def create_pending_delivery(
         "request_id": request_id
     }
 
-    result = supabase.table("pending_deliveries").insert(delivery_data)
+    result = supabase.table("pending_deliveries").insert(delivery_data).execute()
 
     if result.data:
         # Handle both list and dict responses

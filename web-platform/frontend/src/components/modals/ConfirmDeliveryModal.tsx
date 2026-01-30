@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { X, Truck, Package, AlertTriangle, CheckCircle, XCircle, Mail } from 'lucide-react';
 import { Button } from '../ui';
@@ -34,6 +34,16 @@ export default function ConfirmDeliveryModal({
   const [rejectReason, setRejectReason] = useState('');
   const [kmEmailWarning, setKmEmailWarning] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
+  const autoCloseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Cleanup timeout on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (autoCloseTimeoutRef.current) {
+        clearTimeout(autoCloseTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Reset form when modal opens
   useEffect(() => {
@@ -69,7 +79,7 @@ export default function ConfirmDeliveryModal({
 
       // Auto-close after 2 seconds if no km email warning (warning requires user acknowledgment)
       if (!kmEmailStatus || kmEmailStatus.sent || !kmEmailStatus.reason) {
-        setTimeout(() => {
+        autoCloseTimeoutRef.current = setTimeout(() => {
           setShowSuccess(false);
           onClose();
         }, 2000);

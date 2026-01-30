@@ -187,12 +187,13 @@ export default function KitchenPage() {
     const selectedLocation = shopLocations.find((loc: any) => loc.id === selectedLocationId);
 
     // Fetch current stock for this location
-    const { data: stockData, isLoading: isStockLoading, refetch } = useQuery({
+    const { data: stockData, isLoading: isStockLoading, isFetching: isStockFetching, refetch } = useQuery({
         queryKey: ['stock', 'balance', activeLocationId],
         queryFn: () => stockApi.getBalance(activeLocationId!).then(r => r.data),
         enabled: !!activeLocationId,
-        staleTime: 0,
+        staleTime: 30 * 1000, // 30 seconds cache
         refetchInterval: isAdmin ? 30000 : false,
+        placeholderData: (previousData: typeof stockData) => previousData,
     });
 
     // Fetch items to find Potatoes if balance is zero
@@ -205,7 +206,7 @@ export default function KitchenPage() {
         itemsData?.items?.[0];
 
     // Fetch transaction history (withdrawals and returns) - today only
-    const { data: transactionsData, refetch: refetchTransactions } = useQuery({
+    const { data: transactionsData, isFetching: isTransactionsFetching, refetch: refetchTransactions } = useQuery({
         queryKey: ['transactions', 'kitchen', activeLocationId, 'today'],
         queryFn: async () => {
             const response = await transactionsApi.getAll({
@@ -216,8 +217,9 @@ export default function KitchenPage() {
             return response.data;
         },
         enabled: !!activeLocationId,
-        staleTime: 0,
+        staleTime: 30 * 1000, // 30 seconds cache
         refetchInterval: isAdmin ? 30000 : false,
+        placeholderData: (previousData: typeof transactionsData) => previousData,
     });
 
     // Filter for issue (withdraw) and return transactions only

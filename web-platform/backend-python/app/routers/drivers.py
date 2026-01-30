@@ -271,10 +271,10 @@ async def resend_driver_invitation(driver_id: str, user_data: dict = Depends(req
         # Check if invitation exists
         if driver.get("invitation_id"):
             # Update existing invitation
-            supabase.table("user_invitations").eq("id", driver["invitation_id"]).update({
+            supabase.table("user_invitations").update({
                 "token": new_token,
                 "expires_at": new_expires.isoformat()
-            })
+            }).eq("id", driver["invitation_id"]).execute()
         else:
             # Create new invitation
             invitation_id = str(uuid4())
@@ -290,12 +290,12 @@ async def resend_driver_invitation(driver_id: str, user_data: dict = Depends(req
                 "expires_at": new_expires.isoformat(),
                 "driver_id": driver_id
             }
-            supabase.table("user_invitations").insert(invitation_data)
+            supabase.table("user_invitations").insert(invitation_data).execute()
 
             # Update driver with invitation_id
-            supabase.table("drivers").eq("id", driver_id).update({
+            supabase.table("drivers").update({
                 "invitation_id": invitation_id
-            })
+            }).eq("id", driver_id).execute()
 
         # Send email
         inviter_name = actor_profile.get("full_name") or "Manager"
@@ -354,12 +354,12 @@ async def update_driver(
         if not update_data:
             raise HTTPException(status_code=400, detail="No fields to update")
 
-        result = supabase.table("drivers").eq("id", driver_id).update(update_data)
+        result = supabase.table("drivers").update(update_data).eq("id", driver_id).execute()
 
         return {
             "success": True,
             "message": "Driver updated",
-            "driver": result.data[0]
+            "driver": result.data[0] if result.data else None
         }
 
     except HTTPException:
@@ -382,7 +382,7 @@ async def deactivate_driver(driver_id: str, user_data: dict = Depends(require_ma
             raise HTTPException(status_code=404, detail="Driver not found")
 
         # Soft delete - set is_active to false
-        supabase.table("drivers").eq("id", driver_id).update({"is_active": False})
+        supabase.table("drivers").update({"is_active": False}).eq("id", driver_id).execute()
 
         return {
             "success": True,

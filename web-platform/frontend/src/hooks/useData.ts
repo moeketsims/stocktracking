@@ -68,6 +68,8 @@ export function useStockOverview() {
       const response = await stockApi.getOverview();
       return response.data;
     },
+    staleTime: 30 * 1000,
+    placeholderData: (previousData) => previousData,
   });
 }
 
@@ -78,7 +80,9 @@ export function useStockByLocation() {
       const response = await stockApi.getByLocation();
       return response.data;
     },
-    staleTime: 0,  // Always refetch for fresh data
+    staleTime: 30 * 1000, // 30 seconds - balances freshness with performance
+    // Keep previous data visible while refetching (prevents "flash of empty content")
+    placeholderData: (previousData) => previousData,
   });
 }
 
@@ -164,6 +168,8 @@ export function useTransactions(typeFilter: string = 'all', limit: number = 50) 
       });
       return response.data;
     },
+    staleTime: 30 * 1000,
+    placeholderData: (previousData) => previousData,
   });
 }
 
@@ -210,6 +216,8 @@ export function useBatches(filterType: string = 'all', itemId?: string) {
       });
       return response.data;
     },
+    staleTime: 30 * 1000,
+    placeholderData: (previousData) => previousData,
   });
 }
 
@@ -232,6 +240,8 @@ export function useAnalytics(periodDays: number = 30, viewLocationId?: string) {
       const response = await analyticsApi.get(periodDays, viewLocationId);
       return response.data;
     },
+    staleTime: 60 * 1000, // Analytics can be cached longer
+    placeholderData: (previousData) => previousData,
   });
 }
 
@@ -325,6 +335,8 @@ export function useZoneOverview() {
       const response = await zoneApi.getOverview();
       return response.data;
     },
+    staleTime: 30 * 1000,
+    placeholderData: (previousData) => previousData,
   });
 }
 
@@ -565,6 +577,8 @@ export function useTrips(params?: { status?: string; vehicle_id?: string; from_d
       const response = await tripsApi.list(params);
       return response.data;
     },
+    staleTime: 30 * 1000,
+    placeholderData: (previousData) => previousData,
   });
 }
 
@@ -794,6 +808,8 @@ export function useInvitations(status?: string) {
       const response = await invitationsApi.list(status);
       return response.data;
     },
+    staleTime: 30 * 1000,
+    placeholderData: (previousData) => previousData,
   });
 }
 

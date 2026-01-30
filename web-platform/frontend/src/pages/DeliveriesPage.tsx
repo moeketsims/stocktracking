@@ -87,6 +87,7 @@ export default function DeliveriesPage() {
   const [showCorrectKmModal, setShowCorrectKmModal] = useState(false);
   const [selectedTripForCorrection, setSelectedTripForCorrection] = useState<{ tripId: string; currentKm: number; startingKm: number } | null>(null);
   const [resendingEmailId, setResendingEmailId] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Check user role for admin actions
   const user = useAuthStore((state) => state.user);
@@ -174,6 +175,8 @@ export default function DeliveriesPage() {
     queryKey: ['trips', 'in_progress'],
     queryFn: () => tripsApi.list({ status: 'in_progress', limit: 50 }).then(r => r.data),
     refetchInterval: 30000,
+    staleTime: 30 * 1000,
+    placeholderData: (previousData: typeof inProgressTripsData) => previousData,
   });
 
   // Fetch pending deliveries (awaiting confirmation)
@@ -181,6 +184,8 @@ export default function DeliveriesPage() {
     queryKey: ['pending-deliveries', 'pending'],
     queryFn: () => pendingDeliveriesApi.getPending(undefined, 50).then(r => r.data),
     refetchInterval: 30000,
+    staleTime: 30 * 1000,
+    placeholderData: (previousData: typeof pendingData) => previousData,
   });
 
   // Fetch confirmed/rejected deliveries (for history)
@@ -188,6 +193,8 @@ export default function DeliveriesPage() {
     queryKey: ['pending-deliveries', 'all', dateRange],
     queryFn: () => pendingDeliveriesApi.list({ limit: 100 }).then(r => r.data),
     refetchInterval: 60000,
+    staleTime: 30 * 1000,
+    placeholderData: (previousData: typeof allData) => previousData,
   });
 
   const isLoading = loadingTrips || loadingPending || loadingAll;
@@ -235,6 +242,9 @@ export default function DeliveriesPage() {
     queryClient.invalidateQueries({ queryKey: ['trips'] });
     setShowConfirmModal(false);
     setSelectedDelivery(null);
+    // Show success toast
+    setSuccessMessage('Delivery confirmed successfully!');
+    setTimeout(() => setSuccessMessage(null), 2000);
   };
 
   const openConfirmModal = (delivery: PendingDelivery) => {
@@ -264,6 +274,14 @@ export default function DeliveriesPage() {
 
   return (
     <div className="space-y-6">
+      {/* Success Toast */}
+      {successMessage && (
+        <div className="fixed top-4 right-4 z-50 bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+          <CheckCircle className="w-5 h-5 text-green-600" />
+          <span className="font-medium">{successMessage}</span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

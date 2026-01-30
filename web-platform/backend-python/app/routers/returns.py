@@ -61,10 +61,10 @@ async def return_stock(request: ReturnStockRequest, user_data: dict = Depends(re
             if batch.data["status"] == "depleted":
                 new_status = "available"  # Restore to available when stock returned
 
-            supabase.table("stock_batches").eq("id", request.original_batch_id).update({
+            supabase.table("stock_batches").update({
                 "remaining_qty": new_remaining,
                 "status": new_status
-            })
+            }).eq("id", request.original_batch_id).execute()
 
             batch_id = request.original_batch_id
 
@@ -124,7 +124,7 @@ async def return_stock(request: ReturnStockRequest, user_data: dict = Depends(re
             }
         }
 
-        transaction = supabase.table("stock_transactions").insert(transaction_data)
+        transaction = supabase.table("stock_transactions").insert(transaction_data).execute()
 
         return_message = "Returned to original batch" if request.return_to_original else "Created new batch (quarantine)"
 

@@ -291,7 +291,7 @@ async def update_user(
         if request.phone is not None:
             update_data["phone"] = request.phone if request.phone else None
 
-        result = supabase.table("profiles").eq("id", user_id).update(update_data)
+        result = supabase.table("profiles").update(update_data).eq("id", user_id).execute()
 
         return {
             "success": True,
@@ -325,18 +325,18 @@ async def deactivate_user(
             raise HTTPException(status_code=400, detail="Cannot deactivate your own account")
 
         # Deactivate user profile
-        supabase.table("profiles").eq("id", user_id).update({
+        supabase.table("profiles").update({
             "is_active": False,
             "updated_at": datetime.utcnow().isoformat()
-        }).execute()
+        }).eq("id", user_id).execute()
 
         # If user is a driver, also deactivate their driver record
         auth_user_id = existing.data.get("user_id")
         if auth_user_id and existing.data.get("role") == "driver":
             # Find and deactivate linked driver record
-            supabase.table("drivers").eq("user_id", auth_user_id).update({
+            supabase.table("drivers").update({
                 "is_active": False
-            }).execute()
+            }).eq("user_id", auth_user_id).execute()
 
         return {
             "success": True,

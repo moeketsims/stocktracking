@@ -477,12 +477,12 @@ async def receive_stock(request: ReceiveStockRequest, user_data: dict = Depends(
             }
         }
 
-        transaction = supabase.table("stock_transactions").insert(transaction_data)
+        transaction = supabase.table("stock_transactions").insert(transaction_data).execute()
 
         # Update batch with transaction id
-        supabase.table("stock_batches").eq("id", batch_id).update({
+        supabase.table("stock_batches").update({
             "receive_transaction_id": transaction.data["id"]
-        })
+        }).eq("id", batch_id).execute()
 
         return {
             "success": True,
@@ -519,6 +519,15 @@ async def issue_stock(request: IssueStockRequest, user_data: dict = Depends(requ
         if not location_id:
             raise HTTPException(status_code=400, detail="User has no assigned location")
 
+        # Validate quantity is positive
+        if request.quantity <= 0:
+            raise HTTPException(status_code=400, detail="Quantity must be a positive number")
+
+        # Validate quantity is reasonable (max 10000 kg / 1000 bags per transaction)
+        max_qty = 10000 if request.unit == "kg" else 1000
+        if request.quantity > max_qty:
+            raise HTTPException(status_code=400, detail=f"Quantity exceeds maximum allowed ({max_qty} {request.unit})")
+
         # Auto-detect item if not provided
         item_id = request.item_id
         if not item_id:
@@ -547,24 +556,26 @@ async def issue_stock(request: IssueStockRequest, user_data: dict = Depends(requ
                 detail=f"Insufficient stock. Current: {current_qty:.2f} kg, Requested: {qty_kg:.2f} kg"
             )
 
-        # Get most recent batch for this location/item to deduct from
-        # (mirrors the return logic which works correctly)
-        recent_batch = supabase.table("stock_batches").select("id, remaining_qty").eq(
+        # Get OLDEST batch for this location/item to deduct from (FIFO - First In, First Out)
+        # This ensures older stock is used first, preventing expiry of older batches
+        oldest_batch = supabase.table("stock_batches").select("id, remaining_qty").eq(
             "location_id", location_id
-        ).eq("item_id", item_id).order(
-            "received_at", desc=True
+        ).eq("item_id", item_id).gt(
+            "remaining_qty", 0
+        ).order(
+            "received_at", desc=False
         ).limit(1).execute()
 
         batch_id = None
-        if recent_batch.data:
-            batch_id = recent_batch.data[0]["id"]
-            # Subtract quantity from batch (mirror of return logic which adds)
-            old_remaining = recent_batch.data[0]["remaining_qty"]
+        if oldest_batch.data:
+            batch_id = oldest_batch.data[0]["id"]
+            # Subtract quantity from oldest batch (FIFO)
+            old_remaining = oldest_batch.data[0]["remaining_qty"]
             new_remaining = old_remaining - qty_kg
             print(f"[ISSUE] Batch {batch_id}: {old_remaining} - {qty_kg} = {new_remaining}")
-            update_result = supabase.table("stock_batches").eq("id", batch_id).update({
+            update_result = supabase.table("stock_batches").update({
                 "remaining_qty": new_remaining
-            })
+            }).eq("id", batch_id).execute()
             print(f"[ISSUE] Update result: {update_result.data}")
         else:
             print(f"[ISSUE] WARNING: No batch found to deduct from!")
@@ -783,9 +794,9 @@ async def return_stock(request: IssueStockRequest, user_data: dict = Depends(req
             old_remaining = recent_batch.data[0]["remaining_qty"]
             new_remaining = old_remaining + qty_kg
             print(f"[RETURN] Batch {batch_id}: {old_remaining} + {qty_kg} = {new_remaining}")
-            update_result = supabase.table("stock_batches").eq("id", batch_id).update({
+            update_result = supabase.table("stock_batches").update({
                 "remaining_qty": new_remaining
-            })
+            }).eq("id", batch_id).execute()
             print(f"[RETURN] Update result: {update_result.data}")
         else:
             # No existing batch, create a new one for the return

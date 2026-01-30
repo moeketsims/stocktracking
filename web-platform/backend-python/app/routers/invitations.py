@@ -268,17 +268,17 @@ async def cancel_invitation(
 
         # Flag invitation as cancelled instead of deleting
         cancelled_time = datetime.utcnow().isoformat()
-        supabase.table("user_invitations").eq("id", invitation_id).update({
+        supabase.table("user_invitations").update({
             "cancelled_at": cancelled_time,
             "cancelled_by": actor_profile["id"]
-        })
+        }).eq("id", invitation_id).execute()
 
         # If this invitation was linked to a driver, unlink it so they can be re-invited
         driver_id = invitation.get("driver_id")
         if driver_id:
-            supabase.table("drivers").eq("id", driver_id).update({
+            supabase.table("drivers").update({
                 "invitation_id": None
-            })
+            }).eq("id", driver_id).execute()
 
         return {
             "success": True,

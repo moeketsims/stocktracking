@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Truck, Gauge, CheckCircle, Phone } from 'lucide-react';
 import { tripsApi } from '../lib/api';
@@ -22,8 +22,18 @@ export default function KmSubmissionBlocker() {
   const [closingKm, setClosingKm] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const successTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const isDriver = user?.role === 'driver';
+
+  // Cleanup timeout on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (successTimeoutRef.current) {
+        clearTimeout(successTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Debug logging
   console.log('[KmBlocker] user:', user?.role, 'isDriver:', isDriver);
@@ -55,7 +65,7 @@ export default function KmSubmissionBlocker() {
       queryClient.invalidateQueries({ queryKey: ['trips'] });
       queryClient.invalidateQueries({ queryKey: ['vehicles'] });
       // Dismiss success screen after 2 seconds
-      setTimeout(() => {
+      successTimeoutRef.current = setTimeout(() => {
         setSuccess(false);
       }, 2000);
     },

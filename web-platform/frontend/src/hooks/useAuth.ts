@@ -13,8 +13,10 @@ export function useLogin() {
       return response.data as LoginResponse;
     },
     onSuccess: (data) => {
+      // Clear query cache before setting auth state to prevent race conditions
+      // where old queries refetch before the new token is set
+      queryClient.clear();
       login(data.access_token, data.refresh_token, data.user);
-      queryClient.invalidateQueries();
     },
   });
 }

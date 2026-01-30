@@ -185,11 +185,15 @@ def send_stock_request_notification(
     quantity_bags: int,
     urgency: str,
     current_stock_pct: float,
-    request_id: str
+    request_id: str,
+    recipient_user_id: str = None
 ) -> bool:
     """Send notification to drivers about a new stock request."""
     settings = get_settings()
+    # Include 'for' parameter so frontend can detect if wrong user is logged in
     request_url = f"{settings.app_url}/requests?id={request_id}"
+    if recipient_user_id:
+        request_url += f"&for={recipient_user_id}"
 
     urgency_emoji = "🚨" if urgency == "urgent" else "📦"
     urgency_text = "URGENT (needed today)" if urgency == "urgent" else "Normal (within 3 days)"

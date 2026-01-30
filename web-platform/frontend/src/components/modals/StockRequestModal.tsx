@@ -243,8 +243,8 @@ export default function StockRequestModal({
                   type="number"
                   min="1"
                   max="10000"
-                  value={formData.quantity_bags}
-                  onChange={(e) => setFormData({ ...formData, quantity_bags: parseInt(e.target.value) || 0 })}
+                  value={formData.quantity_bags || ''}
+                  onChange={(e) => setFormData({ ...formData, quantity_bags: e.target.value === '' ? 0 : parseInt(e.target.value, 10) })}
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-lg font-semibold"
                   placeholder="500"
                 />

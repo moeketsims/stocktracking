@@ -327,7 +327,7 @@ function App() {
       />
 
       {/* Desktop Sidebar - hidden on mobile */}
-      <aside className="hidden md:flex w-64 flex-shrink-0">
+      <aside className="hidden md:flex w-72 flex-shrink-0">
         <Sidebar
           mainTabs={mainTabs}
           moreTabs={moreTabs}

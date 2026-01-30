@@ -120,11 +120,11 @@ async def update_location_thresholds(
         if not location.data:
             raise HTTPException(status_code=404, detail="Location not found")
 
-        # Update thresholds - filter before update, no execute needed
-        supabase.table("locations").eq("id", location_id).update({
+        # Update thresholds
+        supabase.table("locations").update({
             "critical_stock_threshold": request.critical_stock_threshold,
             "low_stock_threshold": request.low_stock_threshold
-        })
+        }).eq("id", location_id).execute()
 
         return {
             "success": True,

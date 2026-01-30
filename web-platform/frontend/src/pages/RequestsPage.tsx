@@ -72,16 +72,40 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
     return params.get('id');
   });
 
+  // Check if this link was intended for a different user
+  const [wrongUserBanner, setWrongUserBanner] = useState<{ show: boolean; intendedFor: string | null }>({ show: false, intendedFor: null });
+
+  // Effect to check for wrong user on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const intendedFor = params.get('for');
+    // If 'for' param exists and doesn't match current user ID, show warning
+    if (intendedFor && currentUserId && intendedFor !== currentUserId) {
+      setWrongUserBanner({ show: true, intendedFor });
+      // Clear the 'for' param from URL but keep 'id' if present
+      const newParams = new URLSearchParams(window.location.search);
+      newParams.delete('for');
+      const newUrl = newParams.toString()
+        ? `${window.location.pathname}?${newParams.toString()}`
+        : window.location.pathname;
+      window.history.replaceState({}, '', newUrl);
+    }
+  }, [currentUserId]);
+
   const { data: allRequestsData, isLoading: loadingAll, refetch: refetchAll } = useQuery({
     queryKey: ['stock-requests', 'all', dateRange],
     queryFn: () => stockRequestsApi.list({ limit: 200 }).then(r => r.data),
     refetchInterval: 30000,
+    staleTime: 30 * 1000,
+    placeholderData: (previousData: typeof allRequestsData) => previousData,
   });
 
   const { data: myRequestsData, isLoading: loadingMy, refetch: refetchMy } = useQuery({
     queryKey: ['stock-requests', 'my'],
     queryFn: () => stockRequestsApi.getMyRequests(undefined, 100).then(r => r.data),
     refetchInterval: 30000,
+    staleTime: 30 * 1000,
+    placeholderData: (previousData: typeof myRequestsData) => previousData,
   });
 
   const { data: vehiclesData } = useQuery({
@@ -378,6 +402,37 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
             <Check className="w-4 h-4 text-emerald-600" />
           </div>
           <span className="text-sm text-emerald-800">Request cancelled</span>
+        </div>
+      )}
+
+      {/* Wrong User Banner - shown when email link was for a different user */}
+      {wrongUserBanner.show && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+              <AlertTriangle className="w-5 h-5 text-amber-600" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-amber-800 mb-1">
+                This link was sent to a different user
+              </h3>
+              <p className="text-sm text-amber-700 mb-3">
+                You're currently signed in as <span className="font-medium">{user?.full_name || user?.email}</span>.
+                To accept this request, please either:
+              </p>
+              <ul className="text-sm text-amber-700 space-y-1 mb-3 ml-4 list-disc">
+                <li>Sign out and sign in with the correct account</li>
+                <li>Open this link in a <strong>private/incognito window</strong></li>
+                <li>Open this link in a <strong>different browser</strong></li>
+              </ul>
+              <button
+                onClick={() => setWrongUserBanner({ show: false, intendedFor: null })}
+                className="text-sm text-amber-600 hover:text-amber-800 font-medium"
+              >
+                Dismiss this message
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

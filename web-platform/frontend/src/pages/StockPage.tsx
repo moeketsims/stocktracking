@@ -18,6 +18,7 @@ import {
   ChevronDown,
   ChevronRight,
   Check,
+  CheckCircle,
   Truck,
   ClipboardList,
   ArrowDownToLine,
@@ -152,11 +153,14 @@ export default function StockPage() {
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [showConfirmDeliveryModal, setShowConfirmDeliveryModal] = useState(false);
   const [selectedDelivery, setSelectedDelivery] = useState<PendingDelivery | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Fetch pending deliveries
-  const { data: pendingDeliveriesData, refetch: refetchDeliveries } = useQuery({
+  const { data: pendingDeliveriesData, isFetching: isDeliveriesFetching, refetch: refetchDeliveries } = useQuery({
     queryKey: ['pending-deliveries', 'pending'],
     queryFn: () => pendingDeliveriesApi.getPending(undefined, 10).then(r => r.data),
+    staleTime: 30 * 1000,
+    placeholderData: (previousData: typeof pendingDeliveriesData) => previousData,
   });
 
   // Check URL for delivery confirmation
@@ -252,6 +256,9 @@ export default function StockPage() {
     queryClient.invalidateQueries({ queryKey: ['stock-requests'] });
     setShowConfirmDeliveryModal(false);
     setSelectedDelivery(null);
+    // Show success toast
+    setSuccessMessage('Delivery confirmed successfully!');
+    setTimeout(() => setSuccessMessage(null), 2000);
   };
 
   const openModal = (modal: 'issue' | 'transfer' | 'waste') => {
@@ -297,6 +304,14 @@ export default function StockPage() {
 
   return (
     <div className="space-y-6">
+      {/* Success Toast */}
+      {successMessage && (
+        <div className="fixed top-4 right-4 z-50 bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+          <CheckCircle className="w-5 h-5 text-green-600" />
+          <span className="font-medium">{successMessage}</span>
+        </div>
+      )}
+
       {/* Summary Tiles - Clickable to filter */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <SummaryTile

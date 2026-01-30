@@ -578,9 +578,9 @@ async def accept_invite(request: AcceptInviteRequest):
 
             # Use admin client to update the invitation
             accepted_time = datetime.utcnow().isoformat()
-            invite_result = supabase.table("user_invitations").eq("id", invitation_id).update({
+            invite_result = supabase.table("user_invitations").update({
                 "accepted_at": accepted_time
-            })
+            }).eq("id", invitation_id).execute()
 
             logger.info(f"[AUTH] Invitation update result: {invite_result.data}")
 
@@ -591,9 +591,9 @@ async def accept_invite(request: AcceptInviteRequest):
             else:
                 logger.warning(f"[AUTH] Invitation {invitation_id} accepted_at still NULL after update. Verify result: {verify_result.data}")
                 # Try direct update as fallback
-                retry_result = supabase.table("user_invitations").eq("id", invitation_id).update({
+                retry_result = supabase.table("user_invitations").update({
                     "accepted_at": accepted_time
-                })
+                }).eq("id", invitation_id).execute()
                 logger.info(f"[AUTH] Retry update result: {retry_result.data}")
         except Exception as invite_error:
             logger.error(f"[AUTH] Error marking invitation as accepted: {invite_error}", exc_info=True)

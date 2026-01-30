@@ -1,4 +1,4 @@
-import { LogOut } from 'lucide-react';
+import { LogOut, Settings } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useLogout } from '../hooks/useAuth';
@@ -76,15 +76,8 @@ export default function Sidebar({
           </button>
         ))}
 
-        {/* Divider */}
-        <div className="pt-4 pb-2">
-          <p className="px-4 text-xs font-medium text-indigo-400 uppercase tracking-wider">
-            More
-          </p>
-        </div>
-
-        {/* More Tabs */}
-        {moreTabs.map((tab) => (
+        {/* More Tabs (excluding Settings which is pinned to bottom) */}
+        {moreTabs.filter(tab => tab.id !== 'settings').map((tab) => (
           <button
             key={tab.id}
             onClick={() => handleTabClick(tab.id)}
@@ -109,6 +102,21 @@ export default function Sidebar({
           </button>
         ))}
       </nav>
+
+      {/* Settings - Pinned above profile */}
+      <div className="px-3 pb-2">
+        <button
+          onClick={() => handleTabClick('settings')}
+          className={`w-full flex items-center gap-3 px-4 py-3 md:py-2.5 text-sm font-medium rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 ${
+            activeTab === 'settings'
+              ? 'bg-orange-500 text-white'
+              : 'text-indigo-200 hover:bg-indigo-900 hover:text-white'
+          }`}
+        >
+          <Settings className="w-5 h-5" />
+          Settings
+        </button>
+      </div>
 
       {/* User Profile & Sign Out */}
       <div className="p-4 border-t border-indigo-900">

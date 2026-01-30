@@ -68,6 +68,9 @@ class TableQuery:
         self._order = None
         self._limit = None
         self._delete = False
+        self._update_data = None  # Store update data for chaining
+        self._insert_data = None  # Store insert data for chaining
+        self._insert_returning = "*"  # Store returning columns for insert
 
     def select(self, columns: str = "*") -> "TableQuery":
         self._select_columns = columns
@@ -130,6 +133,14 @@ class TableQuery:
         if self._delete:
             return self._execute_delete()
 
+        # Check if this is an update operation
+        if self._update_data is not None:
+            return self._execute_update()
+
+        # Check if this is an insert operation
+        if self._insert_data is not None:
+            return self._execute_insert()
+
         url = f"{self.client.url}/rest/v1/{self.table_name}"
         # Use list of tuples to allow multiple filters on same column
         params = [("select", self._select_columns)]
@@ -160,17 +171,24 @@ class TableQuery:
             print(f"[SUPABASE] {self.table_name}: {row_count} rows")
             return QueryResult(data=data, error=None)
 
-    def insert(self, data, returning: str = "*") -> "QueryResult":
-        """Insert one or more records. Accepts dict or list of dicts.
+    def insert(self, data, returning: str = "*") -> "TableQuery":
+        """Prepare an insert operation. Must be followed by execute().
+        Accepts dict or list of dicts.
         Use 'returning' to specify which columns to return (defaults to all).
         """
+        self._insert_data = data
+        self._insert_returning = returning
+        return self
+
+    def _execute_insert(self) -> "QueryResult":
+        """Execute an INSERT operation."""
         url = f"{self.client.url}/rest/v1/{self.table_name}"
-        params = {"select": returning}
+        params = {"select": self._insert_returning}
         headers = self.client.headers.copy()
         headers["Prefer"] = "return=representation"
 
         with httpx.Client(timeout=60.0) as http:
-            response = http.post(url, headers=headers, params=params, json=data)
+            response = http.post(url, headers=headers, params=params, json=self._insert_data)
 
             if response.status_code >= 400:
                 print(f"[SUPABASE ERROR] {self.table_name}: {response.status_code} - {response.text[:200]}")
@@ -178,11 +196,17 @@ class TableQuery:
 
             result = response.json()
             # Return as-is for batch inserts, wrap single for consistency
-            if isinstance(data, list):
+            if isinstance(self._insert_data, list):
                 return QueryResult(data=result, error=None)
             return QueryResult(data=result[0] if isinstance(result, list) and result else result, error=None)
 
-    def update(self, data: dict) -> "QueryResult":
+    def update(self, data: dict) -> "TableQuery":
+        """Prepare an update operation. Must be followed by filters and execute()."""
+        self._update_data = data
+        return self
+
+    def _execute_update(self) -> "QueryResult":
+        """Execute an UPDATE operation with filters."""
         url = f"{self.client.url}/rest/v1/{self.table_name}"
         params = {}
 
@@ -194,7 +218,7 @@ class TableQuery:
         headers["Prefer"] = "return=representation"
 
         with httpx.Client() as http:
-            response = http.patch(url, headers=headers, params=params, json=data)
+            response = http.patch(url, headers=headers, params=params, json=self._update_data)
 
             if response.status_code >= 400:
                 print(f"[SUPABASE ERROR] {self.table_name}: {response.status_code} - {response.text[:200]}")

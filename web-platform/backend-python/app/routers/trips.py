@@ -401,9 +401,9 @@ async def submit_trip_km(
         vehicle_id = trip["vehicle_id"]
 
         # 1. Update trip with odometer_end
-        supabase.table("trips").eq("id", trip_id).update({
+        supabase.table("trips").update({
             "odometer_end": closing_km
-        })
+        }).eq("id", trip_id).execute()
 
         # 2. Get current vehicle data and update kilometers_traveled
         vehicle_result = supabase.table("vehicles").select(
@@ -416,8 +416,9 @@ async def submit_trip_km(
             current_km = vehicle_result.data.get("kilometers_traveled") or 0
             current_health = vehicle_result.data.get("health") or {}
 
-            # Update kilometers_traveled
-            new_total_km = current_km + trip_distance
+            # Update kilometers_traveled to the actual odometer reading (closing km)
+            # This represents the vehicle's current odometer, not cumulative distance
+            new_total_km = closing_km
 
             # Update last_driver info in health (use the trip's driver_id)
             if isinstance(current_health, dict):
@@ -432,10 +433,10 @@ async def submit_trip_km(
                 }
 
             # Update vehicle
-            supabase.table("vehicles").eq("id", vehicle_id).update({
+            supabase.table("vehicles").update({
                 "kilometers_traveled": new_total_km,
                 "health": current_health
-            })
+            }).eq("id", vehicle_id).execute()
 
             logger.info(f"[KM_SUBMISSION_AUTH] Trip {trip_id}: {starting_km} -> {closing_km} = {trip_distance} km. Vehicle total: {new_total_km} km")
         else:
@@ -666,7 +667,7 @@ async def update_trip(
         if not update_data:
             raise HTTPException(status_code=400, detail="No fields to update")
 
-        result = supabase.table("trips").eq("id", trip_id).update(update_data)
+        result = supabase.table("trips").update(update_data).eq("id", trip_id).execute()
 
         return {
             "success": True,
@@ -715,7 +716,7 @@ async def start_trip(
             update_data["estimated_arrival_time"] = start_request.estimated_arrival_time
             estimated_arrival_time = start_request.estimated_arrival_time
 
-        result = supabase.table("trips").eq("id", trip_id).update(update_data)
+        result = supabase.table("trips").update(update_data).eq("id", trip_id).execute()
 
         # Send email notifications to all linked stock request requesters
         try:
@@ -870,7 +871,7 @@ async def complete_trip(
         if request.notes:
             update_data["notes"] = request.notes
 
-        result = supabase.table("trips").eq("id", trip_id).update(update_data)
+        result = supabase.table("trips").update(update_data).eq("id", trip_id).execute()
         logger.info(f"[DEBUG] Trip update result type: {type(result.data)}")
 
         # Handle both list and dict responses from Supabase
@@ -1014,7 +1015,7 @@ async def cancel_trip(trip_id: str, user_data: dict = Depends(require_manager)):
         if existing.data["status"] in ("completed", "cancelled"):
             raise HTTPException(status_code=400, detail=f"Cannot cancel a {existing.data['status']} trip")
 
-        result = supabase.table("trips").eq("id", trip_id).update({"status": "cancelled"})
+        result = supabase.table("trips").update({"status": "cancelled"}).eq("id", trip_id).execute()
 
         return {
             "success": True,
@@ -1295,9 +1296,9 @@ async def complete_stop(
 
                     # Update the stock request status to in_delivery
                     if trip.get("request_id"):
-                        supabase.table("stock_requests").eq("id", trip["request_id"]).update({
+                        supabase.table("stock_requests").update({
                             "status": "in_delivery"
-                        })
+                        }).eq("id", trip["request_id"]).execute()
 
         # Check if trip was auto-completed
         if stop_result.data:
@@ -1388,7 +1389,7 @@ async def add_stop_to_trip(
 
         # Mark trip as multi-stop if not already
         if not trip.data.get("is_multi_stop"):
-            supabase.table("trips").eq("id", trip_id).update({"is_multi_stop": True})
+            supabase.table("trips").update({"is_multi_stop": True}).eq("id", trip_id).execute()
 
         return {
             "success": True,

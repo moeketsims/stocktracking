@@ -19,7 +19,8 @@ from ..email import (
     send_request_accepted_notification,
     send_request_accepted_by_driver_notification,
     send_request_cancelled_notification,
-    send_request_updated_notification
+    send_request_updated_notification,
+    send_trip_started_with_eta_notification
 )
 
 router = APIRouter(prefix="/stock-requests", tags=["Stock Requests"])
@@ -276,8 +277,8 @@ async def create_stock_request(
         }
         print(f"[STOCK REQUEST] Inserting data: {request_data}")
 
-        result = supabase.table("stock_requests").insert(request_data)
-        print(f"[STOCK REQUEST] Insert result: {result.data}, Error: {result.error}")
+        result = supabase.table("stock_requests").insert(request_data).execute()
+        print(f"[STOCK REQUEST] Insert result: {result.data}")
 
         if not result.data:
             print(f"[STOCK REQUEST] Insert failed: {result.error}")
@@ -304,7 +305,7 @@ async def create_stock_request(
             try:
                 print(f"[NOTIFICATION] Querying for drivers with role='driver' and is_active=True")
                 drivers_result = supabase.table("profiles_with_email").select(
-                    "email, full_name"
+                    "id, email, full_name"
                 ).eq("role", "driver").eq("is_active", True).execute()
                 all_recipients = drivers_result.data or []
                 print(f"[NOTIFICATION] Found {len(all_recipients)} drivers: {all_recipients}")
@@ -324,7 +325,8 @@ async def create_stock_request(
                             quantity_bags=request.quantity_bags,
                             urgency=request.urgency,
                             current_stock_pct=round((current_stock_kg / target_stock_kg) * 100, 1) if target_stock_kg > 0 else 0,
-                            request_id=created_request["id"]
+                            request_id=created_request["id"],
+                            recipient_user_id=recipient.get("id")
                         )
                         print(f"[NOTIFICATION] Email sent successfully to {recipient['email']}")
                     except Exception as email_err:
@@ -412,11 +414,11 @@ async def accept_stock_request(
 
         # Update request status
         try:
-            result = supabase.table("stock_requests").eq("id", request_id).update({
+            result = supabase.table("stock_requests").update({
                 "status": "accepted",
                 "accepted_by": profile.data["id"],
                 "accepted_at": datetime.now().isoformat()
-            })
+            }).eq("id", request_id).execute()
         except Exception as update_err:
             print(f"[ACCEPT] Update error: {update_err}")
             raise HTTPException(status_code=500, detail=f"Failed to update request: {str(update_err)}")
@@ -612,12 +614,31 @@ async def create_trip_from_request(
             except Exception:
                 actual_driver_id = None
 
-        # Generate trip number
+        # Generate trip number by finding the max existing trip number for this year
         year = datetime.now().year
-        trip_count = supabase.table("trips").select("id").gte(
-            "created_at", f"{year}-01-01"
-        ).lt("created_at", f"{year + 1}-01-01").execute()
-        trip_number = f"TRP-{year}-{len(trip_count.data or []) + 1:04d}"
+        year_prefix = f"TRP-{year}-"
+
+        # Get all trips and filter in Python (more reliable than like filter)
+        all_trips = supabase.table("trips").select("trip_number").execute()
+
+        print(f"[TRIP NUMBER DEBUG] Year prefix: {year_prefix}")
+        print(f"[TRIP NUMBER DEBUG] All trips count: {len(all_trips.data or [])}")
+
+        # Find the highest sequence number for this year
+        max_seq = 0
+        for trip in (all_trips.data or []):
+            trip_num = trip.get("trip_number", "")
+            if trip_num and trip_num.startswith(year_prefix):
+                try:
+                    seq = int(trip_num[len(year_prefix):])
+                    print(f"[TRIP NUMBER DEBUG] Found trip {trip_num}, seq={seq}")
+                    if seq > max_seq:
+                        max_seq = seq
+                except ValueError:
+                    pass
+
+        trip_number = f"TRP-{year}-{max_seq + 1:04d}"
+        print(f"[TRIP NUMBER DEBUG] Generated trip number: {trip_number} (max_seq was {max_seq})")
 
         # Determine trip status based on auto_start flag
         trip_status = "in_progress" if trip_request.auto_start else "planned"
@@ -651,22 +672,26 @@ async def create_trip_from_request(
             if trip_request.odometer_start is not None:
                 trip_data["odometer_start"] = trip_request.odometer_start
 
-        trip_result = supabase.table("trips").insert(trip_data, returning="id, trip_number, status, vehicle_id, driver_id, driver_name")
+        print(f"[TRIP INSERT DEBUG] Attempting to insert trip with number: {trip_number}")
+        print(f"[TRIP INSERT DEBUG] Trip data: {trip_data}")
+        trip_result = supabase.table("trips").insert(trip_data).execute()
+        print(f"[TRIP INSERT DEBUG] Insert result data: {trip_result.data}")
+        print(f"[TRIP INSERT DEBUG] Insert result error: {trip_result.error}")
 
-        if trip_result.error:
-            raise HTTPException(status_code=500, detail=f"Failed to create trip: {trip_result.error}")
         if not trip_result.data:
-            raise HTTPException(status_code=500, detail="Failed to create trip: no data returned")
+            error_detail = f"Failed to create trip: no data returned. Error: {trip_result.error}"
+            print(f"[TRIP INSERT DEBUG] {error_detail}")
+            raise HTTPException(status_code=500, detail=error_detail)
 
         created_trip = trip_result.data if isinstance(trip_result.data, dict) else trip_result.data[0]
 
         # Update request status
-        supabase.table("stock_requests").eq("id", request_id).update({
+        supabase.table("stock_requests").update({
             "status": request_status,
             "trip_id": created_trip["id"],
             "accepted_by": profile.data["id"] if not existing.data.get("accepted_by") else existing.data["accepted_by"],
             "accepted_at": existing.data.get("accepted_at") or datetime.now().isoformat()
-        })
+        }).eq("id", request_id).execute()
 
         # Notify the requester - fetch email from profiles_with_email view
         try:
@@ -679,18 +704,34 @@ async def create_trip_from_request(
                 if requester_data.data and len(requester_data.data) > 0:
                     requester = requester_data.data[0]
                     if requester.get("email"):
-                        send_request_accepted_notification(
-                            to_email=requester["email"],
-                            requester_name=requester.get("full_name", "Store Manager"),
-                            location_name=existing.data["location"]["name"],
-                            quantity_bags=existing.data["quantity_bags"],
-                            driver_name=driver_name or "A driver",
-                            vehicle_reg=vehicle.data["registration_number"],
-                            vehicle_desc=f"{vehicle.data.get('make', '')} {vehicle.data.get('model', '')}".strip(),
-                            supplier_name=supplier.data["name"],
-                            trip_number=trip_number,
-                            trip_id=created_trip["id"]
-                        )
+                        # Use trip started notification with ETA if auto_start is enabled
+                        if trip_request.auto_start:
+                            send_trip_started_with_eta_notification(
+                                to_email=requester["email"],
+                                manager_name=requester.get("full_name", "Store Manager"),
+                                location_name=existing.data["location"]["name"],
+                                quantity_bags=existing.data["quantity_bags"],
+                                driver_name=driver_name or "A driver",
+                                vehicle_reg=vehicle.data["registration_number"],
+                                vehicle_desc=f"{vehicle.data.get('make', '')} {vehicle.data.get('model', '')}".strip(),
+                                supplier_name=supplier.data["name"],
+                                trip_number=trip_number,
+                                trip_id=created_trip["id"],
+                                estimated_arrival_time=trip_request.estimated_arrival_time
+                            )
+                        else:
+                            send_request_accepted_notification(
+                                to_email=requester["email"],
+                                requester_name=requester.get("full_name", "Store Manager"),
+                                location_name=existing.data["location"]["name"],
+                                quantity_bags=existing.data["quantity_bags"],
+                                driver_name=driver_name or "A driver",
+                                vehicle_reg=vehicle.data["registration_number"],
+                                vehicle_desc=f"{vehicle.data.get('make', '')} {vehicle.data.get('model', '')}".strip(),
+                                supplier_name=supplier.data["name"],
+                                trip_number=trip_number,
+                                trip_id=created_trip["id"]
+                            )
         except Exception as email_err:
             print(f"[EMAIL ERROR] Failed to notify requester: {email_err}")
 
@@ -822,12 +863,26 @@ async def create_trip_from_multiple_requests(
                 if profile_result.data and len(profile_result.data) > 0:
                     driver_name = profile_result.data[0].get("full_name")
 
-        # Generate trip number
+        # Generate trip number by finding the max existing trip number for this year
         year = datetime.now().year
-        trip_count = supabase.table("trips").select("id").gte(
-            "created_at", f"{year}-01-01"
-        ).lt("created_at", f"{year + 1}-01-01").execute()
-        trip_number = f"TRP-{year}-{len(trip_count.data or []) + 1:04d}"
+        year_prefix = f"TRP-{year}-"
+
+        # Get all trips and filter in Python (more reliable than like filter)
+        all_trips = supabase.table("trips").select("trip_number").execute()
+
+        # Find the highest sequence number for this year
+        max_seq = 0
+        for trip in (all_trips.data or []):
+            trip_num = trip.get("trip_number", "")
+            if trip_num and trip_num.startswith(year_prefix):
+                try:
+                    seq = int(trip_num[len(year_prefix):])
+                    if seq > max_seq:
+                        max_seq = seq
+                except ValueError:
+                    pass
+
+        trip_number = f"TRP-{year}-{max_seq + 1:04d}"
 
         # Build destination description from all locations
         location_names = [r["location"]["name"] for r in requests_data]
@@ -864,12 +919,12 @@ async def create_trip_from_multiple_requests(
             if trip_request.estimated_arrival_time:
                 trip_data["estimated_arrival_time"] = trip_request.estimated_arrival_time
 
-        trip_result = supabase.table("trips").insert(trip_data, returning="id, trip_number, status, vehicle_id, driver_id, driver_name")
+        trip_result = supabase.table("trips").insert(trip_data).execute()
 
         if not trip_result.data:
             raise HTTPException(status_code=500, detail="Failed to create trip")
 
-        created_trip = trip_result.data[0]
+        created_trip = trip_result.data if isinstance(trip_result.data, dict) else trip_result.data[0]
 
         # Create trip stops - first is pickup, rest are dropoffs
         stops_data = []
@@ -914,19 +969,19 @@ async def create_trip_from_multiple_requests(
             })
 
         # Insert all stops
-        supabase.table("trip_stops").insert(stops_data)
+        supabase.table("trip_stops").insert(stops_data).execute()
 
         # Insert trip_requests junction records
-        supabase.table("trip_requests").insert(trip_requests_data)
+        supabase.table("trip_requests").insert(trip_requests_data).execute()
 
         # Update all request statuses
         for req_data in requests_data:
-            supabase.table("stock_requests").eq("id", req_data["id"]).update({
+            supabase.table("stock_requests").update({
                 "status": request_status,
                 "trip_id": trip_id,
                 "accepted_by": profile_id if not req_data.get("accepted_by") else req_data["accepted_by"],
                 "accepted_at": req_data.get("accepted_at") or datetime.now().isoformat()
-            })
+            }).eq("id", req_data["id"]).execute()
 
             # Notify each requester - fetch email from profiles_with_email view
             try:
@@ -1011,9 +1066,9 @@ async def cancel_stock_request(
             raise HTTPException(status_code=403, detail="Not authorized to cancel this request")
 
         # Cancel the request (note: cancelled_at, cancelled_by, cancellation_reason columns don't exist in DB)
-        result = supabase.table("stock_requests").eq("id", request_id).update({
+        result = supabase.table("stock_requests").update({
             "status": "cancelled"
-        })
+        }).eq("id", request_id).execute()
 
         # Remove escalation tracking
         try:
@@ -1203,7 +1258,7 @@ async def update_stock_request(
         update_data["updated_at"] = datetime.now().isoformat()
 
         # Update the request
-        result = supabase.table("stock_requests").eq("id", request_id).update(update_data)
+        result = supabase.table("stock_requests").update(update_data).eq("id", request_id).execute()
 
         if not result.data:
             raise HTTPException(status_code=500, detail="Failed to update request")
@@ -1237,12 +1292,12 @@ async def update_stock_request(
 
                     next_escalation = created_at + timedelta(hours=next_hours)
 
-                    supabase.table("request_escalation_state").eq("request_id", request_id).update({
+                    supabase.table("request_escalation_state").update({
                         "reminder_threshold_hours": thresholds["reminder"],
                         "escalate_threshold_hours": thresholds["escalate"],
                         "expire_threshold_hours": thresholds["expire"],
                         "next_escalation_at": next_escalation.isoformat()
-                    })
+                    }).eq("request_id", request_id).execute()
             except Exception as e:
                 print(f"[ESCALATION] Error updating timing: {e}")
 
@@ -1358,7 +1413,7 @@ async def re_request_stock_request(
         # Send notification to all active drivers (with normal urgency)
         try:
             drivers_result = supabase.table("profiles_with_email").select(
-                "email, full_name"
+                "id, email, full_name"
             ).eq("role", "driver").eq("is_active", True).execute()
             all_recipients = drivers_result.data or []
 
@@ -1373,7 +1428,8 @@ async def re_request_stock_request(
                             quantity_bags=quantity_bags,
                             urgency="normal",
                             current_stock_pct=round((current_stock_kg / target_stock_kg) * 100, 1) if target_stock_kg > 0 else 0,
-                            request_id=request_id
+                            request_id=request_id,
+                            recipient_user_id=recipient.get("id")
                         )
                         emails_sent += 1
                     except Exception as email_err:
@@ -1449,9 +1505,9 @@ async def fulfill_remaining_request(
 
         if remaining_bags <= 0:
             # Actually fully fulfilled, update status
-            supabase.table("stock_requests").eq("id", request_id).update({
+            supabase.table("stock_requests").update({
                 "status": "fulfilled"
-            })
+            }).eq("id", request_id).execute()
 
             return {
                 "success": True,
@@ -1511,12 +1567,26 @@ async def fulfill_remaining_request(
                 if profile_result.data:
                     driver_name = profile_result.data[0].get("full_name")
 
-        # Generate trip number
+        # Generate trip number by finding the max existing trip number for this year
         year = datetime.now().year
-        trip_count = supabase.table("trips").select("id").gte(
-            "created_at", f"{year}-01-01"
-        ).lt("created_at", f"{year + 1}-01-01").execute()
-        trip_number = f"TRP-{year}-{len(trip_count.data or []) + 1:04d}"
+        year_prefix = f"TRP-{year}-"
+
+        # Get all trips and filter in Python (more reliable than like filter)
+        all_trips = supabase.table("trips").select("trip_number").execute()
+
+        # Find the highest sequence number for this year
+        max_seq = 0
+        for trip in (all_trips.data or []):
+            trip_num = trip.get("trip_number", "")
+            if trip_num and trip_num.startswith(year_prefix):
+                try:
+                    seq = int(trip_num[len(year_prefix):])
+                    if seq > max_seq:
+                        max_seq = seq
+                except ValueError:
+                    pass
+
+        trip_number = f"TRP-{year}-{max_seq + 1:04d}"
 
         # Create trip for remaining quantity
         trip_id = str(uuid4())
@@ -1540,12 +1610,12 @@ async def fulfill_remaining_request(
             "other_cost": 0
         }
 
-        trip_result = supabase.table("trips").insert(trip_data, returning="id, trip_number, status, vehicle_id, driver_id, driver_name")
+        trip_result = supabase.table("trips").insert(trip_data).execute()
 
         if not trip_result.data:
             raise HTTPException(status_code=500, detail="Failed to create trip")
 
-        created_trip = trip_result.data[0]
+        created_trip = trip_result.data if isinstance(trip_result.data, dict) else trip_result.data[0]
 
         # Create trip_request junction record for this partial fulfillment
         trip_request_data = {
@@ -1555,13 +1625,13 @@ async def fulfill_remaining_request(
             "planned_qty_bags": remaining_bags,
             "status": "pending"
         }
-        supabase.table("trip_requests").insert(trip_request_data)
+        supabase.table("trip_requests").insert(trip_request_data).execute()
 
         # Update request status back to trip_created (being fulfilled again)
-        supabase.table("stock_requests").eq("id", request_id).update({
+        supabase.table("stock_requests").update({
             "status": "trip_created",
             "trip_id": trip_id
-        })
+        }).eq("id", request_id).execute()
 
         # Notify requester
         try:
