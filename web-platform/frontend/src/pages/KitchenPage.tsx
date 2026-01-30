@@ -191,8 +191,8 @@ export default function KitchenPage() {
         queryKey: ['stock', 'balance', activeLocationId],
         queryFn: () => stockApi.getBalance(activeLocationId!).then(r => r.data),
         enabled: !!activeLocationId,
-        staleTime: 30 * 1000, // 30 seconds cache
-        refetchInterval: isAdmin ? 30000 : false,
+        staleTime: 5 * 1000, // 5 seconds cache
+        refetchInterval: 10000, // Auto-refresh every 10 seconds for all users
         placeholderData: (previousData: typeof stockData) => previousData,
     });
 
@@ -217,8 +217,8 @@ export default function KitchenPage() {
             return response.data;
         },
         enabled: !!activeLocationId,
-        staleTime: 30 * 1000, // 30 seconds cache
-        refetchInterval: isAdmin ? 30000 : false,
+        staleTime: 5 * 1000, // 5 seconds cache
+        refetchInterval: 10000, // Auto-refresh every 10 seconds for all users
         placeholderData: (previousData: typeof transactionsData) => previousData,
     });
 
