@@ -51,10 +51,13 @@ export default function AcceptLoanPickupModal({
   const acceptMutation = useMutation({
     mutationFn: (data: { loanId: string; odometer_start: number }) =>
       loansApi.acceptPickup(data.loanId, { odometer_start: data.odometer_start }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['driver-loan-trips'] });
-      queryClient.invalidateQueries({ queryKey: ['driver-loan-trips-count'] });
-      queryClient.invalidateQueries({ queryKey: ['loans'] });
+    onSuccess: async () => {
+      // Invalidate all relevant queries to ensure UI updates
+      await queryClient.invalidateQueries({ queryKey: ['driver-loan-trips'] });
+      await queryClient.invalidateQueries({ queryKey: ['driver-loan-trips-count'] });
+      await queryClient.invalidateQueries({ queryKey: ['loans'] });
+      await queryClient.invalidateQueries({ queryKey: ['trips'] });
+      await queryClient.invalidateQueries({ queryKey: ['stock-requests'] });
       onSuccess();
       setSuccess(true);
       // Show success message for 2 seconds then close

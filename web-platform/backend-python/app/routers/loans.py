@@ -666,6 +666,11 @@ async def assign_pickup_driver(
     }
 
 
+class AcceptPickupRequest(BaseModel):
+    """Request body for driver accepting loan pickup."""
+    odometer_start: int  # Required - driver must enter starting odometer
+
+
 @router.post("/{loan_id}/accept-pickup")
 async def accept_pickup_assignment(
     loan_id: str,
@@ -737,11 +742,6 @@ async def accept_pickup_assignment(
         "loan": loan_update.data,
         "trip": trip_update.data
     }
-
-
-class AcceptPickupRequest(BaseModel):
-    """Request body for driver accepting loan pickup."""
-    odometer_start: int  # Required - driver must enter starting odometer
 
 
 class ConfirmCollectionRequest(BaseModel):

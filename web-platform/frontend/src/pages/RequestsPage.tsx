@@ -360,11 +360,18 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
     } else if (activeTab === 'attention') {
       requests = needsAttentionRequests;
     } else {
-      requests = allRequestsData?.requests || [];
-      // Add all loan trips for drivers in "All" tab
+      // "All" tab
       if (isDriver()) {
+        // For drivers, only show their own requests and loan trips
         const loanTripRequests = transformLoanTripsToRequests();
-        requests = [...loanTripRequests, ...requests];
+        // Filter stock requests to only show ones created or accepted by this driver
+        const myStockRequests = (allRequestsData?.requests || []).filter(
+          (r: StockRequest) => r.requested_by === currentUserId || r.accepted_by === currentUserId
+        );
+        requests = [...loanTripRequests, ...myStockRequests];
+      } else {
+        // For managers, show all requests
+        requests = allRequestsData?.requests || [];
       }
     }
 
@@ -404,8 +411,12 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
 
   const myCount = (myRequestsData?.created?.length || 0) + (myRequestsData?.accepted?.length || 0);
   const attentionCount = needsAttentionRequests.length;
-  // Include all loan trips in "All" count for drivers
-  const allCount = (allRequestsData?.requests?.length || 0) + (isDriver() ? loanTrips.length : 0);
+  // For drivers, only count their own requests and loan trips
+  const allCount = isDriver()
+    ? ((allRequestsData?.requests || []).filter(
+        (r: StockRequest) => r.requested_by === currentUserId || r.accepted_by === currentUserId
+      ).length + loanTrips.length)
+    : (allRequestsData?.requests?.length || 0);
 
   // Only managers (admin, zone_manager, location_manager) see the Needs Attention tab
   const showAttentionTab = isManager() || isLocationManager();
@@ -906,7 +917,10 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
         isOpen={showAcceptLoanPickupModal}
         onClose={() => { setShowAcceptLoanPickupModal(false); setSelectedLoanTrip(null); }}
         loanTrip={selectedLoanTrip}
-        onSuccess={() => {
+        onSuccess={async () => {
+          // Refetch loan trips to update the All tab
+          await refetchLoanTrips();
+          await refetchAll();
           setAcceptLoanSuccess('Loan pickup accepted! Proceed to collect the stock.');
           setTimeout(() => setAcceptLoanSuccess(null), 3000);
         }}
