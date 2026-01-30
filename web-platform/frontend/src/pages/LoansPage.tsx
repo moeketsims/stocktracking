@@ -1042,7 +1042,7 @@ function CreateLoanModal({
                 <option value="">Select a shop...</option>
                 {locations.map((loc) => (
                   <option key={loc.id} value={loc.id}>
-                    {loc.name} {loc.current_stock_bags !== undefined ? `(${loc.current_stock_bags} bags available)` : ''}
+                    {loc.name}
                   </option>
                 ))}
               </select>
@@ -1058,11 +1058,6 @@ function CreateLoanModal({
                 className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 placeholder="Enter number of bags"
               />
-              {selectedLender?.current_stock_bags !== undefined && (
-                <p className="text-xs text-gray-500 mt-1">
-                  {selectedLender.name} has {selectedLender.current_stock_bags} bags available
-                </p>
-              )}
             </div>
 
             <div>
