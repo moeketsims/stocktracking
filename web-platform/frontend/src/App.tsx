@@ -121,14 +121,26 @@ function App() {
   const { data: notificationsData } = useNotifications();
   const { data: pendingDeliveriesCount = 0 } = usePendingDeliveriesCount();
 
-  // Set default tab based on role
+  // Set default tab based on role and reset if current tab is invalid for user's role
   useEffect(() => {
     if (isVehicleManager()) {
-      setActiveTab('vehicles');
+      // Vehicle managers can only access vehicles and fleet-status
+      if (!['vehicles', 'fleet-status', 'drivers', 'users', 'notifications', 'settings'].includes(activeTab)) {
+        setActiveTab('vehicles');
+      }
     } else if (user?.role === 'staff') {
-      setActiveTab('kitchen');
+      // Staff can only access kitchen and settings
+      if (!['kitchen', 'settings'].includes(activeTab)) {
+        setActiveTab('kitchen');
+      }
+    } else if (isDriver()) {
+      // Drivers have limited access - no loans, alerts, dashboard, deliveries, batches, users, locations, kitchen
+      const driverTabs = ['stock', 'requests', 'vehicles', 'notifications', 'settings'];
+      if (!driverTabs.includes(activeTab)) {
+        setActiveTab('requests');
+      }
     }
-  }, [user?.role]);
+  }, [user?.role, activeTab]);
 
   // Navigate to trips page with specific trip selected
   const handleNavigateToTrip = (tripId: string) => {
