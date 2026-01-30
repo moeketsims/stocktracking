@@ -597,7 +597,7 @@ async def issue_stock(request: IssueStockRequest, user_data: dict = Depends(requ
             }
         }
 
-        transaction = supabase.table("stock_transactions").insert(transaction_data)
+        transaction = supabase.table("stock_transactions").insert(transaction_data).execute()
         print(f"[ISSUE] Created transaction: id={transaction.data['id'] if transaction.data else 'NONE'}, location_id_from={location_id}, type=issue")
 
         # Calculate new total for verification
