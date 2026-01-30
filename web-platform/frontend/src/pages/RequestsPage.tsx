@@ -71,6 +71,7 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
       kilometers_traveled?: number;
     } | null;
     assignedBy: string;
+    tripType?: 'loan_pickup' | 'loan_return';
   } | null>(null);
   const [viewDensity, setViewDensity] = useState<ViewDensity>('compact');
   const [linkedRequestBanner, setLinkedRequestBanner] = useState<{
@@ -836,6 +837,7 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
                   const fromLocation = (request as any)._fromLocation;
                   const toLocation = (request as any)._toLocation;
                   const assignedBy = (request as any)._assignedBy;
+                  const tripType = (request as any)._tripType;
                   if (loanId) {
                     setSelectedLoanTrip({
                       id: request.id,
@@ -852,6 +854,7 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
                         kilometers_traveled: vehicle.kilometers_traveled,
                       } : null,
                       assignedBy: assignedBy || 'Manager',
+                      tripType: tripType as 'loan_pickup' | 'loan_return' | undefined,
                     });
                     setShowAcceptLoanPickupModal(true);
                   }
@@ -921,7 +924,11 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
           // Refetch loan trips to update the All tab
           await refetchLoanTrips();
           await refetchAll();
-          setAcceptLoanSuccess('Loan pickup accepted! Proceed to collect the stock.');
+          const isReturn = selectedLoanTrip?.tripType === 'loan_return';
+          setAcceptLoanSuccess(isReturn
+            ? 'Loan return accepted! Proceed to collect the stock for return.'
+            : 'Loan pickup accepted! Proceed to collect the stock.'
+          );
           setTimeout(() => setAcceptLoanSuccess(null), 3000);
         }}
       />
@@ -1212,8 +1219,12 @@ function RequestRow({
                   {isLoanTrip ? loanToLocation : (request.location?.name || 'Unknown')}
                 </span>
                 {isLoanTrip && (
-                  <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-semibold rounded">
-                    Loan Pickup
+                  <span className={`px-1.5 py-0.5 text-[10px] font-semibold rounded ${
+                    loanTripType === 'loan_return'
+                      ? 'bg-orange-100 text-orange-700'
+                      : 'bg-blue-100 text-blue-700'
+                  }`}>
+                    {loanTripType === 'loan_return' ? 'Loan Return' : 'Loan Pickup'}
                   </span>
                 )}
                 {isUrgent && request.status === 'pending' && !isLoanTrip && (
@@ -1371,8 +1382,12 @@ function RequestRow({
                 {isLoanTrip ? loanToLocation : (request.location?.name || 'Unknown')}
               </span>
               {isLoanTrip && (
-                <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-semibold rounded flex-shrink-0">
-                  Loan Pickup
+                <span className={`px-1.5 py-0.5 text-[10px] font-semibold rounded flex-shrink-0 ${
+                  loanTripType === 'loan_return'
+                    ? 'bg-orange-100 text-orange-700'
+                    : 'bg-blue-100 text-blue-700'
+                }`}>
+                  {loanTripType === 'loan_return' ? 'Loan Return' : 'Loan Pickup'}
                 </span>
               )}
               {isUrgent && request.status === 'pending' && !isLoanTrip && (

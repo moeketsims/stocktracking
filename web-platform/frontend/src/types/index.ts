@@ -890,7 +890,10 @@ export type LoanStatus =
   | 'in_transit'        // Driver assigned, pickup in progress
   | 'collected'         // Lender confirmed collection, driver en route to borrower
   | 'active'            // Stock delivered to borrower, loan is ongoing
-  | 'return_in_transit' // Return delivery in progress
+  | 'return_initiated'  // Borrower clicked "Start Return", email sent to lender
+  | 'return_assigned'   // Borrower assigned driver, waiting for driver to accept
+  | 'return_in_progress' // Driver accepted return, stock deducted from borrower
+  | 'return_in_transit' // Legacy: Return delivery in progress
   | 'completed'         // Stock returned to lender
   | 'overdue';          // Past return date and not yet returned
 
@@ -904,6 +907,7 @@ export interface Loan {
   quantity_approved: number | null;
   estimated_return_date: string;
   actual_return_date: string | null;
+  driver_confirmed_at: string | null;  // Timestamp when driver accepted return
   status: LoanStatus;
   pickup_trip_id: string | null;
   return_trip_id: string | null;

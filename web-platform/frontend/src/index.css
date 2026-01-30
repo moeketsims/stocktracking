@@ -19,6 +19,23 @@ body {
 
 /* Premium Dashboard Enhancements */
 
+/* Sliding loading bar animation for Return Inbound */
+@keyframes slideRight {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(200%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+.animate-slide-right {
+  animation: slideRight 3s ease-in-out infinite;
+}
+
 /* Smooth page transitions */
 @keyframes fadeInUp {
   from {

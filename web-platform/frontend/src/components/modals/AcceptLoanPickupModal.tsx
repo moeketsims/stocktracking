@@ -19,6 +19,7 @@ interface LoanTripData {
     kilometers_traveled?: number;
   } | null;
   assignedBy: string;
+  tripType?: 'loan_pickup' | 'loan_return';
 }
 
 interface AcceptLoanPickupModalProps {
@@ -48,9 +49,13 @@ export default function AcceptLoanPickupModal({
     }
   }, [isOpen]);
 
+  const isReturn = loanTrip?.tripType === 'loan_return';
+
   const acceptMutation = useMutation({
     mutationFn: (data: { loanId: string; odometer_start: number }) =>
-      loansApi.acceptPickup(data.loanId, { odometer_start: data.odometer_start }),
+      isReturn
+        ? loansApi.acceptReturnAssignment(data.loanId, { odometer_start: data.odometer_start })
+        : loansApi.acceptPickup(data.loanId, { odometer_start: data.odometer_start }),
     onSuccess: async () => {
       // Invalidate all relevant queries to ensure UI updates
       await queryClient.invalidateQueries({ queryKey: ['driver-loan-trips'] });
@@ -67,7 +72,7 @@ export default function AcceptLoanPickupModal({
       }, 2000);
     },
     onError: (err: any) => {
-      setError(err.response?.data?.detail || 'Failed to accept loan pickup');
+      setError(err.response?.data?.detail || (isReturn ? 'Failed to accept loan return' : 'Failed to accept loan pickup'));
     },
   });
 
@@ -128,14 +133,17 @@ export default function AcceptLoanPickupModal({
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50" />
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-8 text-center animate-in fade-in zoom-in duration-300">
-            <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <CheckCircle className="w-8 h-8 text-emerald-600" />
+            <div className={`w-16 h-16 ${isReturn ? 'bg-orange-100' : 'bg-emerald-100'} rounded-full flex items-center justify-center mx-auto mb-4`}>
+              <CheckCircle className={`w-8 h-8 ${isReturn ? 'text-orange-600' : 'text-emerald-600'}`} />
             </div>
             <h2 className="text-xl font-bold text-gray-900 mb-2">
-              Loan Pickup Accepted!
+              {isReturn ? 'Loan Return Accepted!' : 'Loan Pickup Accepted!'}
             </h2>
             <p className="text-gray-600 text-sm">
-              Proceed to {loanTrip.fromLocation} to collect {loanTrip.quantityBags} bags.
+              {isReturn
+                ? `Proceed to ${loanTrip.fromLocation} to collect ${loanTrip.quantityBags} bags for return.`
+                : `Proceed to ${loanTrip.fromLocation} to collect ${loanTrip.quantityBags} bags.`
+              }
             </p>
           </div>
         </div>
@@ -144,7 +152,7 @@ export default function AcceptLoanPickupModal({
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="Accept Loan Pickup" size="md">
+    <Modal isOpen={isOpen} onClose={handleClose} title={isReturn ? "Accept Loan Return" : "Accept Loan Pickup"} size="md">
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && (
           <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm flex items-center gap-2">
@@ -153,22 +161,24 @@ export default function AcceptLoanPickupModal({
           </div>
         )}
 
-        {/* Loan Pickup Summary */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        {/* Loan Assignment Summary */}
+        <div className={`${isReturn ? 'bg-orange-50 border-orange-200' : 'bg-blue-50 border-blue-200'} border rounded-lg p-4`}>
           <div className="flex items-center gap-2 mb-3">
-            <Package className="w-5 h-5 text-blue-600" />
-            <span className="font-semibold text-blue-800">Loan Pickup Assignment</span>
+            <Package className={`w-5 h-5 ${isReturn ? 'text-orange-600' : 'text-blue-600'}`} />
+            <span className={`font-semibold ${isReturn ? 'text-orange-800' : 'text-blue-800'}`}>
+              {isReturn ? 'Loan Return Assignment' : 'Loan Pickup Assignment'}
+            </span>
           </div>
 
           {/* Route */}
-          <div className="flex items-center gap-2 text-sm text-blue-700 mb-2">
+          <div className={`flex items-center gap-2 text-sm ${isReturn ? 'text-orange-700' : 'text-blue-700'} mb-2`}>
             <MapPin className="w-4 h-4 flex-shrink-0" />
             <span className="font-medium">{loanTrip.fromLocation}</span>
-            <ArrowRight className="w-4 h-4 text-blue-400" />
+            <ArrowRight className={`w-4 h-4 ${isReturn ? 'text-orange-400' : 'text-blue-400'}`} />
             <span className="font-medium">{loanTrip.toLocation}</span>
           </div>
 
-          <div className="space-y-1 text-sm text-blue-700">
+          <div className={`space-y-1 text-sm ${isReturn ? 'text-orange-700' : 'text-blue-700'}`}>
             <p><strong>Quantity:</strong> {loanTrip.quantityBags} bags</p>
             <p><strong>Trip #:</strong> {loanTrip.tripNumber}</p>
             <p><strong>Assigned by:</strong> {loanTrip.assignedBy}</p>
@@ -234,8 +244,13 @@ export default function AcceptLoanPickupModal({
         {/* Info Banner */}
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
           <p className="text-sm text-amber-800">
-            After accepting, proceed to <strong>{loanTrip.fromLocation}</strong> to collect the stock.
-            The lending manager will confirm when you've collected the bags.
+            {isReturn ? (
+              <>After accepting, proceed to <strong>{loanTrip.fromLocation}</strong> to collect the stock for return.
+              The lender will confirm receipt when you deliver the bags.</>
+            ) : (
+              <>After accepting, proceed to <strong>{loanTrip.fromLocation}</strong> to collect the stock.
+              The lending manager will confirm when you've collected the bags.</>
+            )}
           </p>
         </div>
 
@@ -245,11 +260,11 @@ export default function AcceptLoanPickupModal({
           </Button>
           <Button
             type="submit"
-            className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+            className={`flex-1 ${isReturn ? 'bg-orange-600 hover:bg-orange-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
             isLoading={acceptMutation.isPending}
             disabled={!loanTrip.vehicle || !odometerStart}
           >
-            Accept & Start Pickup
+            {isReturn ? 'Accept & Start Return' : 'Accept & Start Pickup'}
           </Button>
         </div>
       </form>

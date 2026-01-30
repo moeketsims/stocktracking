@@ -773,14 +773,17 @@ async def confirm_collection(
     if loan["status"] not in ["in_transit", "active"]:
         raise HTTPException(status_code=400, detail=f"Cannot confirm collection for loan with status '{loan['status']}'")
 
-    # If already active, return success (idempotent)
+    # If already active, return success (idempotent) - prevents double-click issues
     if loan["status"] == "active":
-        return {
-            "success": True,
-            "message": f"Collection already confirmed. {loan['quantity_approved']} bags were released.",
-            "quantity_bags": loan["quantity_approved"],
-            "loan": loan
-        }
+        raise HTTPException(status_code=400, detail="Collection already confirmed. Stock has already been deducted.")
+
+    # Additional check: See if stock transaction already exists for this loan (prevents double deduction)
+    existing_transaction = supabase.table("stock_transactions").select("id").eq(
+        "location_id_from", loan["lender_location_id"]
+    ).ilike("notes", f"%Loan ID: {loan_id[:8]}%").execute()
+
+    if existing_transaction.data and len(existing_transaction.data) > 0:
+        raise HTTPException(status_code=400, detail="Collection already confirmed. Stock has already been deducted.")
 
     quantity = loan["quantity_approved"]
     if request and request.actual_quantity_bags:
@@ -895,6 +898,16 @@ async def confirm_receipt(
     # Verify user is BORROWER (stock is arriving TO their location)
     if loan["borrower_location_id"] != profile.get("location_id"):
         raise HTTPException(status_code=403, detail="Only the borrower can confirm receipt")
+
+    # Check if receipt was already confirmed (prevent double-click issues)
+    # We check if stock batch was already created for this loan's pickup trip
+    if loan.get("pickup_trip_id"):
+        existing_batch = supabase.table("stock_batches").select("id").eq(
+            "trip_id", loan["pickup_trip_id"]
+        ).eq("location_id", loan["borrower_location_id"]).execute()
+
+        if existing_batch.data and len(existing_batch.data) > 0:
+            raise HTTPException(status_code=400, detail="Pickup already confirmed. Stock has already been added to your inventory.")
 
     # Can confirm receipt if status is "active" (lender confirmed), "collected", or "in_transit"
     if loan["status"] not in ["active", "collected", "in_transit"]:
@@ -1090,7 +1103,7 @@ async def confirm_pickup(
 
 @router.post("/{loan_id}/initiate-return")
 async def initiate_return(loan_id: str, user_data: dict = Depends(require_auth)):
-    """Borrower initiates the return process."""
+    """Borrower initiates the return process. Changes status to return_initiated."""
     supabase = get_supabase_admin_client()
     profile = get_user_profile(supabase, user_data["user"].id)
 
@@ -1103,6 +1116,14 @@ async def initiate_return(loan_id: str, user_data: dict = Depends(require_auth))
 
     if loan["status"] not in ["active", "overdue"]:
         raise HTTPException(status_code=400, detail=f"Cannot initiate return for loan with status '{loan['status']}'")
+
+    # Update loan status to return_initiated
+    loan_update = supabase.table("loans").update({
+        "status": "return_initiated"
+    }).eq("id", loan_id).execute()
+
+    if not loan_update.data:
+        raise HTTPException(status_code=500, detail="Failed to update loan status")
 
     # Notify lender
     try:
@@ -1117,7 +1138,9 @@ async def initiate_return(loan_id: str, user_data: dict = Depends(require_auth))
     except Exception as e:
         print(f"Failed to send return initiated notification: {e}")
 
-    return {"message": "Return initiated. Please assign a driver for return delivery.", "loan": loan}
+    # Return updated loan data
+    updated_loan = loan_update.data[0] if isinstance(loan_update.data, list) else loan_update.data
+    return {"message": "Return initiated. Please assign a driver for return delivery.", "loan": updated_loan}
 
 
 @router.post("/{loan_id}/assign-return")
@@ -1126,7 +1149,7 @@ async def assign_return_driver(
     request: AssignDriverRequest,
     user_data: dict = Depends(require_auth)
 ):
-    """Borrower assigns a driver to return the loaned stock."""
+    """Borrower assigns a driver to return the loaned stock. Trip is created as 'planned' - driver must accept."""
     supabase = get_supabase_admin_client()
     profile = get_user_profile(supabase, user_data["user"].id)
 
@@ -1137,7 +1160,8 @@ async def assign_return_driver(
     if loan["borrower_location_id"] != profile.get("location_id"):
         raise HTTPException(status_code=403, detail="Only the borrower can assign return driver")
 
-    if loan["status"] not in ["active", "overdue"]:
+    # Allow assign-return from return_initiated, active, or overdue status
+    if loan["status"] not in ["return_initiated", "active", "overdue"]:
         raise HTTPException(status_code=400, detail=f"Cannot assign return for loan with status '{loan['status']}'")
 
     # Get vehicle info
@@ -1173,14 +1197,14 @@ async def assign_return_driver(
 
     trip_number = f"TRP-{year}-{max_seq + 1:04d}"
 
-    # Create trip for return
+    # Create trip for return - status is "planned" until driver accepts
     trip_data = {
         "id": str(uuid4()),
         "trip_number": trip_number,
         "vehicle_id": request.vehicle_id,
         "driver_id": request.driver_id if driver_result.data else None,
         "driver_name": driver_name,
-        "status": "in_progress",
+        "status": "planned",  # Driver needs to accept before it becomes in_progress
         "trip_type": "loan_return",
         "from_location_id": loan["borrower_location_id"],
         "to_location_id": loan["lender_location_id"],
@@ -1188,14 +1212,10 @@ async def assign_return_driver(
         "destination_description": f"Loan return to {loan['lender_location']['name']}",
         "notes": f"Loan return - {loan['quantity_approved']} bags",
         "created_by": user_data["user"].id,
-        "departure_time": datetime.now().isoformat(),
         "fuel_cost": 0,
         "toll_cost": 0,
         "other_cost": 0
     }
-
-    if request.odometer_start is not None:
-        trip_data["odometer_start"] = request.odometer_start
 
     if request.estimated_arrival_time:
         trip_data["estimated_arrival_time"] = request.estimated_arrival_time
@@ -1205,35 +1225,178 @@ async def assign_return_driver(
     if not trip_result.data:
         raise HTTPException(status_code=500, detail="Failed to create return trip")
 
-    # Update loan with trip reference and status
+    # Update loan with trip reference and status - driver needs to accept
     loan_update = supabase.table("loans").update({
-        "status": "return_in_transit",
+        "status": "return_assigned",  # Driver assigned but not yet accepted
         "return_trip_id": trip_data["id"]
     }).eq("id", loan_id).execute()
 
     if not loan_update.data:
         raise HTTPException(status_code=500, detail="Failed to update loan")
 
-    # Update vehicle odometer if provided
-    if request.odometer_start is not None:
-        supabase.table("vehicles").update({
-            "current_km": request.odometer_start
-        }).eq("id", request.vehicle_id).execute()
-
     return {
-        "message": "Return driver assigned. Trip created.",
+        "message": "Return driver assigned. Waiting for driver to accept.",
         "loan": loan_update.data,
         "trip": trip_result.data
+    }
+
+
+class AcceptReturnRequest(BaseModel):
+    """Request body for driver accepting loan return."""
+    odometer_start: int  # Required - driver must enter starting odometer
+
+
+@router.post("/{loan_id}/accept-return-assignment")
+async def accept_return_assignment(
+    loan_id: str,
+    request: AcceptReturnRequest,
+    user_data: dict = Depends(require_auth)
+):
+    """
+    Driver accepts the loan return assignment. This starts the return trip.
+    DEDUCTS stock from the borrower and sets loan status to return_in_progress.
+    """
+    supabase = get_supabase_admin_client()
+    user = user_data["user"]
+
+    # Validate odometer value
+    if request.odometer_start < 0:
+        raise HTTPException(status_code=400, detail="Odometer value cannot be negative")
+
+    # Get driver IDs from both tables
+    driver_ids = []
+    driver_result = supabase.table("drivers").select("id, full_name").eq(
+        "user_id", user.id
+    ).execute()
+    if driver_result.data:
+        driver_ids.append(driver_result.data[0]["id"])
+
+    profile_result = supabase.table("profiles").select("id, full_name, role").eq(
+        "user_id", user.id
+    ).execute()
+    if profile_result.data:
+        profile_id = profile_result.data[0]["id"]
+        if profile_id not in driver_ids:
+            driver_ids.append(profile_id)
+
+    if not driver_ids:
+        raise HTTPException(status_code=403, detail="Only drivers can accept return assignments")
+
+    # Get the loan
+    loan = get_loan_with_details(supabase, loan_id)
+
+    if loan["status"] != "return_assigned":
+        raise HTTPException(status_code=400, detail=f"Cannot accept return for loan with status '{loan['status']}'")
+
+    if not loan.get("return_trip_id"):
+        raise HTTPException(status_code=400, detail="No return trip assigned to this loan")
+
+    # Verify the trip is assigned to this driver
+    trip = supabase.table("trips").select("*").eq("id", loan["return_trip_id"]).execute()
+    if not trip.data:
+        raise HTTPException(status_code=404, detail="Return trip not found")
+
+    trip_data = trip.data[0]
+    if trip_data["driver_id"] not in driver_ids:
+        raise HTTPException(status_code=403, detail="This return is not assigned to you")
+
+    if trip_data["status"] != "planned":
+        raise HTTPException(status_code=400, detail=f"Trip is already {trip_data['status']}")
+
+    # Check for double-click protection - if stock already deducted
+    existing_transaction = supabase.table("stock_transactions").select("id").eq(
+        "location_id_from", loan["borrower_location_id"]
+    ).ilike("notes", f"%Loan return ID: {loan_id[:8]}%").execute()
+
+    if existing_transaction.data and len(existing_transaction.data) > 0:
+        raise HTTPException(status_code=400, detail="Return already accepted. Stock has already been deducted.")
+
+    # DEDUCT stock from borrower using stock_batches (FIFO)
+    quantity = loan["quantity_approved"]
+    quantity_kg = quantity * 10  # Convert bags to kg
+    remaining_to_deduct = quantity_kg
+
+    # Get the default item (Potatoes)
+    item_result = supabase.table("items").select("id").ilike("sku", "POT-%").limit(1).execute()
+    if not item_result.data:
+        item_result = supabase.table("items").select("id").limit(1).execute()
+    item_id = item_result.data[0]["id"] if item_result.data else None
+
+    # Get borrower's batches ordered by received_at (FIFO)
+    batches = supabase.table("stock_batches").select("*").eq(
+        "location_id", loan["borrower_location_id"]
+    ).gt("remaining_qty", 0).order("received_at", desc=False).execute()
+
+    deducted_from_batches = []
+    for batch in (batches.data or []):
+        if remaining_to_deduct <= 0:
+            break
+
+        batch_remaining = batch.get("remaining_qty", 0)
+        deduct_amount = min(batch_remaining, remaining_to_deduct)
+
+        new_remaining = batch_remaining - deduct_amount
+        supabase.table("stock_batches").update({
+            "remaining_qty": new_remaining
+        }).eq("id", batch["id"]).execute()
+
+        deducted_from_batches.append({
+            "batch_id": batch["id"],
+            "amount_kg": deduct_amount
+        })
+        remaining_to_deduct -= deduct_amount
+
+    # Create stock transaction for the return (stock leaving borrower)
+    if item_id:
+        transaction_data = {
+            "id": str(uuid4()),
+            "item_id": item_id,
+            "location_id_from": loan["borrower_location_id"],
+            "location_id_to": loan["lender_location_id"],
+            "type": "transfer",
+            "qty": quantity_kg,
+            "unit": "kg",
+            "created_by": user.id,
+            "notes": f"Loan return - {quantity} bags to {loan['lender_location']['name']} (Loan return ID: {loan_id[:8]})"
+        }
+        supabase.table("stock_transactions").insert(transaction_data).execute()
+
+    # Get current timestamp for driver_confirmed_at
+    driver_confirmed_at = datetime.now().isoformat()
+
+    # Update trip to in_progress with starting odometer
+    trip_update = supabase.table("trips").update({
+        "status": "in_progress",
+        "departure_time": driver_confirmed_at,
+        "odometer_start": request.odometer_start
+    }).eq("id", loan["return_trip_id"]).execute()
+
+    # Update loan to return_in_progress with driver confirmed timestamp
+    loan_update = supabase.table("loans").update({
+        "status": "return_in_progress",
+        "driver_confirmed_at": driver_confirmed_at  # New field for "Driver Confirmed" timestamp
+    }).eq("id", loan_id).execute()
+
+    return {
+        "success": True,
+        "message": f"Return accepted. {quantity} bags deducted from {loan['borrower_location']['name']}. Proceed to {loan['lender_location']['name']}.",
+        "quantity_bags": quantity,
+        "driver_confirmed_at": driver_confirmed_at,
+        "loan": loan_update.data,
+        "trip": trip_update.data
     }
 
 
 @router.post("/{loan_id}/confirm-return")
 async def confirm_return(
     loan_id: str,
-    request: ConfirmReturnRequest,
+    request: ConfirmReturnRequest = None,
     user_data: dict = Depends(require_auth)
 ):
-    """Lender confirms receipt of returned stock. This completes the loan."""
+    """
+    Lender confirms receipt of returned stock. This completes the loan.
+    ADDS stock to lender's inventory (borrower's stock was already deducted when driver accepted).
+    """
     supabase = get_supabase_admin_client()
     profile = get_user_profile(supabase, user_data["user"].id)
 
@@ -1244,65 +1407,90 @@ async def confirm_return(
     if loan["lender_location_id"] != profile.get("location_id"):
         raise HTTPException(status_code=403, detail="Only the lender can confirm return")
 
-    if loan["status"] != "return_in_transit":
+    if loan["status"] != "return_in_progress":
         raise HTTPException(status_code=400, detail=f"Cannot confirm return for loan with status '{loan['status']}'")
 
+    # Check for double-click protection - if stock already added
+    if loan.get("return_trip_id"):
+        existing_batch = supabase.table("stock_batches").select("id").eq(
+            "trip_id", loan["return_trip_id"]
+        ).eq("location_id", loan["lender_location_id"]).execute()
+
+        if existing_batch.data and len(existing_batch.data) > 0:
+            raise HTTPException(status_code=400, detail="Return already confirmed. Stock has already been added to your inventory.")
+
     quantity = loan["quantity_approved"]
+    quantity_kg = quantity * 10  # Convert bags to kg
 
-    # Transfer stock back: Deduct from borrower, add to lender
-    # Get borrower's current stock
-    borrower_stock = supabase.table("stock").select("*").eq(
-        "location_id", loan["borrower_location_id"]
-    ).execute()
+    # Get the default item (Potatoes)
+    item_result = supabase.table("items").select("id").ilike("sku", "POT-%").limit(1).execute()
+    if not item_result.data:
+        item_result = supabase.table("items").select("id").limit(1).execute()
+    item_id = item_result.data[0]["id"] if item_result.data else None
 
-    if borrower_stock.data and len(borrower_stock.data) > 0:
-        current_borrower_qty = borrower_stock.data[0].get("quantity_bags", 0)
-        new_borrower_qty = max(0, current_borrower_qty - quantity)
-        supabase.table("stock").update({
-            "quantity_bags": new_borrower_qty
-        }).eq("location_id", loan["borrower_location_id"]).execute()
+    # Get current timestamp - this is the "Returned on" timestamp shown on both sides
+    return_confirmed_at = datetime.now().isoformat()
 
-    # Get lender's current stock
-    lender_stock = supabase.table("stock").select("*").eq(
-        "location_id", loan["lender_location_id"]
-    ).execute()
+    # ADD stock to lender - create a new batch
+    if item_id:
+        # Get a default supplier (supplier_id is required in stock_batches)
+        supplier_result = supabase.table("suppliers").select("id").limit(1).execute()
+        default_supplier_id = supplier_result.data[0]["id"] if supplier_result.data else None
 
-    if lender_stock.data and len(lender_stock.data) > 0:
-        current_lender_qty = lender_stock.data[0].get("quantity_bags", 0)
-        new_lender_qty = current_lender_qty + quantity
-        supabase.table("stock").update({
-            "quantity_bags": new_lender_qty
-        }).eq("location_id", loan["lender_location_id"]).execute()
-    else:
-        # Create stock record if doesn't exist
-        supabase.table("stock").insert({
-            "location_id": loan["lender_location_id"],
-            "quantity_bags": quantity
-        }).execute()
+        if default_supplier_id:
+            batch_data = {
+                "id": str(uuid4()),
+                "item_id": item_id,
+                "location_id": loan["lender_location_id"],
+                "supplier_id": default_supplier_id,
+                "trip_id": loan.get("return_trip_id"),
+                "initial_qty": quantity_kg,
+                "remaining_qty": quantity_kg,
+                "received_at": return_confirmed_at,
+                "quality_score": 1,
+                "status": "available",
+                "last_edited_by": user_data["user"].id,
+                "quality_notes": f"Loan return from {loan['borrower_location']['name']} ({quantity} bags)"
+            }
+            supabase.table("stock_batches").insert(batch_data).execute()
+
+        # Create stock transaction for the return receipt
+        transaction_data = {
+            "id": str(uuid4()),
+            "item_id": item_id,
+            "location_id_to": loan["lender_location_id"],
+            "location_id_from": loan["borrower_location_id"],
+            "type": "receive",
+            "qty": quantity_kg,
+            "unit": "kg",
+            "created_by": user_data["user"].id,
+            "notes": f"Loan return received from {loan['borrower_location']['name']} - {quantity} bags (Loan ID: {loan_id[:8]})"
+        }
+        supabase.table("stock_transactions").insert(transaction_data).execute()
 
     # Complete the return trip
     if loan.get("return_trip_id"):
         trip_update = {
             "status": "completed",
-            "completed_at": datetime.now().isoformat()
+            "completed_at": return_confirmed_at
         }
-        if request.odometer_end is not None:
+        if request and request.odometer_end is not None:
             trip_update["odometer_end"] = request.odometer_end
 
         supabase.table("trips").update(trip_update).eq("id", loan["return_trip_id"]).execute()
 
         # Update vehicle odometer
-        if request.odometer_end is not None:
+        if request and request.odometer_end is not None:
             trip = supabase.table("trips").select("vehicle_id").eq("id", loan["return_trip_id"]).execute()
             if trip.data:
                 supabase.table("vehicles").update({
                     "current_km": request.odometer_end
                 }).eq("id", trip.data[0]["vehicle_id"]).execute()
 
-    # Update loan status to completed
+    # Update loan status to completed with the return timestamp
     loan_update = supabase.table("loans").update({
         "status": "completed",
-        "actual_return_date": datetime.now().isoformat()
+        "actual_return_date": return_confirmed_at  # This timestamp shows on both sides
     }).eq("id", loan_id).execute()
 
     if not loan_update.data:
@@ -1335,6 +1523,9 @@ async def confirm_return(
         print(f"Failed to send loan completed notification: {e}")
 
     return {
+        "success": True,
         "message": f"Loan completed. {quantity} bags returned to your stock.",
+        "quantity_bags": quantity,
+        "returned_at": return_confirmed_at,
         "loan": loan_update.data
     }

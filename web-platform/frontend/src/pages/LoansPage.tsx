@@ -27,7 +27,7 @@ import { useAuthStore } from '../stores/authStore';
 import type { Loan, LoanStatus, Vehicle, Driver } from '../types';
 
 // Status configuration for loan badges
-const LOAN_STATUS_CONFIG: Record<LoanStatus | 'pickup_pending' | 'collected', { label: string; bgColor: string; color: string; borderColor: string }> = {
+const LOAN_STATUS_CONFIG: Record<string, { label: string; bgColor: string; color: string; borderColor: string }> = {
   pending: { label: 'Pending', bgColor: 'bg-amber-50', color: 'text-amber-700', borderColor: 'border-amber-200' },
   accepted: { label: 'Accepted', bgColor: 'bg-blue-50', color: 'text-blue-700', borderColor: 'border-blue-200' },
   rejected: { label: 'Rejected', bgColor: 'bg-red-50', color: 'text-red-700', borderColor: 'border-red-200' },
@@ -36,6 +36,10 @@ const LOAN_STATUS_CONFIG: Record<LoanStatus | 'pickup_pending' | 'collected', { 
   in_transit: { label: 'In Transit', bgColor: 'bg-indigo-50', color: 'text-indigo-700', borderColor: 'border-indigo-200' },
   collected: { label: 'Collected', bgColor: 'bg-teal-50', color: 'text-teal-700', borderColor: 'border-teal-200' },
   active: { label: 'Received', bgColor: 'bg-emerald-50', color: 'text-emerald-700', borderColor: 'border-emerald-200' },
+  // New return statuses
+  return_initiated: { label: 'Return Started', bgColor: 'bg-orange-50', color: 'text-orange-700', borderColor: 'border-orange-200' },
+  return_assigned: { label: 'Returning', bgColor: 'bg-orange-50', color: 'text-orange-700', borderColor: 'border-orange-200' },
+  return_in_progress: { label: 'Return In Progress', bgColor: 'bg-cyan-50', color: 'text-cyan-700', borderColor: 'border-cyan-200' },
   return_in_transit: { label: 'Return In Transit', bgColor: 'bg-cyan-50', color: 'text-cyan-700', borderColor: 'border-cyan-200' },
   completed: { label: 'Completed', bgColor: 'bg-gray-50', color: 'text-gray-600', borderColor: 'border-gray-200' },
   overdue: { label: 'Overdue', bgColor: 'bg-red-100', color: 'text-red-800', borderColor: 'border-red-300' },
@@ -80,11 +84,11 @@ export default function LoansPage({ onNavigateToTrip }: LoansPageProps) {
       if (activeTab === 'borrowed') {
         params.as_borrower = true;
         // Borrowed shows loans once they're accepted (borrower needs to confirm or it's in progress)
-        params.status = 'accepted,confirmed,in_transit,active,overdue,return_in_transit,completed';
+        params.status = 'accepted,confirmed,in_transit,active,overdue,return_initiated,return_assigned,return_in_progress,return_in_transit,completed';
       } else if (activeTab === 'lent') {
         params.as_lender = true;
         // Lent out shows loans once accepted by lender (they've agreed to lend)
-        params.status = 'accepted,confirmed,in_transit,active,overdue,return_in_transit,completed';
+        params.status = 'accepted,confirmed,in_transit,active,overdue,return_initiated,return_assigned,return_in_progress,return_in_transit,completed';
       } else if (activeTab === 'requests') {
         // Requests tab shows only PENDING requests (waiting for decision)
         // Once accepted, it moves to Borrowed/Lent Out tabs
@@ -544,6 +548,8 @@ export default function LoansPage({ onNavigateToTrip }: LoansPageProps) {
               onNavigateToTrip={onNavigateToTrip}
               isManager={isManager()}
               isConfirmPending={confirmLoanMutation.isPending}
+              isConfirmPickupPending={confirmPickupMutation.isPending}
+              isConfirmReturnPending={confirmReturnMutation.isPending}
             />
           ))}
         </div>
@@ -627,6 +633,8 @@ function LoanCard({
   onNavigateToTrip,
   isManager,
   isConfirmPending,
+  isConfirmPickupPending,
+  isConfirmReturnPending,
 }: {
   loan: Loan;
   isBorrower: boolean;
@@ -647,9 +655,16 @@ function LoanCard({
   onNavigateToTrip?: (tripId: string) => void;
   isManager: boolean;
   isConfirmPending?: boolean;
+  isConfirmPickupPending?: boolean;
+  isConfirmReturnPending?: boolean;
 }) {
-  // Status badge always shows the actual loan status
-  const statusConfig = LOAN_STATUS_CONFIG[loan.status as keyof typeof LOAN_STATUS_CONFIG];
+  // Status badge always shows the actual loan status (with fallback for unknown statuses)
+  const statusConfig = LOAN_STATUS_CONFIG[loan.status as keyof typeof LOAN_STATUS_CONFIG] || {
+    label: loan.status || 'Unknown',
+    bgColor: 'bg-gray-50',
+    color: 'text-gray-600',
+    borderColor: 'border-gray-200'
+  };
   const returnInfo = getDaysUntilReturn(loan.estimated_return_date);
   const quantity = loan.quantity_approved || loan.quantity_requested;
 
@@ -704,11 +719,79 @@ function LoanCard({
           </div>
         );
       }
+      // Return initiated or assigned - show "Received by Borrower" + "Return Inbound" loading bar
+      if (loan.status === 'return_initiated' || loan.status === 'return_assigned') {
+        return (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-lg w-fit">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span className="text-xs font-medium text-emerald-700">Received by Borrower</span>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] text-gray-400 font-medium">Return Inbound</span>
+              <div className="w-32 h-1 bg-gray-200 rounded-full overflow-hidden">
+                <div className="h-full w-1/3 bg-gradient-to-r from-orange-400 to-orange-500 rounded-full animate-slide-right" />
+              </div>
+            </div>
+          </div>
+        );
+      }
+      // Return in progress - driver accepted, show loading bar + "Confirm Return" button
+      if (loan.status === 'return_in_progress' && isManager) {
+        return (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-lg w-fit">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span className="text-xs font-medium text-emerald-700">Received by Borrower</span>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] text-gray-400 font-medium">Driver en route</span>
+              <div className="w-32 h-1 bg-gray-200 rounded-full overflow-hidden">
+                <div className="h-full w-1/3 bg-gradient-to-r from-orange-400 to-orange-500 rounded-full animate-slide-right" />
+              </div>
+            </div>
+            <Button
+              size="sm"
+              onClick={onConfirmReturn}
+              disabled={isConfirmReturnPending}
+              className="bg-orange-500 hover:bg-orange-600 h-7 text-xs px-3 w-fit disabled:opacity-50"
+            >
+              <CheckCircle2 className="w-3 h-3 mr-1" />
+              {isConfirmReturnPending ? 'Confirming...' : 'Confirm Return'}
+            </Button>
+          </div>
+        );
+      }
+      // Old return_in_transit status - keep for backwards compatibility
       if (loan.status === 'return_in_transit' && isManager) {
         return (
-          <Button size="sm" onClick={onConfirmReturn} className="bg-emerald-600 hover:bg-emerald-700 h-7 text-xs px-3">
-            <CheckCircle2 className="w-3 h-3 mr-1" /> Confirm Return
+          <Button
+            size="sm"
+            onClick={onConfirmReturn}
+            disabled={isConfirmReturnPending}
+            className="bg-emerald-600 hover:bg-emerald-700 h-7 text-xs px-3 disabled:opacity-50"
+          >
+            <CheckCircle2 className="w-3 h-3 mr-1" />
+            {isConfirmReturnPending ? 'Confirming...' : 'Confirm Return'}
           </Button>
+        );
+      }
+      // Completed - show both checkmarks with timestamp
+      if (loan.status === 'completed' && loan.actual_return_date) {
+        const returnDate = new Date(loan.actual_return_date);
+        const formattedDate = returnDate.toLocaleDateString('en-ZA', { month: 'short', day: 'numeric' }) +
+          ', ' + returnDate.toLocaleTimeString('en-ZA', { hour: 'numeric', minute: '2-digit', hour12: true });
+        return (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-lg w-fit">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span className="text-xs font-medium text-emerald-700">Received by Borrower</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span className="text-[11px] text-emerald-700 font-medium">Returned on {formattedDate}</span>
+            </div>
+          </div>
         );
       }
     }
@@ -760,8 +843,14 @@ function LoanCard({
       // When lender has confirmed collection, borrower can confirm receipt
       if (loan.status === 'collected' && isManager) {
         return (
-          <Button size="sm" onClick={onConfirmPickup} className="bg-emerald-600 hover:bg-emerald-700 h-7 text-xs px-3">
-            <CheckCircle2 className="w-3 h-3 mr-1" /> Confirm Receipt
+          <Button
+            size="sm"
+            onClick={onConfirmPickup}
+            disabled={isConfirmPickupPending}
+            className="bg-emerald-600 hover:bg-emerald-700 h-7 text-xs px-3 disabled:opacity-50"
+          >
+            <CheckCircle2 className="w-3 h-3 mr-1" />
+            {isConfirmPickupPending ? 'Confirming...' : 'Confirm Receipt'}
           </Button>
         );
       }
@@ -770,6 +859,49 @@ function LoanCard({
           <Button size="sm" onClick={onInitiateReturn} className="bg-orange-500 hover:bg-orange-600 h-7 text-xs px-3">
             <RotateCcw className="w-3 h-3 mr-1" /> Start Return
           </Button>
+        );
+      }
+      // Return initiated - show "Assign Driver" button
+      if (loan.status === 'return_initiated' && isManager) {
+        return (
+          <Button size="sm" onClick={onAssignReturn} className="bg-blue-600 hover:bg-blue-700 h-7 text-xs px-3">
+            <Truck className="w-3 h-3 mr-1" /> Assign Driver
+          </Button>
+        );
+      }
+      // Return assigned - show "Returning" + loading bar (waiting for driver to accept)
+      if (loan.status === 'return_assigned') {
+        return (
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-orange-700">Returning</span>
+            <div className="w-32 h-1 bg-gray-200 rounded-full overflow-hidden">
+              <div className="h-full w-1/3 bg-gradient-to-r from-orange-400 to-orange-500 rounded-full animate-slide-right" />
+            </div>
+          </div>
+        );
+      }
+      // Return in progress - driver accepted, show "Driver Confirmed" with timestamp
+      if (loan.status === 'return_in_progress') {
+        const confirmedDate = loan.driver_confirmed_at ? new Date(loan.driver_confirmed_at) : new Date();
+        const formattedDate = confirmedDate.toLocaleDateString('en-ZA', { month: 'short', day: 'numeric' }) +
+          ', ' + confirmedDate.toLocaleTimeString('en-ZA', { hour: 'numeric', minute: '2-digit', hour12: true });
+        return (
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+            <span className="text-[11px] text-emerald-700 font-medium">Driver Confirmed {formattedDate}</span>
+          </div>
+        );
+      }
+      // Completed - show "Returned on" with timestamp
+      if (loan.status === 'completed' && loan.actual_return_date) {
+        const returnDate = new Date(loan.actual_return_date);
+        const formattedDate = returnDate.toLocaleDateString('en-ZA', { month: 'short', day: 'numeric' }) +
+          ', ' + returnDate.toLocaleTimeString('en-ZA', { hour: 'numeric', minute: '2-digit', hour12: true });
+        return (
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+            <span className="text-[11px] text-emerald-700 font-medium">Returned on {formattedDate}</span>
+          </div>
         );
       }
     }

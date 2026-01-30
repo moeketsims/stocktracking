@@ -357,8 +357,11 @@ export const loansApi = {
     api.post(`/api/loans/${id}/initiate-return`, data),
   assignReturn: (id: string, data: { driver_id?: string; vehicle_id: string; notes?: string }) =>
     api.post(`/api/loans/${id}/assign-return`, data),
-  confirmReturn: (id: string, data: { notes?: string }) =>
-    api.post(`/api/loans/${id}/confirm-return`, data),
+  // Driver accepts return assignment (deducts from borrower)
+  acceptReturnAssignment: (id: string, data: { odometer_start: number }) =>
+    api.post(`/api/loans/${id}/accept-return-assignment`, data),
+  confirmReturn: (id: string, data?: { notes?: string }) =>
+    api.post(`/api/loans/${id}/confirm-return`, data || {}),
 };
 
 // Barcode Scanning API
