@@ -34,13 +34,45 @@ class UpdateDriverRequest(BaseModel):
 @router.get("")
 async def list_drivers(
     active_only: bool = Query(True, description="Only return active drivers"),
+    include_profiles: bool = Query(True, description="Include profiles with role=driver"),
     user_data: dict = Depends(get_current_user)
 ):
-    """List all drivers with their invitation status."""
+    """List all drivers with their invitation status. Includes profiles with role=driver."""
     supabase = get_supabase_admin_client()
 
     try:
-        # Get drivers without join - we'll handle invitation status separately
+        drivers = []
+        seen_user_ids = set()
+        seen_ids = set()
+        seen_names = set()  # Track names to prevent duplicates
+
+        # First, get profiles with role="driver" (these are actual system users who can log in)
+        if include_profiles:
+            profile_query = supabase.table("profiles").select(
+                "id, user_id, full_name, role, is_active"
+            ).eq("role", "driver")
+
+            if active_only:
+                profile_query = profile_query.eq("is_active", True)
+
+            profile_result = profile_query.execute()
+
+            for profile in (profile_result.data or []):
+                drivers.append({
+                    "id": profile["id"],
+                    "user_id": profile.get("user_id"),
+                    "full_name": profile["full_name"],
+                    "is_active": profile.get("is_active", True),
+                    "invitation_status": "active",  # Profiles are always "active" users
+                    "source": "profile"  # Track where this came from
+                })
+                seen_ids.add(profile["id"])
+                if profile.get("user_id"):
+                    seen_user_ids.add(profile["user_id"])
+                # Track normalized name (lowercase, stripped) to prevent duplicates
+                seen_names.add(profile["full_name"].lower().strip())
+
+        # Then get drivers from the drivers table (may not have user accounts yet)
         query = supabase.table("drivers").select("*").order("full_name", desc=False)
 
         if active_only:
@@ -49,8 +81,20 @@ async def list_drivers(
         result = query.execute()
 
         # Process drivers to add invitation_status field
-        drivers = []
         for driver in (result.data or []):
+            # Skip if we already have this exact ID from profiles
+            if driver["id"] in seen_ids:
+                continue
+
+            # Skip if we already have this user_id from profiles
+            if driver.get("user_id") and driver["user_id"] in seen_user_ids:
+                continue
+
+            # Skip if we already have someone with the same name (case-insensitive)
+            driver_name_normalized = driver.get("full_name", "").lower().strip()
+            if driver_name_normalized in seen_names:
+                continue
+
             # Determine invitation status based on user_id and invitation_id
             if driver.get("user_id"):
                 invitation_status = "active"  # Has a linked user account
@@ -83,7 +127,14 @@ async def list_drivers(
                 invitation_status = "no_invitation"
 
             driver["invitation_status"] = invitation_status
+            driver["source"] = "drivers_table"
             drivers.append(driver)
+
+            # Track this driver's name to prevent future duplicates
+            seen_names.add(driver_name_normalized)
+
+        # Sort all drivers by name
+        drivers.sort(key=lambda d: d.get("full_name", "").lower())
 
         return {
             "drivers": drivers,

@@ -234,6 +234,9 @@ export const tripsApi = {
   getDriverAwaitingKm: () => api.get('/api/trips/driver/awaiting-km'),
   submitKm: (tripId: string, closingKm: number) =>
     api.post(`/api/trips/${tripId}/submit-km`, null, { params: { closing_km: closingKm } }),
+  // Driver loan trips
+  getDriverLoanTrips: () => api.get('/api/trips/driver/loan-trips'),
+  getDriverLoanTripsCount: () => api.get('/api/trips/driver/loan-trips/count'),
 };
 
 // Demo Data API (for seeding test data)
@@ -321,6 +324,41 @@ export const locationsApi = {
   getThresholds: (id: string) => api.get(`/api/locations/${id}/thresholds`),
   updateThresholds: (id: string, data: { critical_stock_threshold: number; low_stock_threshold: number }) =>
     api.patch(`/api/locations/${id}/thresholds`, data),
+};
+
+// Loans API (Inter-shop Stock Borrowing)
+export const loansApi = {
+  list: (params?: { status?: string; as_borrower?: boolean; as_lender?: boolean; limit?: number }) =>
+    api.get('/api/loans', { params }),
+  get: (id: string) => api.get(`/api/loans/${id}`),
+  getPendingCount: () => api.get('/api/loans/pending-count'),
+  getOtherLocations: () => api.get('/api/loans/locations'),
+  create: (data: { lender_location_id: string; quantity_requested: number; estimated_return_date: string; notes?: string }) =>
+    api.post('/api/loans', data),
+  accept: (id: string, data: { quantity_approved: number; notes?: string }) =>
+    api.post(`/api/loans/${id}/accept`, data),
+  reject: (id: string, data: { reason: string }) =>
+    api.post(`/api/loans/${id}/reject`, data),
+  confirm: (id: string) => api.post(`/api/loans/${id}/confirm`),
+  assignPickup: (id: string, data: { driver_id?: string; vehicle_id: string; notes?: string }) =>
+    api.post(`/api/loans/${id}/assign-pickup`, data),
+  acceptPickup: (id: string, data: { odometer_start: number }) =>
+    api.post(`/api/loans/${id}/accept-pickup`, data),
+  // Lender confirms driver collected stock (deducts from lender)
+  confirmCollection: (id: string, data?: { actual_quantity_bags?: number }) =>
+    api.post(`/api/loans/${id}/confirm-collection`, data || {}),
+  // Borrower confirms stock arrived (adds to borrower)
+  confirmReceipt: (id: string, data?: { notes?: string }) =>
+    api.post(`/api/loans/${id}/confirm-receipt`, data || {}),
+  // Legacy endpoint - kept for backwards compatibility
+  confirmPickup: (id: string, data?: { notes?: string }) =>
+    api.post(`/api/loans/${id}/confirm-pickup`, data || {}),
+  initiateReturn: (id: string, data: { notes?: string }) =>
+    api.post(`/api/loans/${id}/initiate-return`, data),
+  assignReturn: (id: string, data: { driver_id?: string; vehicle_id: string; notes?: string }) =>
+    api.post(`/api/loans/${id}/assign-return`, data),
+  confirmReturn: (id: string, data: { notes?: string }) =>
+    api.post(`/api/loans/${id}/confirm-return`, data),
 };
 
 // Barcode Scanning API

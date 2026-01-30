@@ -48,7 +48,7 @@ async def list_trips(
 
     try:
         query = supabase.table("trips").select(
-            "id, trip_number, status, vehicle_id, driver_id, driver_name, departure_time, completed_at, created_at, fuel_cost, toll_cost, other_cost, odometer_start, odometer_end, origin_description, destination_description, "
+            "id, trip_number, status, trip_type, vehicle_id, driver_id, driver_name, departure_time, completed_at, created_at, fuel_cost, toll_cost, other_cost, odometer_start, odometer_end, origin_description, destination_description, from_location_id, to_location_id, "
             "vehicles(id, registration_number, make, model), "
             "from_location:locations!trips_from_location_id_fkey(id, name), "
             "to_location:locations!trips_to_location_id_fkey(id, name), "
@@ -131,6 +131,165 @@ async def get_trip_summary(
         }
 
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/driver/loan-trips")
+async def get_driver_loan_trips(user_data: dict = Depends(get_current_user)):
+    """Get loan pickup/return trips assigned to the current driver.
+
+    Returns trips with trip_type 'loan_pickup' or 'loan_return' that are
+    assigned to the current driver and are in 'planned' or 'in_progress' status.
+    """
+    supabase = get_supabase_admin_client()
+
+    if not user_data:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    user = user_data["user"]
+
+    try:
+        # Get driver IDs from both tables (same pattern as other endpoints)
+        driver_ids = []
+
+        # Check drivers table
+        driver_result = supabase.table("drivers").select("id, full_name").eq(
+            "user_id", user.id
+        ).execute()
+
+        if driver_result.data:
+            driver_ids.append(driver_result.data[0]["id"])
+
+        # Also check profiles table
+        profile_result = supabase.table("profiles").select("id, full_name, role").eq(
+            "user_id", user.id
+        ).execute()
+
+        if profile_result.data:
+            profile_id = profile_result.data[0]["id"]
+            if profile_id not in driver_ids:
+                driver_ids.append(profile_id)
+
+            # Verify user is a driver
+            if profile_result.data[0].get("role") != "driver":
+                return {"trips": [], "total": 0, "message": "Not a driver"}
+
+        if not driver_ids:
+            return {"trips": [], "total": 0, "message": "Driver not found"}
+
+        # Get loan trips assigned to this driver
+        result = supabase.table("trips").select(
+            "id, trip_number, status, vehicle_id, driver_id, driver_name, trip_type, "
+            "departure_time, estimated_arrival_time, created_at, notes, "
+            "origin_description, destination_description, odometer_start, "
+            "vehicles(id, registration_number, make, model), "
+            "from_location:locations!trips_from_location_id_fkey(id, name), "
+            "to_location:locations!trips_to_location_id_fkey(id, name)"
+        ).in_("driver_id", driver_ids).in_(
+            "trip_type", ["loan_pickup", "loan_return"]
+        ).in_(
+            "status", ["planned", "in_progress"]
+        ).order("created_at", desc=True).execute()
+
+        trips = result.data or []
+
+        # For each trip, try to get the associated loan info
+        for trip in trips:
+            trip_id = trip["id"]
+            loan = None
+
+            # Check if this trip is a pickup trip for any loan
+            pickup_loan = supabase.table("loans").select(
+                "id, quantity_approved, borrower_location_id, lender_location_id, "
+                "borrower:locations!loans_borrower_location_id_fkey(id, name), "
+                "lender:locations!loans_lender_location_id_fkey(id, name)"
+            ).eq("pickup_trip_id", trip_id).execute()
+
+            if pickup_loan.data:
+                loan = pickup_loan.data[0]
+            else:
+                # Check if this trip is a return trip for any loan
+                return_loan = supabase.table("loans").select(
+                    "id, quantity_approved, borrower_location_id, lender_location_id, "
+                    "borrower:locations!loans_borrower_location_id_fkey(id, name), "
+                    "lender:locations!loans_lender_location_id_fkey(id, name)"
+                ).eq("return_trip_id", trip_id).execute()
+
+                if return_loan.data:
+                    loan = return_loan.data[0]
+
+            if loan:
+                trip["loan_id"] = loan["id"]
+                trip["quantity_bags"] = loan.get("quantity_approved", 0)
+                trip["loan"] = loan
+
+        return {
+            "trips": trips,
+            "total": len(trips)
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting driver loan trips: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/driver/loan-trips/count")
+async def get_driver_loan_trips_count(user_data: dict = Depends(get_current_user)):
+    """Get count of loan trips assigned to the current driver.
+
+    Returns count of trips with trip_type 'loan_pickup' or 'loan_return' that are
+    assigned to the current driver and are in 'planned' or 'in_progress' status.
+    """
+    supabase = get_supabase_admin_client()
+
+    if not user_data:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    user = user_data["user"]
+
+    try:
+        # Get driver IDs from both tables
+        driver_ids = []
+
+        # Check drivers table
+        driver_result = supabase.table("drivers").select("id").eq(
+            "user_id", user.id
+        ).execute()
+
+        if driver_result.data:
+            driver_ids.append(driver_result.data[0]["id"])
+
+        # Also check profiles table
+        profile_result = supabase.table("profiles").select("id, role").eq(
+            "user_id", user.id
+        ).execute()
+
+        if profile_result.data:
+            profile_id = profile_result.data[0]["id"]
+            if profile_id not in driver_ids:
+                driver_ids.append(profile_id)
+
+            # Verify user is a driver
+            if profile_result.data[0].get("role") != "driver":
+                return {"count": 0}
+
+        if not driver_ids:
+            return {"count": 0}
+
+        # Count loan trips assigned to this driver
+        # Fetch IDs only and count the results
+        result = supabase.table("trips").select("id").in_(
+            "driver_id", driver_ids
+        ).in_(
+            "trip_type", ["loan_pickup", "loan_return"]
+        ).in_(
+            "status", ["planned", "in_progress"]
+        ).execute()
+
+        return {"count": len(result.data) if result.data else 0}
+
+    except Exception as e:
+        logger.error(f"Error getting driver loan trips count: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

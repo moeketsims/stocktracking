@@ -1,0 +1,1 @@
+-- Migration: Add collected status to loan_status enum

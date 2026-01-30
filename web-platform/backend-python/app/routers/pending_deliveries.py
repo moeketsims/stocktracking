@@ -49,7 +49,9 @@ async def list_pending_deliveries(
             "*, "
             "location:locations(id, name, type), "
             "supplier:suppliers(id, name), "
-            "trip:trips(id, trip_number, status, driver_name, driver_id, vehicles(registration_number, make, model)), "
+            "trip:trips(id, trip_number, trip_type, status, driver_name, driver_id, from_location_id, "
+            "vehicles(registration_number, make, model), "
+            "from_location:locations!trips_from_location_id_fkey(id, name)), "
             "stock_request:stock_requests(id, quantity_bags, urgency), "
             "confirmer:profiles!pending_deliveries_confirmed_by_fkey(id, full_name)"
         ).order("created_at", desc=True).limit(limit)
@@ -116,7 +118,9 @@ async def list_pending_only(
             "*, "
             "location:locations(id, name), "
             "supplier:suppliers(id, name), "
-            "trip:trips(id, trip_number, driver_name, vehicles(registration_number, make, model)), "
+            "trip:trips(id, trip_number, trip_type, driver_name, from_location_id, "
+            "vehicles(registration_number, make, model), "
+            "from_location:locations!trips_from_location_id_fkey(id, name)), "
             "stock_request:stock_requests(id, quantity_bags, urgency)"
         ).eq("status", "pending").order("created_at", desc=True).limit(limit)
 

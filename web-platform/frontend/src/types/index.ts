@@ -501,7 +501,7 @@ export interface Driver {
 
 // Trip Types
 export type TripStatus = 'planned' | 'in_progress' | 'completed' | 'cancelled';
-export type TripType = 'supplier_to_warehouse' | 'supplier_to_shop' | 'warehouse_to_shop' | 'shop_to_shop' | 'shop_to_warehouse' | 'other';
+export type TripType = 'supplier_to_warehouse' | 'supplier_to_shop' | 'warehouse_to_shop' | 'shop_to_shop' | 'shop_to_warehouse' | 'other' | 'loan_pickup' | 'loan_return';
 
 export interface Trip {
   id: string;
@@ -538,9 +538,11 @@ export interface Trip {
     name: string;
   };
   from_location?: {
+    id?: string;
     name: string;
   };
   to_location?: {
+    id?: string;
     name: string;
   };
 }
@@ -877,4 +879,84 @@ export interface ConfirmDeliveryForm {
 
 export interface RejectDeliveryForm {
   reason: string;
+}
+
+// Loan Types (Inter-shop Stock Borrowing)
+export type LoanStatus =
+  | 'pending'           // Initial request, awaiting lender response
+  | 'accepted'          // Lender accepted (possibly with modified qty), awaiting borrower confirmation
+  | 'rejected'          // Lender or borrower rejected the request/counter-offer
+  | 'confirmed'         // Borrower confirmed, awaiting pickup assignment
+  | 'in_transit'        // Driver assigned, pickup in progress
+  | 'collected'         // Lender confirmed collection, driver en route to borrower
+  | 'active'            // Stock delivered to borrower, loan is ongoing
+  | 'return_in_transit' // Return delivery in progress
+  | 'completed'         // Stock returned to lender
+  | 'overdue';          // Past return date and not yet returned
+
+export interface Loan {
+  id: string;
+  borrower_location_id: string;
+  lender_location_id: string;
+  requested_by: string;
+  approved_by: string | null;
+  quantity_requested: number;
+  quantity_approved: number | null;
+  estimated_return_date: string;
+  actual_return_date: string | null;
+  status: LoanStatus;
+  pickup_trip_id: string | null;
+  return_trip_id: string | null;
+  notes: string | null;
+  rejection_reason: string | null;
+  created_at: string;
+  updated_at: string;
+  // Joined relations
+  borrower_location?: {
+    id: string;
+    name: string;
+  };
+  lender_location?: {
+    id: string;
+    name: string;
+  };
+  requester?: {
+    id: string;
+    full_name: string | null;
+    email: string;
+  };
+  approver?: {
+    id: string;
+    full_name: string | null;
+    email: string;
+  };
+  pickup_trip?: Trip;
+  return_trip?: Trip;
+}
+
+export interface LoansData {
+  loans: Loan[];
+  total: number;
+}
+
+export interface CreateLoanForm {
+  lender_location_id: string;
+  quantity_requested: number;
+  estimated_return_date: string;
+  notes?: string;
+}
+
+export interface AcceptLoanForm {
+  quantity_approved: number;
+  notes?: string;
+}
+
+export interface RejectLoanForm {
+  reason: string;
+}
+
+export interface AssignLoanDriverForm {
+  driver_id?: string;
+  vehicle_id: string;
+  notes?: string;
 }

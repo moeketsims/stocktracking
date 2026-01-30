@@ -30,6 +30,7 @@ def init_scheduler():
     # Import jobs here to avoid circular imports
     from app.jobs.request_expiration import process_request_escalations
     from app.jobs.low_stock_alerts import process_low_stock_alerts
+    from app.jobs.overdue_loans import process_overdue_loans
 
     # Request expiration/escalation job - runs every 5 minutes
     scheduler.add_job(
@@ -47,6 +48,16 @@ def init_scheduler():
         trigger=IntervalTrigger(minutes=15),
         id='low_stock_alert_job',
         name='Process Low Stock Alerts',
+        replace_existing=True,
+        max_instances=1
+    )
+
+    # Overdue loans reminder job - runs every hour
+    scheduler.add_job(
+        process_overdue_loans,
+        trigger=IntervalTrigger(hours=1),
+        id='overdue_loans_job',
+        name='Process Overdue Loan Reminders',
         replace_existing=True,
         max_instances=1
     )

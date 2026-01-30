@@ -964,3 +964,29 @@ export function usePendingDeliveriesCount() {
     staleTime: 15 * 1000, // Consider stale after 15 seconds
   });
 }
+
+// Driver Loan Trips (for drivers to see their assigned loan pickups/returns)
+export function useDriverLoanTrips() {
+  return useQuery({
+    queryKey: ['driver-loan-trips'],
+    queryFn: async () => {
+      const response = await tripsApi.getDriverLoanTrips();
+      return response.data;
+    },
+    refetchInterval: 30 * 1000,
+    staleTime: 15 * 1000,
+  });
+}
+
+// Driver Loan Trips Count (for sidebar badge on Requests tab)
+export function useDriverLoanTripsCount() {
+  return useQuery({
+    queryKey: ['driver-loan-trips-count'],
+    queryFn: async () => {
+      const response = await tripsApi.getDriverLoanTripsCount();
+      return response.data?.count || 0;
+    },
+    refetchInterval: 30 * 1000,
+    staleTime: 15 * 1000,
+  });
+}

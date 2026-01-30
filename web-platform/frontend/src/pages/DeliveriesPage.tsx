@@ -21,9 +21,12 @@ import {
   Edit3,
   MoreVertical,
   Gauge,
+  Eye,
+  Calendar,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { Button } from '../components/ui';
-import { pendingDeliveriesApi, tripsApi } from '../lib/api';
+import { pendingDeliveriesApi, tripsApi, loansApi } from '../lib/api';
 import ConfirmDeliveryModal from '../components/modals/ConfirmDeliveryModal';
 import { useAuthStore } from '../stores/authStore';
 import type { PendingDelivery, Trip } from '../types';
@@ -129,6 +132,8 @@ export default function DeliveriesPage() {
       queryClient.invalidateQueries({ queryKey: ['pending-deliveries'] });
       queryClient.invalidateQueries({ queryKey: ['deliveries'] });
       setCompletingTripId(null);
+      setSuccessMessage('Delivery marked as arrived. Awaiting confirmation.');
+      setTimeout(() => setSuccessMessage(null), 2000);
     },
     onError: (error: any) => {
       console.error('Failed to complete trip:', error);
@@ -167,6 +172,47 @@ export default function DeliveriesPage() {
     },
     onError: (error: any) => {
       alert(error.response?.data?.detail || 'Failed to correct km');
+    },
+  });
+
+  // Loan Collection mutation (Lender confirms driver collected stock)
+  const confirmLoanCollectionMutation = useMutation({
+    mutationFn: (loanId: string) => loansApi.confirmCollection(loanId),
+    onSuccess: (response) => {
+      // Invalidate all relevant queries to update the UI
+      queryClient.invalidateQueries({ queryKey: ['trips'] });
+      queryClient.invalidateQueries({ queryKey: ['loans'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-by-location'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-deliveries'] }); // Required for history count update
+      setCompletingTripId(null);
+      const qty = response.data?.quantity_bags || 0;
+      setSuccessMessage(`Collection confirmed! ${qty} bags released to driver.`);
+      setTimeout(() => setSuccessMessage(null), 3000);
+    },
+    onError: (error: any) => {
+      console.error('Failed to confirm collection:', error);
+      alert(error.response?.data?.detail || 'Failed to confirm collection');
+      setCompletingTripId(null);
+    },
+  });
+
+  // Loan Receipt mutation (Borrower confirms stock arrived)
+  const confirmLoanReceiptMutation = useMutation({
+    mutationFn: (loanId: string) => loansApi.confirmReceipt(loanId),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['trips'] });
+      queryClient.invalidateQueries({ queryKey: ['loans'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-by-location'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-deliveries'] });
+      setCompletingTripId(null);
+      const qty = response.data?.quantity_bags || 0;
+      setSuccessMessage(`Receipt confirmed! ${qty} bags added to your stock.`);
+      setTimeout(() => setSuccessMessage(null), 2000);
+    },
+    onError: (error: any) => {
+      console.error('Failed to confirm receipt:', error);
+      alert(error.response?.data?.detail || 'Failed to confirm receipt');
+      setCompletingTripId(null);
     },
   });
 
@@ -252,9 +298,50 @@ export default function DeliveriesPage() {
     setShowConfirmModal(true);
   };
 
-  const handleMarkArrived = (trip: Trip) => {
+  const handleMarkArrived = async (trip: Trip, isLenderAction?: boolean) => {
     setCompletingTripId(trip.id);
-    completeTripMutation.mutate({ tripId: trip.id });
+
+    const tripAny = trip as any;
+    const isLoanPickup = tripAny.trip_type === 'loan_pickup';
+    const isLoanReturn = tripAny.trip_type === 'loan_return';
+
+    if (isLoanPickup || isLoanReturn) {
+      // For loan trips, we need to find the loan and call the appropriate mutation
+      try {
+        // Fetch loans to find the one with this trip (include 'active' for idempotent retry)
+        const loansResponse = await loansApi.list({ status: 'in_transit,collected,active,return_in_transit' });
+        const loans = loansResponse.data?.loans || [];
+
+        let loan = null;
+        if (isLoanPickup) {
+          loan = loans.find((l: any) => l.pickup_trip_id === trip.id);
+        } else {
+          loan = loans.find((l: any) => l.return_trip_id === trip.id);
+        }
+
+        if (!loan) {
+          alert('Could not find the associated loan for this trip');
+          setCompletingTripId(null);
+          return;
+        }
+
+        // Determine which action to take based on user's location
+        if (isLenderAction) {
+          // Lender confirming collection (stock leaves their location)
+          confirmLoanCollectionMutation.mutate(loan.id);
+        } else {
+          // Borrower confirming receipt (stock arrives at their location)
+          confirmLoanReceiptMutation.mutate(loan.id);
+        }
+      } catch (error) {
+        console.error('Error handling loan trip:', error);
+        alert('Failed to process loan action');
+        setCompletingTripId(null);
+      }
+    } else {
+      // Regular trip - use existing mutation
+      completeTripMutation.mutate({ tripId: trip.id });
+    }
   };
 
   if (isLoading) {
@@ -392,14 +479,21 @@ export default function DeliveriesPage() {
                 </span>
               </div>
               <div className="space-y-3">
-                {inProgressTrips.map((trip) => (
-                  <EnRouteCard
-                    key={trip.id}
-                    trip={trip}
-                    onMarkArrived={() => handleMarkArrived(trip)}
-                    isCompleting={completingTripId === trip.id}
-                  />
-                ))}
+                {inProgressTrips.map((trip) => {
+                  const tripAny = trip as any;
+                  const isLoanTrip = tripAny.trip_type === 'loan_pickup' || tripAny.trip_type === 'loan_return';
+                  const isOriginLocation = user?.location_id && tripAny.from_location_id === user.location_id;
+
+                  return (
+                    <EnRouteCard
+                      key={trip.id}
+                      trip={trip}
+                      onMarkArrived={() => handleMarkArrived(trip, isLoanTrip && isOriginLocation)}
+                      isCompleting={completingTripId === trip.id}
+                      userLocationId={user?.location_id || null}
+                    />
+                  );
+                })}
               </div>
             </div>
           )}
@@ -511,76 +605,193 @@ function EnRouteCard({
   trip,
   onMarkArrived,
   isCompleting,
+  userLocationId,
 }: {
   trip: Trip;
   onMarkArrived: () => void;
   isCompleting: boolean;
+  userLocationId: string | null;
 }) {
+  const [showLoanDetails, setShowLoanDetails] = useState(false);
+  const [loanDetails, setLoanDetails] = useState<any>(null);
+  const [loadingLoanDetails, setLoadingLoanDetails] = useState(false);
+
   const hasETA = trip.estimated_arrival_time;
   const etaDisplay = formatETA(trip.estimated_arrival_time);
   const isOverdue = hasETA && new Date(trip.estimated_arrival_time!) < new Date();
 
+  // Check if this is a loan pickup trip
+  const isLoanPickup = trip.trip_type === 'loan_pickup';
+  const isLoanReturn = trip.trip_type === 'loan_return';
+  const isLoanTrip = isLoanPickup || isLoanReturn;
+
+  // For loan pickups: lender (from_location) confirms pickup, borrower (to_location) confirms receipt
+  // For loan returns: borrower (from_location) confirms pickup, lender (to_location) confirms receipt
+  // Check both direct ID and nested location object ID for compatibility
+  const fromLocationId = trip.from_location_id || trip.from_location?.id;
+  const toLocationId = trip.to_location_id || trip.to_location?.id;
+  const isOriginLocation = userLocationId && fromLocationId === userLocationId;
+  const isDestinationLocation = userLocationId && toLocationId === userLocationId;
+
+  // Debug logging
+  console.log('Loan Trip Debug:', {
+    tripId: trip.id,
+    tripType: trip.trip_type,
+    isLoanTrip,
+    userLocationId,
+    fromLocationId,
+    toLocationId,
+    isOriginLocation,
+    isDestinationLocation,
+  });
+
+  // Determine button text based on trip type and user's location
+  let buttonText = 'Mark Arrived';
+  let buttonColor = 'bg-blue-600 hover:bg-blue-700';
+
+  if (isLoanTrip && isOriginLocation) {
+    // User is at the origin (lender for pickup, borrower for return) - they confirm driver picked up
+    buttonText = 'Confirm Pickup';
+    buttonColor = 'bg-amber-600 hover:bg-amber-700';
+  } else if (isLoanTrip && isDestinationLocation) {
+    // User is at the destination - stock is arriving to them
+    buttonText = 'Confirm Receipt';
+    buttonColor = 'bg-emerald-600 hover:bg-emerald-700';
+  } else if (isLoanTrip) {
+    // Fallback for loan trips - show Confirm Pickup for loan_pickup type
+    buttonText = isLoanPickup ? 'Confirm Pickup' : 'Confirm Receipt';
+    buttonColor = isLoanPickup ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700';
+  }
+
+  // Fetch loan details when eye icon is clicked
+  const handleViewLoanDetails = async () => {
+    if (loanDetails) {
+      setShowLoanDetails(true);
+      return;
+    }
+
+    setLoadingLoanDetails(true);
+    try {
+      const loansResponse = await loansApi.list({ status: 'in_transit,collected,return_in_transit' });
+      const loans = loansResponse.data?.loans || [];
+
+      let loan = null;
+      if (isLoanPickup) {
+        loan = loans.find((l: any) => l.pickup_trip_id === trip.id);
+      } else {
+        loan = loans.find((l: any) => l.return_trip_id === trip.id);
+      }
+
+      if (loan) {
+        setLoanDetails(loan);
+        setShowLoanDetails(true);
+      }
+    } catch (error) {
+      console.error('Failed to fetch loan details:', error);
+    } finally {
+      setLoadingLoanDetails(false);
+    }
+  };
+
   return (
-    <div className="bg-white rounded-xl border border-blue-100 p-4">
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1 min-w-0">
-          {/* Trip Info */}
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-sm font-mono bg-blue-100 px-2 py-0.5 rounded text-blue-700">
-              {trip.trip_number}
-            </span>
-            <span className="text-xs text-gray-400 flex items-center gap-1">
-              <Clock className="w-3 h-3" />
-              Started {getRelativeTime(trip.departure_time || trip.created_at)}
-            </span>
-          </div>
-
-          {/* Driver and Vehicle */}
-          <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
-            <div className="flex items-center gap-1.5">
-              <User className="w-3.5 h-3.5 text-gray-400" />
-              <span>{trip.driver_name || 'Unknown driver'}</span>
+    <>
+      <div className="bg-white rounded-xl border border-blue-100 p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            {/* Trip Info */}
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-sm font-mono bg-blue-100 px-2 py-0.5 rounded text-blue-700">
+                {trip.trip_number}
+              </span>
+              {isLoanTrip && (
+                <span className={`text-xs px-2 py-0.5 rounded font-medium ${
+                  isLoanPickup ? 'bg-purple-100 text-purple-700' : 'bg-indigo-100 text-indigo-700'
+                }`}>
+                  {isLoanPickup ? 'Loan Pickup' : 'Loan Return'}
+                </span>
+              )}
+              <span className="text-xs text-gray-400 flex items-center gap-1">
+                <Clock className="w-3 h-3" />
+                Started {getRelativeTime(trip.departure_time || trip.created_at)}
+              </span>
             </div>
-            {trip.vehicles && (
+
+            {/* Driver and Vehicle */}
+            <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
               <div className="flex items-center gap-1.5">
-                <Truck className="w-3.5 h-3.5 text-gray-400" />
-                <span>{trip.vehicles.registration_number}</span>
+                <User className="w-3.5 h-3.5 text-gray-400" />
+                <span>{trip.driver_name || 'Unknown driver'}</span>
               </div>
-            )}
+              {trip.vehicles && (
+                <div className="flex items-center gap-1.5">
+                  <Truck className="w-3.5 h-3.5 text-gray-400" />
+                  <span>{trip.vehicles.registration_number}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Route */}
+            <div className="flex items-center gap-2 text-sm">
+              <div className={`flex items-center gap-1.5 ${isOriginLocation ? 'text-amber-700 font-medium' : 'text-gray-600'}`}>
+                <Store className={`w-3.5 h-3.5 ${isOriginLocation ? 'text-amber-500' : 'text-gray-400'}`} />
+                <span>{trip.from_location?.name || trip.suppliers?.name || trip.origin_description || 'Origin'}</span>
+                {isOriginLocation && isLoanTrip && (
+                  <span className="text-xs text-amber-600">(Your location)</span>
+                )}
+              </div>
+              <ChevronRight className="w-4 h-4 text-gray-300" />
+              <div className={`flex items-center gap-1.5 ${isDestinationLocation ? 'text-emerald-700' : 'text-gray-900'} font-medium`}>
+                <MapPin className={`w-3.5 h-3.5 ${isDestinationLocation ? 'text-emerald-500' : 'text-blue-500'}`} />
+                <span>{trip.to_location?.name || trip.destination_description || 'Destination'}</span>
+                {isDestinationLocation && isLoanTrip && (
+                  <span className="text-xs text-emerald-600">(Your location)</span>
+                )}
+              </div>
+            </div>
           </div>
 
-          {/* Route */}
-          <div className="flex items-center gap-2 text-sm">
-            <div className="flex items-center gap-1.5 text-gray-600">
-              <Store className="w-3.5 h-3.5 text-gray-400" />
-              <span>{trip.suppliers?.name || trip.origin_description || 'Origin'}</span>
+          {/* Action + ETA */}
+          <div className="flex flex-col items-end gap-2 shrink-0">
+            <div className="flex items-center gap-2">
+              {/* Eye icon to view loan details */}
+              {isLoanTrip && (
+                <button
+                  onClick={handleViewLoanDetails}
+                  disabled={loadingLoanDetails}
+                  className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg border border-gray-200 transition-colors"
+                  title="View loan details"
+                >
+                  <Eye className={`w-4 h-4 ${loadingLoanDetails ? 'animate-pulse' : ''}`} />
+                </button>
+              )}
+              <Button
+                onClick={onMarkArrived}
+                disabled={isCompleting}
+                size="sm"
+                className={`${buttonColor} gap-1.5`}
+              >
+                <PackageCheck className="w-4 h-4" />
+                {isCompleting ? 'Processing...' : buttonText}
+              </Button>
             </div>
-            <ChevronRight className="w-4 h-4 text-gray-300" />
-            <div className="flex items-center gap-1.5 text-gray-900 font-medium">
-              <MapPin className="w-3.5 h-3.5 text-blue-500" />
-              <span>{trip.to_location?.name || trip.destination_description || 'Destination'}</span>
+            <div className={`flex items-center gap-1.5 ${isOverdue ? 'text-red-600' : 'text-blue-600'}`}>
+              <Timer className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium">{etaDisplay}</span>
             </div>
-          </div>
-        </div>
-
-        {/* Action + ETA */}
-        <div className="flex flex-col items-end gap-2 shrink-0">
-          <Button
-            onClick={onMarkArrived}
-            disabled={isCompleting}
-            size="sm"
-            className="bg-blue-600 hover:bg-blue-700 gap-1.5"
-          >
-            <PackageCheck className="w-4 h-4" />
-            {isCompleting ? 'Processing...' : 'Mark Arrived'}
-          </Button>
-          <div className={`flex items-center gap-1.5 ${isOverdue ? 'text-red-600' : 'text-blue-600'}`}>
-            <Timer className="w-3.5 h-3.5" />
-            <span className="text-xs font-medium">{etaDisplay}</span>
           </div>
         </div>
       </div>
-    </div>
+
+      {/* Loan Details Modal */}
+      {showLoanDetails && loanDetails && (
+        <LoanDetailsModal
+          isOpen={showLoanDetails}
+          onClose={() => setShowLoanDetails(false)}
+          loan={loanDetails}
+          isPickup={isLoanPickup}
+        />
+      )}
+    </>
   );
 }
 
@@ -594,22 +805,39 @@ function PendingDeliveryCard({
 }) {
   const driverClaimedBags = delivery.driver_claimed_qty_kg / KG_PER_BAG;
 
+  // Determine if this is a loan-related delivery
+  const trip = delivery.trip as any;
+  const isLoanPickup = trip?.trip_type === 'loan_pickup';
+  const isLoanReturn = trip?.trip_type === 'loan_return';
+  const isLoanTrip = isLoanPickup || isLoanReturn;
+
   return (
-    <div className="bg-white rounded-xl border border-orange-100 p-4 hover:border-orange-300 transition-colors">
+    <div className={`bg-white rounded-xl border p-4 hover:border-orange-300 transition-colors ${
+      isLoanTrip ? 'border-purple-100' : 'border-orange-100'
+    }`}>
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           {/* Trip Info */}
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-sm font-mono bg-orange-100 px-2 py-0.5 rounded text-orange-700">
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
+            <span className={`text-sm font-mono px-2 py-0.5 rounded ${
+              isLoanTrip ? 'bg-purple-100 text-purple-700' : 'bg-orange-100 text-orange-700'
+            }`}>
               {delivery.trip?.trip_number || 'Unknown Trip'}
             </span>
+            {isLoanTrip && (
+              <span className={`text-xs px-2 py-0.5 rounded font-medium ${
+                isLoanPickup ? 'bg-purple-100 text-purple-700' : 'bg-indigo-100 text-indigo-700'
+              }`}>
+                {isLoanPickup ? 'Loan Pickup' : 'Loan Return'}
+              </span>
+            )}
             <span className="text-xs text-gray-400 flex items-center gap-1">
               <Clock className="w-3 h-3" />
               Arrived {getRelativeTime(delivery.created_at)}
             </span>
           </div>
 
-          {/* Driver and Supplier */}
+          {/* Driver and Supplier/Source */}
           <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
             <div className="flex items-center gap-1.5">
               <User className="w-3.5 h-3.5 text-gray-400" />
@@ -617,13 +845,17 @@ function PendingDeliveryCard({
             </div>
             <div className="flex items-center gap-1.5">
               <Store className="w-3.5 h-3.5 text-gray-400" />
-              <span>{delivery.supplier?.name || 'Unknown supplier'}</span>
+              <span>
+                {isLoanTrip
+                  ? (trip?.from_location?.name || 'Loan Transfer')
+                  : (delivery.supplier?.name || 'Unknown supplier')}
+              </span>
             </div>
           </div>
 
           {/* Quantity */}
           <div className="flex items-center gap-2">
-            <Package className="w-4 h-4 text-orange-500" />
+            <Package className={`w-4 h-4 ${isLoanTrip ? 'text-purple-500' : 'text-orange-500'}`} />
             <span className="text-lg font-bold text-gray-900">{driverClaimedBags} bags</span>
             <span className="text-sm text-gray-400">({delivery.driver_claimed_qty_kg} kg)</span>
           </div>
@@ -640,10 +872,10 @@ function PendingDeliveryCard({
         {/* Action */}
         <Button
           onClick={onConfirm}
-          className="bg-emerald-600 hover:bg-emerald-700 gap-2 shrink-0"
+          className={`gap-2 shrink-0 ${isLoanTrip ? 'bg-purple-600 hover:bg-purple-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
         >
           <Check className="w-4 h-4" />
-          Confirm
+          {isLoanTrip ? 'Confirm Receipt' : 'Confirm'}
         </Button>
       </div>
     </div>
@@ -677,17 +909,43 @@ function DeliveryHistoryCard({
   const canResendEmail = isConfirmed && !kmSubmitted && isVehicleManager;
   const canCorrectKm = isConfirmed && kmSubmitted && isVehicleManager;
 
+  // Determine if this is a loan-related delivery
+  const isLoanPickup = trip?.trip_type === 'loan_pickup';
+  const isLoanReturn = trip?.trip_type === 'loan_return';
+  const isLoanTrip = isLoanPickup || isLoanReturn;
+
+  // Determine if this is a loan collection (released) or receipt (received) from notes
+  const discrepancyNotes = delivery.discrepancy_notes || '';
+  const isLoanCollection = discrepancyNotes.includes('Loan collection');
+  const isLoanReceipt = discrepancyNotes.includes('Loan receipt');
+  const isLoanHistory = isLoanCollection || isLoanReceipt;
+
   return (
-    <div className={`bg-white rounded-xl border p-4 ${isConfirmed ? 'border-emerald-100' : 'border-red-100'
+    <div className={`bg-white rounded-xl border p-4 ${
+      isLoanHistory
+        ? (isLoanCollection ? 'border-amber-100' : 'border-purple-100')
+        : (isConfirmed ? 'border-emerald-100' : 'border-red-100')
       }`}>
       <div className="flex items-start justify-between">
         <div className="flex-1">
           {/* Status and Trip */}
-          <div className="flex items-center gap-2 mb-2">
-            {isConfirmed && (
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
+            {isConfirmed && !isLoanHistory && (
               <span className="flex items-center gap-1 text-emerald-700 text-sm font-medium">
                 <CheckCircle className="w-4 h-4" />
                 Confirmed
+              </span>
+            )}
+            {isLoanCollection && (
+              <span className="flex items-center gap-1 text-amber-700 text-sm font-medium">
+                <PackageCheck className="w-4 h-4" />
+                Stock Released
+              </span>
+            )}
+            {isLoanReceipt && (
+              <span className="flex items-center gap-1 text-purple-700 text-sm font-medium">
+                <Package className="w-4 h-4" />
+                Stock Received
               </span>
             )}
             {isRejected && (
@@ -700,8 +958,16 @@ function DeliveryHistoryCard({
             <span className="text-sm font-mono text-gray-600">
               {delivery.trip?.trip_number || 'Unknown'}
             </span>
-            {/* Feature 6: Show km submission status */}
-            {isConfirmed && (
+            {/* Show loan trip type badge */}
+            {(isLoanTrip || isLoanHistory) && (
+              <span className={`text-xs px-2 py-0.5 rounded font-medium ${
+                isLoanPickup || isLoanHistory ? 'bg-purple-100 text-purple-700' : 'bg-indigo-100 text-indigo-700'
+              }`}>
+                {isLoanReturn ? 'Loan Return' : 'Loan Pickup'}
+              </span>
+            )}
+            {/* Feature 6: Show km submission status - only for non-loan deliveries */}
+            {isConfirmed && !isLoanHistory && (
               <span className={`text-xs px-1.5 py-0.5 rounded ${kmSubmitted ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
                 <Gauge className="w-3 h-3 inline mr-0.5" />
                 {kmSubmitted ? 'Km Logged' : 'Awaiting Km'}
@@ -717,7 +983,9 @@ function DeliveryHistoryCard({
             </span>
             <span className="flex items-center gap-1">
               <Store className="w-3.5 h-3.5 text-gray-400" />
-              {delivery.supplier?.name || 'Unknown'}
+              {isLoanTrip
+                ? (trip?.from_location?.name || 'Loan Transfer')
+                : (delivery.supplier?.name || 'Unknown')}
             </span>
           </div>
 
@@ -952,6 +1220,161 @@ function CorrectKmModal({
                 {isSubmitting ? 'Correcting...' : 'Correct Km'}
               </Button>
             </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// Loan Details Modal - Shows loan information (quantity, requester, return date)
+function LoanDetailsModal({
+  isOpen,
+  onClose,
+  loan,
+  isPickup,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  loan: any;
+  isPickup: boolean;
+}) {
+  if (!isOpen || !loan) return null;
+
+  const formatReturnDate = (dateStr: string | null) => {
+    if (!dateStr) return 'Not specified';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  };
+
+  const formatCreatedDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  // Determine requester and lender info
+  const borrowerName = loan.borrower_location?.name || 'Unknown';
+  const lenderName = loan.lender_location?.name || 'Unknown';
+  const requesterName = loan.requester?.full_name || 'Unknown';
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50" onClick={onClose} />
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl w-full max-w-md shadow-xl">
+          {/* Header */}
+          <div className="flex items-center justify-between p-5 border-b border-gray-100">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                isPickup ? 'bg-purple-100' : 'bg-indigo-100'
+              }`}>
+                <ArrowLeftRight className={`w-5 h-5 ${isPickup ? 'text-purple-600' : 'text-indigo-600'}`} />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Loan Details</h2>
+                <p className="text-sm text-gray-500">
+                  {isPickup ? 'Pickup in progress' : 'Return in progress'}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center"
+            >
+              <XCircle className="w-5 h-5 text-gray-400" />
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="p-5 space-y-4">
+            {/* Quantity */}
+            <div className="bg-purple-50 rounded-xl p-4 text-center">
+              <div className="flex items-center justify-center gap-2 mb-1">
+                <Package className="w-5 h-5 text-purple-600" />
+                <span className="text-sm text-purple-600 font-medium">Loan Quantity</span>
+              </div>
+              <p className="text-3xl font-bold text-purple-900">{loan.quantity_approved || loan.quantity_bags || 0} bags</p>
+              <p className="text-sm text-purple-600">({(loan.quantity_approved || loan.quantity_bags || 0) * 10} kg)</p>
+            </div>
+
+            {/* Transfer Details */}
+            <div className="bg-gray-50 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">From (Lender)</span>
+                <span className="text-sm font-medium text-gray-900">{lenderName}</span>
+              </div>
+              <div className="flex items-center justify-center">
+                <ChevronRight className="w-4 h-4 text-gray-300" />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">To (Borrower)</span>
+                <span className="text-sm font-medium text-gray-900">{borrowerName}</span>
+              </div>
+            </div>
+
+            {/* Requester Info */}
+            <div className="bg-gray-50 rounded-xl p-4 space-y-3">
+              <h3 className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                <User className="w-4 h-4 text-gray-400" />
+                Requested By
+              </h3>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">Name</span>
+                <span className="text-sm font-medium text-gray-900">{requesterName}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">Location</span>
+                <span className="text-sm font-medium text-gray-900">{borrowerName}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">Requested On</span>
+                <span className="text-sm font-medium text-gray-900">{formatCreatedDate(loan.created_at)}</span>
+              </div>
+            </div>
+
+            {/* Return Date */}
+            <div className={`rounded-xl p-4 ${loan.expected_return_date ? 'bg-amber-50' : 'bg-gray-50'}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Calendar className={`w-4 h-4 ${loan.expected_return_date ? 'text-amber-600' : 'text-gray-400'}`} />
+                  <span className={`text-sm font-medium ${loan.expected_return_date ? 'text-amber-700' : 'text-gray-500'}`}>
+                    Expected Return Date
+                  </span>
+                </div>
+                <span className={`text-sm font-bold ${loan.expected_return_date ? 'text-amber-900' : 'text-gray-400'}`}>
+                  {formatReturnDate(loan.expected_return_date)}
+                </span>
+              </div>
+            </div>
+
+            {/* Notes */}
+            {loan.notes && (
+              <div className="bg-gray-50 rounded-xl p-4">
+                <h3 className="text-sm font-medium text-gray-700 mb-2">Notes</h3>
+                <p className="text-sm text-gray-600">{loan.notes}</p>
+              </div>
+            )}
+
+            {/* Close Button */}
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={onClose}
+              className="w-full"
+            >
+              Close
+            </Button>
           </div>
         </div>
       </div>

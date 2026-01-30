@@ -20,13 +20,17 @@ import {
   ExternalLink,
   ChevronDown,
   Send,
+  ArrowLeftRight,
+  MapPin,
 } from 'lucide-react';
 import { Button } from '../components/ui';
-import { stockRequestsApi, vehiclesApi, referenceApi } from '../lib/api';
+import { stockRequestsApi, vehiclesApi, referenceApi, tripsApi, loansApi } from '../lib/api';
 import { useAuthStore } from '../stores/authStore';
+import { useDriverLoanTrips } from '../hooks/useData';
 import { CancelRequestModal } from '../components/modals/CancelRequestModal';
 import { EditRequestModal } from '../components/modals/EditRequestModal';
 import AcceptDeliveryModal from '../components/modals/AcceptDeliveryModal';
+import AcceptLoanPickupModal from '../components/modals/AcceptLoanPickupModal';
 import { REQUEST_STATUS_CONFIG, getShortRequestId } from '../utils/statusConfig';
 import type { StockRequest, StockRequestStatus, Vehicle, Supplier } from '../types';
 
@@ -51,6 +55,23 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
   const [showEditModal, setShowEditModal] = useState(false);
   const [showFulfillRemainingModal, setShowFulfillRemainingModal] = useState(false);
   const [showAcceptDeliveryModal, setShowAcceptDeliveryModal] = useState(false);
+  const [showAcceptLoanPickupModal, setShowAcceptLoanPickupModal] = useState(false);
+  const [selectedLoanTrip, setSelectedLoanTrip] = useState<{
+    id: string;
+    loanId: string;
+    tripNumber: string;
+    fromLocation: string;
+    toLocation: string;
+    quantityBags: number;
+    vehicle: {
+      id: string;
+      registration_number: string;
+      make?: string;
+      model?: string;
+      kilometers_traveled?: number;
+    } | null;
+    assignedBy: string;
+  } | null>(null);
   const [viewDensity, setViewDensity] = useState<ViewDensity>('compact');
   const [linkedRequestBanner, setLinkedRequestBanner] = useState<{
     show: boolean;
@@ -126,6 +147,10 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
     enabled: !!linkedRequestId,
   });
 
+  // Get loan trips assigned to the driver (loan pickups/returns)
+  const { data: loanTripsData, isLoading: loadingLoanTrips, refetch: refetchLoanTrips } = useDriverLoanTrips();
+  const loanTrips = loanTripsData?.trips || [];
+
   // Re-request mutation (resend notification to all drivers)
   const [reRequestSuccess, setReRequestSuccess] = useState<string | null>(null);
   const [reRequestError, setReRequestError] = useState<string | null>(null);
@@ -150,6 +175,9 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
       setTimeout(() => setReRequestError(null), 5000);
     },
   });
+
+  // Accept loan pickup - now uses modal for odometer input
+  const [acceptLoanSuccess, setAcceptLoanSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     if (linkedRequestId && linkedRequestData?.request) {
@@ -280,6 +308,37 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
     });
   }, [allRequestsData]);
 
+  // Transform loan trips into a format compatible with RequestRow
+  const transformLoanTripsToRequests = (filterStatus?: 'planned' | 'in_progress'): StockRequest[] => {
+    if (!isDriver() || !loanTrips.length) return [];
+
+    let filteredTrips = loanTrips;
+    if (filterStatus) {
+      filteredTrips = loanTrips.filter((trip: any) => trip.status === filterStatus);
+    }
+
+    return filteredTrips.map((trip: any) => ({
+      id: trip.id,
+      // Mark this as a loan trip for special handling
+      _isLoanTrip: true,
+      _tripType: trip.trip_type,
+      _tripNumber: trip.trip_number,
+      _tripStatus: trip.status, // Include actual trip status
+      _loanId: trip.loan_id || trip.loan?.id, // For calling acceptPickup API
+      _assignedBy: trip.loan?.lender?.name || trip.loan?.borrower?.name || 'Manager',
+      _fromLocation: trip.from_location?.name || trip.origin_description || 'Unknown',
+      _toLocation: trip.to_location?.name || trip.destination_description || 'Unknown',
+      _vehicle: trip.vehicles,
+      // Map to request-like fields
+      location: trip.to_location || { name: trip.destination_description || 'Loan Location' },
+      quantity_bags: trip.quantity_bags || trip.loan?.quantity_bags,
+      status: trip.status === 'in_progress' ? 'in_delivery' as StockRequestStatus : 'pending' as StockRequestStatus,
+      urgency: 'normal' as const,
+      created_at: trip.created_at,
+      requester: null, // Will show "Assigned by" instead
+    })) as unknown as StockRequest[];
+  };
+
   const getRequests = (): StockRequest[] => {
     let requests: StockRequest[] = [];
 
@@ -287,6 +346,11 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
       requests = (allRequestsData?.requests || []).filter(
         (r: StockRequest) => r.status === 'pending'
       );
+      // Add only "planned" loan trips for drivers in available tab (not yet accepted)
+      if (isDriver()) {
+        const loanTripRequests = transformLoanTripsToRequests('planned');
+        requests = [...loanTripRequests, ...requests];
+      }
     } else if (activeTab === 'my') {
       const created = myRequestsData?.created || [];
       const accepted = myRequestsData?.accepted || [];
@@ -295,6 +359,11 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
       requests = needsAttentionRequests;
     } else {
       requests = allRequestsData?.requests || [];
+      // Add all loan trips for drivers in "All" tab
+      if (isDriver()) {
+        const loanTripRequests = transformLoanTripsToRequests();
+        requests = [...loanTripRequests, ...requests];
+      }
     }
 
     // Skip date filter for attention tab (we want to see all)
@@ -310,6 +379,12 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
     }
 
     return requests.sort((a, b) => {
+      // Loan trips go first
+      const aIsLoan = (a as any)._isLoanTrip;
+      const bIsLoan = (b as any)._isLoanTrip;
+      if (aIsLoan && !bIsLoan) return -1;
+      if (!aIsLoan && bIsLoan) return 1;
+
       if (a.urgency === 'urgent' && b.urgency !== 'urgent') return -1;
       if (a.urgency !== 'urgent' && b.urgency === 'urgent') return 1;
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
@@ -318,13 +393,17 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
 
   const requests = getRequests();
 
-  const availableCount = (allRequestsData?.requests || []).filter(
+  const pendingRequestsCount = (allRequestsData?.requests || []).filter(
     (r: StockRequest) => r.status === 'pending'
   ).length;
+  // Include only "planned" loan trips in available count for drivers (not yet accepted)
+  const plannedLoanTripsCount = isDriver() ? loanTrips.filter((t: any) => t.status === 'planned').length : 0;
+  const availableCount = pendingRequestsCount + plannedLoanTripsCount;
 
   const myCount = (myRequestsData?.created?.length || 0) + (myRequestsData?.accepted?.length || 0);
   const attentionCount = needsAttentionRequests.length;
-  const allCount = allRequestsData?.requests?.length || 0;
+  // Include all loan trips in "All" count for drivers
+  const allCount = (allRequestsData?.requests?.length || 0) + (isDriver() ? loanTrips.length : 0);
 
   // Only managers (admin, zone_manager, location_manager) see the Needs Attention tab
   const showAttentionTab = isManager() || isLocationManager();
@@ -332,6 +411,7 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
   const handleRefresh = () => {
     refetchAll();
     refetchMy();
+    refetchLoanTrips();
   };
 
   const getRelativeTime = (dateStr: string): string => {
@@ -402,6 +482,15 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
             <Check className="w-4 h-4 text-emerald-600" />
           </div>
           <span className="text-sm text-emerald-800">Request cancelled</span>
+        </div>
+      )}
+      {/* Loan Pickup Accept Toast */}
+      {acceptLoanSuccess && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center gap-3">
+          <div className="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center flex-shrink-0">
+            <Check className="w-4 h-4 text-emerald-600" />
+          </div>
+          <span className="text-sm text-emerald-800">{acceptLoanSuccess}</span>
         </div>
       )}
 
@@ -668,7 +757,7 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
       </div>
 
       {/* Requests List */}
-      {requests.length === 0 ? (
+      {requests.length === 0 && !(isDriver() && activeTab === 'available' && loanTrips.length > 0) ? (
         <div className="text-center py-12 bg-gray-50 rounded-xl">
           <Package className="w-10 h-10 mx-auto mb-3 text-gray-300" />
           <h3 className="text-sm font-medium text-gray-600">No requests found</h3>
@@ -676,7 +765,7 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
             {activeTab === 'available' ? 'No pending stock requests' : hasActiveFilters ? 'Try adjusting filters' : 'No requests to display'}
           </p>
         </div>
-      ) : (
+      ) : requests.length > 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 overflow-visible">
           {/* Table Header - Hidden on mobile */}
           <div className="hidden md:block bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
@@ -727,12 +816,40 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
                 onTrackDelivery={() => onNavigateToDeliveries?.()}
                 onReRequest={() => reRequestMutation.mutate(request.id)}
                 isReRequesting={reRequestMutation.isPending && reRequestMutation.variables === request.id}
+                onAcceptLoanPickup={() => {
+                  const loanId = (request as any)._loanId;
+                  const vehicle = (request as any)._vehicle;
+                  const tripNumber = (request as any)._tripNumber;
+                  const fromLocation = (request as any)._fromLocation;
+                  const toLocation = (request as any)._toLocation;
+                  const assignedBy = (request as any)._assignedBy;
+                  if (loanId) {
+                    setSelectedLoanTrip({
+                      id: request.id,
+                      loanId,
+                      tripNumber: tripNumber || 'Unknown',
+                      fromLocation: fromLocation || 'Unknown',
+                      toLocation: toLocation || 'Unknown',
+                      quantityBags: request.quantity_bags || 0,
+                      vehicle: vehicle ? {
+                        id: vehicle.id,
+                        registration_number: vehicle.registration_number,
+                        make: vehicle.make,
+                        model: vehicle.model,
+                        kilometers_traveled: vehicle.kilometers_traveled,
+                      } : null,
+                      assignedBy: assignedBy || 'Manager',
+                    });
+                    setShowAcceptLoanPickupModal(true);
+                  }
+                }}
+                isAcceptingLoan={false}
                 getRelativeTime={getRelativeTime}
               />
             ))}
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Modals */}
       <CancelRequestModal
@@ -782,6 +899,16 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
           }}
         />
       )}
+
+      <AcceptLoanPickupModal
+        isOpen={showAcceptLoanPickupModal}
+        onClose={() => { setShowAcceptLoanPickupModal(false); setSelectedLoanTrip(null); }}
+        loanTrip={selectedLoanTrip}
+        onSuccess={() => {
+          setAcceptLoanSuccess('Loan pickup accepted! Proceed to collect the stock.');
+          setTimeout(() => setAcceptLoanSuccess(null), 3000);
+        }}
+      />
     </div>
   );
 }
@@ -803,6 +930,8 @@ function RequestRow({
   onTrackDelivery,
   onReRequest,
   isReRequesting,
+  onAcceptLoanPickup,
+  isAcceptingLoan,
   getRelativeTime,
 }: {
   request: StockRequest;
@@ -820,6 +949,8 @@ function RequestRow({
   onTrackDelivery: () => void;
   onReRequest?: () => void;
   isReRequesting?: boolean;
+  onAcceptLoanPickup?: () => void;
+  isAcceptingLoan?: boolean;
   getRelativeTime: (date: string) => string;
 }) {
   const [showMenu, setShowMenu] = useState(false);
@@ -827,13 +958,33 @@ function RequestRow({
   const menuRef = useRef<HTMLDivElement>(null);
   const managerMenuRef = useRef<HTMLDivElement>(null);
 
-  const statusConfig = STATUS_CONFIG[request.status];
+  // Check if this is a loan trip (converted from loan trip data)
+  const isLoanTrip = (request as any)._isLoanTrip === true;
+  const loanTripType = (request as any)._tripType;
+  const loanTripNumber = (request as any)._tripNumber;
+  const loanTripStatus = (request as any)._tripStatus;
+  const loanAssignedBy = (request as any)._assignedBy;
+  const loanFromLocation = (request as any)._fromLocation;
+  const loanToLocation = (request as any)._toLocation;
+  const loanVehicle = (request as any)._vehicle;
+
+  // Determine status config for loan trips based on actual trip status
+  const getLoanTripStatusConfig = () => {
+    if (loanTripStatus === 'in_progress') {
+      return { label: 'In Transit', bgColor: 'bg-indigo-50', color: 'text-indigo-700', borderColor: 'border-indigo-200' };
+    }
+    return { label: 'Assigned', bgColor: 'bg-blue-50', color: 'text-blue-700', borderColor: 'border-blue-200' };
+  };
+
+  const statusConfig = isLoanTrip
+    ? getLoanTripStatusConfig()
+    : STATUS_CONFIG[request.status];
   const isUrgent = request.urgency === 'urgent';
-  const capacityPct = request.capacity_percent || (
+  const capacityPct = isLoanTrip ? null : (request.capacity_percent || (
     request.current_stock_kg && request.target_stock_kg
       ? Math.round((request.current_stock_kg / request.target_stock_kg) * 100)
       : null
-  );
+  ));
 
   // Stock color thresholds - red <15%, amber <30%
   const getStockColor = (pct: number) => {
@@ -875,6 +1026,29 @@ function RequestRow({
 
   // Primary action - ALWAYS show something
   const renderPrimaryAction = () => {
+    // For loan trips, show appropriate action based on trip status
+    if (isLoanTrip) {
+      // If trip is in_progress, show "In Transit" status (no action needed from driver on this page)
+      if (loanTripStatus === 'in_progress') {
+        return (
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 px-2.5 py-1">
+            <Truck className="w-3 h-3" />
+            In Transit
+          </span>
+        );
+      }
+      // If trip is planned, show "Accept & Deliver" to start the trip
+      return (
+        <Button
+          onClick={onAcceptLoanPickup}
+          disabled={isAcceptingLoan}
+          size="sm"
+          className="bg-emerald-600 hover:bg-emerald-700 h-7 text-xs px-3 whitespace-nowrap disabled:opacity-50"
+        >
+          {isAcceptingLoan ? 'Accepting...' : 'Accept & Deliver'}
+        </Button>
+      );
+    }
     if (canAccept) {
       return (
         <Button
@@ -990,27 +1164,36 @@ function RequestRow({
     <>
       {/* Mobile Card Layout */}
       <div className={`md:hidden p-4 hover:bg-gray-50 transition-colors ${
-        isUrgent && request.status === 'pending' ? 'bg-red-50/50' : ''
+        isLoanTrip ? 'bg-blue-50/30' : (isUrgent && request.status === 'pending' ? 'bg-red-50/50' : '')
       }`}>
         {/* Top row: Location + Status */}
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="flex items-center gap-2 min-w-0 flex-1">
             <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-              isOwner ? 'bg-emerald-100' : 'bg-gray-100'
+              isLoanTrip ? 'bg-blue-100' : (isOwner ? 'bg-emerald-100' : 'bg-gray-100')
             }`}>
-              <Store className={`w-4 h-4 ${isOwner ? 'text-emerald-600' : 'text-gray-400'}`} />
+              {isLoanTrip ? (
+                <ArrowLeftRight className="w-4 h-4 text-blue-600" />
+              ) : (
+                <Store className={`w-4 h-4 ${isOwner ? 'text-emerald-600' : 'text-gray-400'}`} />
+              )}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-sm font-semibold text-gray-900 truncate">
-                  {request.location?.name || 'Unknown'}
+                  {isLoanTrip ? loanToLocation : (request.location?.name || 'Unknown')}
                 </span>
-                {isUrgent && request.status === 'pending' && (
+                {isLoanTrip && (
+                  <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-semibold rounded">
+                    Loan Pickup
+                  </span>
+                )}
+                {isUrgent && request.status === 'pending' && !isLoanTrip && (
                   <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
                 )}
               </div>
               <span className="text-xs text-gray-500 font-mono">
-                {getShortRequestId(request.id)}
+                {isLoanTrip ? loanTripNumber : getShortRequestId(request.id)}
               </span>
             </div>
           </div>
@@ -1018,6 +1201,16 @@ function RequestRow({
             {statusConfig.label}
           </span>
         </div>
+
+        {/* Route info for loan trips */}
+        {isLoanTrip && (
+          <div className="flex items-center gap-2 text-sm mb-3 text-gray-600">
+            <MapPin className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+            <span className="truncate">{loanFromLocation}</span>
+            <span className="text-gray-400">→</span>
+            <span className="truncate">{loanToLocation}</span>
+          </div>
+        )}
 
         {/* Middle row: Key metrics */}
         <div className="flex items-center gap-4 mb-3 text-sm">
@@ -1039,27 +1232,42 @@ function RequestRow({
               </span>
             </div>
           )}
+          {isLoanTrip && loanVehicle && (
+            <div className="flex items-center gap-1 text-xs text-gray-500">
+              <Truck className="w-3.5 h-3.5" />
+              {loanVehicle.registration_number}
+            </div>
+          )}
           <div className="flex items-center gap-1 text-xs text-gray-500">
             <Clock className="w-3.5 h-3.5" />
             {getRelativeTime(request.created_at)}
           </div>
         </div>
 
-        {/* Requested by + Trip info */}
+        {/* Assigned by (for loans) / Requested by (for regular) + Trip info */}
         <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
           <User className="w-3.5 h-3.5" />
-          <span>{request.requester?.full_name || 'Unknown'}</span>
-          {request.trips && (
+          {isLoanTrip ? (
             <>
-              <span className="text-gray-300">•</span>
-              <span>{request.trips.trip_number}</span>
+              <span className="text-gray-600">Assigned by</span>
+              <span className="font-medium text-gray-700">{loanAssignedBy}</span>
             </>
-          )}
-          {request.acceptor && !request.trips && (
+          ) : (
             <>
-              <span className="text-gray-300">•</span>
-              <Truck className="w-3.5 h-3.5" />
-              <span>{request.acceptor.full_name}</span>
+              <span>{request.requester?.full_name || 'Unknown'}</span>
+              {request.trips && (
+                <>
+                  <span className="text-gray-300">•</span>
+                  <span>{request.trips.trip_number}</span>
+                </>
+              )}
+              {request.acceptor && !request.trips && (
+                <>
+                  <span className="text-gray-300">•</span>
+                  <Truck className="w-3.5 h-3.5" />
+                  <span>{request.acceptor.full_name}</span>
+                </>
+              )}
             </>
           )}
         </div>
@@ -1109,42 +1317,60 @@ function RequestRow({
 
       {/* Desktop Table Row */}
       <div className={`hidden md:grid ${(isDriver || showManagerActions) ? 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px_120px]' : 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px]'} gap-2 px-4 ${rowPadding} items-center hover:bg-gray-50 transition-colors ${
-        isUrgent && request.status === 'pending' ? 'bg-red-50/50' : ''
+        isLoanTrip ? 'bg-blue-50/30' : (isUrgent && request.status === 'pending' ? 'bg-red-50/50' : '')
       }`}>
         {/* Request # */}
         <div>
-          <span className="text-xs font-mono text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
-            {getShortRequestId(request.id)}
+          <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${isLoanTrip ? 'text-blue-600 bg-blue-50' : 'text-gray-500 bg-gray-100'}`}>
+            {isLoanTrip ? loanTripNumber?.substring(loanTripNumber.length - 4) : getShortRequestId(request.id)}
           </span>
         </div>
 
         {/* Location */}
         <div className="flex items-center gap-2 min-w-0">
           <div className={`w-6 h-6 rounded flex items-center justify-center flex-shrink-0 ${
-            isOwner ? 'bg-emerald-100' : 'bg-gray-100'
+            isLoanTrip ? 'bg-blue-100' : (isOwner ? 'bg-emerald-100' : 'bg-gray-100')
           }`}>
-            <Store className={`w-3 h-3 ${isOwner ? 'text-emerald-600' : 'text-gray-400'}`} />
+            {isLoanTrip ? (
+              <ArrowLeftRight className="w-3 h-3 text-blue-600" />
+            ) : (
+              <Store className={`w-3 h-3 ${isOwner ? 'text-emerald-600' : 'text-gray-400'}`} />
+            )}
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
               <span className="text-sm font-medium text-gray-900 truncate">
-                {request.location?.name || 'Unknown'}
+                {isLoanTrip ? loanToLocation : (request.location?.name || 'Unknown')}
               </span>
-              {isUrgent && request.status === 'pending' && (
+              {isLoanTrip && (
+                <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-semibold rounded flex-shrink-0">
+                  Loan Pickup
+                </span>
+              )}
+              {isUrgent && request.status === 'pending' && !isLoanTrip && (
                 <AlertTriangle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
               )}
             </div>
-            {/* Trip info inline - compact */}
-            {request.trips && (
-              <span className="text-[10px] text-gray-400">
-                {request.trips.trip_number} • {request.trips.status}
+            {/* Route info for loans, Trip info for regular requests */}
+            {isLoanTrip ? (
+              <span className="text-[10px] text-gray-400 flex items-center gap-1">
+                <MapPin className="w-2.5 h-2.5 text-blue-400" />
+                {loanFromLocation} → {loanToLocation}
               </span>
-            )}
-            {request.acceptor && !request.trips && (
-              <span className="text-[10px] text-gray-400">
-                <Truck className="w-2.5 h-2.5 inline mr-0.5" />
-                {request.acceptor.full_name}
-              </span>
+            ) : (
+              <>
+                {request.trips && (
+                  <span className="text-[10px] text-gray-400">
+                    {request.trips.trip_number} • {request.trips.status}
+                  </span>
+                )}
+                {request.acceptor && !request.trips && (
+                  <span className="text-[10px] text-gray-400">
+                    <Truck className="w-2.5 h-2.5 inline mr-0.5" />
+                    {request.acceptor.full_name}
+                  </span>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -1155,9 +1381,18 @@ function RequestRow({
           <span className="text-[10px] text-gray-400 block -mt-0.5">bags</span>
         </div>
 
-        {/* Stock - as metric with mini progress bar */}
+        {/* Stock - as metric with mini progress bar (show vehicle for loans) */}
         <div className="flex flex-col items-center">
-          {capacityPct !== null ? (
+          {isLoanTrip ? (
+            loanVehicle ? (
+              <span className="text-[10px] text-gray-500 flex items-center gap-0.5">
+                <Truck className="w-2.5 h-2.5" />
+                {loanVehicle.registration_number?.substring(0, 6)}
+              </span>
+            ) : (
+              <span className="text-xs text-gray-300">—</span>
+            )
+          ) : capacityPct !== null ? (
             <>
               <div className="w-10 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                 <div
@@ -1174,11 +1409,18 @@ function RequestRow({
           )}
         </div>
 
-        {/* Requested By */}
+        {/* Assigned By (for loans) / Requested By (for regular) */}
         <div className="min-w-0">
           <div className="flex items-center gap-1 text-xs text-gray-600 truncate">
             <User className="w-3 h-3 text-gray-400 flex-shrink-0" />
-            <span className="truncate">{request.requester?.full_name || 'Unknown'}</span>
+            {isLoanTrip ? (
+              <span className="truncate">
+                <span className="text-gray-400">Assigned by </span>
+                {loanAssignedBy}
+              </span>
+            ) : (
+              <span className="truncate">{request.requester?.full_name || 'Unknown'}</span>
+            )}
           </div>
         </div>
 

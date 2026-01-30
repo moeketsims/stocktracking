@@ -41,6 +41,7 @@ from app.routers.invitations import router as invitations_router
 from app.routers.stock_requests import router as stock_requests_router
 from app.routers.pending_deliveries import router as pending_deliveries_router
 from app.routers.locations import router as locations_router
+from app.routers.loans import router as loans_router
 
 
 @asynccontextmanager
@@ -106,6 +107,7 @@ app.include_router(invitations_router, prefix="/api")
 app.include_router(stock_requests_router, prefix="/api")
 app.include_router(pending_deliveries_router, prefix="/api")
 app.include_router(locations_router, prefix="/api")
+app.include_router(loans_router, prefix="/api")
 
 
 if __name__ == "__main__":

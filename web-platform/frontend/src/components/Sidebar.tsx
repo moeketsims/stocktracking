@@ -2,7 +2,7 @@ import { LogOut, Settings } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useLogout } from '../hooks/useAuth';
-import { useAlerts } from '../hooks/useData';
+import { useAlerts, useDriverLoanTripsCount } from '../hooks/useData';
 import { useState } from 'react';
 
 interface Tab {
@@ -30,9 +30,12 @@ export default function Sidebar({
   pendingDeliveriesCount,
   onClose,
 }: SidebarProps) {
-  const { user } = useAuthStore();
+  const { user, isDriver } = useAuthStore();
   const logoutMutation = useLogout();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
+  // Get driver loan trips count for badge on Requests tab
+  const { data: loanTripsCount = 0 } = useDriverLoanTripsCount();
 
   const handleLogout = async () => {
     await logoutMutation.mutateAsync();
@@ -73,6 +76,11 @@ export default function Sidebar({
             <tab.icon className="w-5 h-5" />
             {tab.label}
             {tab.id === 'alerts' && <AlertBadge />}
+            {tab.id === 'requests' && isDriver() && loanTripsCount > 0 && (
+              <span className="ml-auto px-1.5 py-0.5 bg-orange-600 text-white text-[10px] font-medium rounded-full min-w-[18px] text-center">
+                {loanTripsCount > 99 ? '99+' : loanTripsCount}
+              </span>
+            )}
           </button>
         ))}
 

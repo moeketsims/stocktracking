@@ -14,6 +14,7 @@ import {
   UtensilsCrossed,
   MapPin,
   Navigation,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { useAuthStore } from './stores/authStore';
 import { useLogout } from './hooks/useAuth';
@@ -43,6 +44,7 @@ import ResetPasswordPage from './pages/ResetPasswordPage';
 import LocationsPage from './pages/LocationsPage';
 import SubmitKmPage from './pages/SubmitKmPage';
 import FleetStatusPage from './pages/FleetStatusPage';
+import LoansPage from './pages/LoansPage';
 
 type PublicPage = 'login' | 'forgot-password' | 'accept-invite' | 'reset-password' | 'submit-km';
 
@@ -56,6 +58,7 @@ type TabId =
   | 'drivers'
   | 'requests'
   | 'deliveries'
+  | 'loans'
   | 'users'
   | 'locations'
   | 'notifications'
@@ -224,6 +227,7 @@ function App() {
         { id: 'stock' as const, label: 'Stock', icon: Package },
         ...(!isDriver() ? [{ id: 'kitchen' as const, label: isAdmin ? 'Kitchens' : 'Kitchen', icon: UtensilsCrossed }] : []),
         { id: 'requests' as const, label: 'Requests', icon: ClipboardList },
+        ...(!isDriver() ? [{ id: 'loans' as const, label: 'Loans', icon: ArrowLeftRight }] : []),
         { id: 'vehicles' as const, label: 'Vehicles', icon: Truck },
         ...(!isDriver() ? [{ id: 'alerts' as const, label: 'Alerts', icon: AlertTriangle }] : []),
         ...(!isDriver() ? [{ id: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard }] : []),
@@ -294,6 +298,8 @@ function App() {
         );
       case 'deliveries':
         return <DeliveriesPage />;
+      case 'loans':
+        return <LoansPage onNavigateToTrip={handleNavigateToTrip} />;
       case 'users':
         return <UsersPage />;
       case 'locations':

@@ -236,13 +236,37 @@ export default function StockPage() {
   }, [locationsWithStatus, searchQuery, statusFilter, sortBy]);
 
   // Calculate summary stats with computed status
-  const summaryStats = useMemo(() => ({
-    totalStock: data?.total_stock_kg || 0,
-    locationCount: locationsWithStatus.length,
-    healthyCount: locationsWithStatus.filter(l => l.computedStatus === 'healthy').length,
-    lowCount: locationsWithStatus.filter(l => l.computedStatus === 'low').length,
-    criticalCount: locationsWithStatus.filter(l => l.computedStatus === 'critical').length,
-  }), [data?.total_stock_kg, locationsWithStatus]);
+  // For location_managers, show only their location's stock in the Total Stock tile
+  const summaryStats = useMemo(() => {
+    let totalStock = data?.total_stock_kg || 0;
+    let totalStockStatus: StockStatus = 'healthy';
+
+    // If user is a location_manager, show only their location's stock and status
+    if (user?.role === 'location_manager' && user?.location_id) {
+      const myLocation = locationsWithStatus.find(l => l.location_id === user.location_id);
+      totalStock = myLocation?.on_hand_qty || 0;
+      // Use the location's thresholds to determine status
+      if (myLocation) {
+        totalStockStatus = getStockStatus(
+          myLocation.on_hand_qty,
+          myLocation.critical_stock_threshold || 20,
+          myLocation.low_stock_threshold || 50
+        );
+      } else {
+        // No location found, default to critical if 0 stock
+        totalStockStatus = totalStock === 0 ? 'critical' : 'healthy';
+      }
+    }
+
+    return {
+      totalStock,
+      totalStockStatus,
+      locationCount: locationsWithStatus.length,
+      healthyCount: locationsWithStatus.filter(l => l.computedStatus === 'healthy').length,
+      lowCount: locationsWithStatus.filter(l => l.computedStatus === 'low').length,
+      criticalCount: locationsWithStatus.filter(l => l.computedStatus === 'critical').length,
+    };
+  }, [data?.total_stock_kg, locationsWithStatus, user?.role, user?.location_id]);
 
   const handleSuccess = () => {
     refetch();
@@ -316,11 +340,24 @@ export default function StockPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <SummaryTile
           icon={Package}
-          iconBg="bg-emerald-100"
-          iconColor="text-emerald-600"
+          iconBg={
+            summaryStats.totalStockStatus === 'critical' ? 'bg-red-100' :
+            summaryStats.totalStockStatus === 'low' ? 'bg-amber-100' :
+            'bg-emerald-100'
+          }
+          iconColor={
+            summaryStats.totalStockStatus === 'critical' ? 'text-red-600' :
+            summaryStats.totalStockStatus === 'low' ? 'text-amber-600' :
+            'text-emerald-600'
+          }
           label="Total Stock"
           value={totalFormatted.value}
           unit={totalFormatted.unit}
+          highlight={
+            summaryStats.totalStockStatus === 'critical' ? 'error' :
+            summaryStats.totalStockStatus === 'low' ? 'warning' :
+            undefined
+          }
           onClick={() => setStatusFilter('all')}
           isActive={statusFilter === 'all'}
         />
@@ -583,17 +620,24 @@ function SummaryTile({
   onClick?: () => void;
   isActive?: boolean;
 }) {
-  // Determine accent color based on state (softer saturation)
-  const accentColor = isActive ? 'bg-emerald-400' :
-    highlight === 'warning' ? 'bg-amber-300' :
-    highlight === 'error' ? 'bg-red-300' :
+  // Determine accent color based on highlight status (priority) or active state
+  const accentColor =
+    highlight === 'error' ? 'bg-red-400' :
+    highlight === 'warning' ? 'bg-amber-400' :
+    isActive ? 'bg-emerald-400' :
     'bg-gray-200';
+
+  // Determine ring color based on highlight status when active
+  const ringColor =
+    highlight === 'error' ? 'ring-red-500' :
+    highlight === 'warning' ? 'ring-amber-500' :
+    'ring-emerald-500';
 
   return (
     <button
       onClick={onClick}
       className={`group bg-white rounded-2xl border border-gray-100 transition-all text-left w-full overflow-hidden flex cursor-pointer hover:shadow-md hover:shadow-gray-100/80 hover:border-gray-200 ${
-        isActive ? 'ring-2 ring-emerald-500 ring-offset-1' : ''
+        isActive ? `ring-2 ${ringColor} ring-offset-1` : ''
       }`}
     >
       {/* Left accent bar - thinner (w-0.5 = 2px) */}
