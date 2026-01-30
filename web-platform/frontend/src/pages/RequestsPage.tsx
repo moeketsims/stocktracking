@@ -309,7 +309,7 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
   }, [allRequestsData]);
 
   // Transform loan trips into a format compatible with RequestRow
-  const transformLoanTripsToRequests = (filterStatus?: 'planned' | 'in_progress'): StockRequest[] => {
+  const transformLoanTripsToRequests = (filterStatus?: 'planned' | 'in_progress' | 'completed'): StockRequest[] => {
     if (!isDriver() || !loanTrips.length) return [];
 
     let filteredTrips = loanTrips;
@@ -332,7 +332,9 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
       // Map to request-like fields
       location: trip.to_location || { name: trip.destination_description || 'Loan Location' },
       quantity_bags: trip.quantity_bags || trip.loan?.quantity_bags,
-      status: trip.status === 'in_progress' ? 'in_delivery' as StockRequestStatus : 'pending' as StockRequestStatus,
+      status: trip.status === 'completed' ? 'fulfilled' as StockRequestStatus :
+              trip.status === 'in_progress' ? 'in_delivery' as StockRequestStatus :
+              'pending' as StockRequestStatus,
       urgency: 'normal' as const,
       created_at: trip.created_at,
       requester: null, // Will show "Assigned by" instead
@@ -970,6 +972,9 @@ function RequestRow({
 
   // Determine status config for loan trips based on actual trip status
   const getLoanTripStatusConfig = () => {
+    if (loanTripStatus === 'completed') {
+      return { label: 'Delivered', bgColor: 'bg-emerald-50', color: 'text-emerald-700', borderColor: 'border-emerald-200' };
+    }
     if (loanTripStatus === 'in_progress') {
       return { label: 'In Transit', bgColor: 'bg-indigo-50', color: 'text-indigo-700', borderColor: 'border-indigo-200' };
     }
@@ -1028,6 +1033,15 @@ function RequestRow({
   const renderPrimaryAction = () => {
     // For loan trips, show appropriate action based on trip status
     if (isLoanTrip) {
+      // If trip is completed, show "Delivered" status
+      if (loanTripStatus === 'completed') {
+        return (
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600 px-2.5 py-1">
+            <Check className="w-3 h-3" />
+            Delivered
+          </span>
+        );
+      }
       // If trip is in_progress, show "In Transit" status (no action needed from driver on this page)
       if (loanTripStatus === 'in_progress') {
         return (

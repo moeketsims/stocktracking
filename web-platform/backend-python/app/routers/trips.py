@@ -178,17 +178,18 @@ async def get_driver_loan_trips(user_data: dict = Depends(get_current_user)):
             return {"trips": [], "total": 0, "message": "Driver not found"}
 
         # Get loan trips assigned to this driver
+        # Include completed trips so driver can see "Delivered" status in All tab
         result = supabase.table("trips").select(
             "id, trip_number, status, vehicle_id, driver_id, driver_name, trip_type, "
             "departure_time, estimated_arrival_time, created_at, notes, "
-            "origin_description, destination_description, odometer_start, "
-            "vehicles(id, registration_number, make, model), "
+            "origin_description, destination_description, odometer_start, odometer_end, "
+            "vehicles(id, registration_number, make, model, kilometers_traveled), "
             "from_location:locations!trips_from_location_id_fkey(id, name), "
             "to_location:locations!trips_to_location_id_fkey(id, name)"
         ).in_("driver_id", driver_ids).in_(
             "trip_type", ["loan_pickup", "loan_return"]
         ).in_(
-            "status", ["planned", "in_progress"]
+            "status", ["planned", "in_progress", "completed"]
         ).order("created_at", desc=True).execute()
 
         trips = result.data or []
