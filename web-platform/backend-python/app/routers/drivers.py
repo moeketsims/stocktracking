@@ -46,7 +46,22 @@ async def list_drivers(
         seen_ids = set()
         seen_names = set()  # Track names to prevent duplicates
 
-        # First, get profiles with role="driver" (these are actual system users who can log in)
+        # First, fetch ALL drivers from the drivers table to use for merging
+        all_drivers_query = supabase.table("drivers").select("*")
+        all_drivers_result = all_drivers_query.execute()
+        all_drivers_data = all_drivers_result.data or []
+
+        # Create lookup maps for drivers table by user_id and by normalized name
+        drivers_by_user_id = {}
+        drivers_by_name = {}
+        for d in all_drivers_data:
+            if d.get("user_id"):
+                drivers_by_user_id[d["user_id"]] = d
+            name_key = d.get("full_name", "").lower().strip()
+            if name_key:
+                drivers_by_name[name_key] = d
+
+        # Get profiles with role="driver" (these are actual system users who can log in)
         if include_profiles:
             profile_query = supabase.table("profiles").select(
                 "id, user_id, full_name, role, is_active"
@@ -58,30 +73,48 @@ async def list_drivers(
             profile_result = profile_query.execute()
 
             for profile in (profile_result.data or []):
-                drivers.append({
+                # Build base driver data from profile
+                driver_data = {
                     "id": profile["id"],
                     "user_id": profile.get("user_id"),
                     "full_name": profile["full_name"],
                     "is_active": profile.get("is_active", True),
                     "invitation_status": "active",  # Profiles are always "active" users
                     "source": "profile"  # Track where this came from
-                })
+                }
+
+                # Try to merge additional fields from drivers table
+                # First try by user_id, then by name
+                matching_driver = None
+                if profile.get("user_id") and profile["user_id"] in drivers_by_user_id:
+                    matching_driver = drivers_by_user_id[profile["user_id"]]
+                else:
+                    name_key = profile["full_name"].lower().strip()
+                    if name_key in drivers_by_name:
+                        matching_driver = drivers_by_name[name_key]
+
+                # Merge fields from drivers table if found
+                if matching_driver:
+                    driver_data["email"] = matching_driver.get("email")
+                    driver_data["phone"] = matching_driver.get("phone")
+                    driver_data["license_number"] = matching_driver.get("license_number")
+                    driver_data["license_expiry"] = matching_driver.get("license_expiry")
+                    driver_data["notes"] = matching_driver.get("notes")
+                    driver_data["drivers_table_id"] = matching_driver.get("id")  # Keep reference
+
+                drivers.append(driver_data)
                 seen_ids.add(profile["id"])
                 if profile.get("user_id"):
                     seen_user_ids.add(profile["user_id"])
                 # Track normalized name (lowercase, stripped) to prevent duplicates
                 seen_names.add(profile["full_name"].lower().strip())
 
-        # Then get drivers from the drivers table (may not have user accounts yet)
-        query = supabase.table("drivers").select("*").order("full_name", desc=False)
+        # Then process drivers from the drivers table that weren't already added via profiles
+        for driver in all_drivers_data:
+            # Skip inactive if filtering
+            if active_only and not driver.get("is_active", True):
+                continue
 
-        if active_only:
-            query = query.eq("is_active", True)
-
-        result = query.execute()
-
-        # Process drivers to add invitation_status field
-        for driver in (result.data or []):
             # Skip if we already have this exact ID from profiles
             if driver["id"] in seen_ids:
                 continue
@@ -103,10 +136,10 @@ async def list_drivers(
                 try:
                     inv_result = supabase.table("user_invitations").select(
                         "accepted_at, expires_at"
-                    ).eq("id", driver["invitation_id"]).single().execute()
+                    ).eq("id", driver["invitation_id"]).execute()
 
-                    if inv_result.data:
-                        invitation = inv_result.data
+                    if inv_result.data and len(inv_result.data) > 0:
+                        invitation = inv_result.data[0]
                         if invitation.get("accepted_at"):
                             invitation_status = "active"
                         else:
@@ -263,7 +296,7 @@ async def create_driver(request: CreateDriverRequest, user_data: dict = Depends(
         }
 
         # Insert invitation
-        invitation_result = supabase.table("user_invitations").insert(invitation_data)
+        invitation_result = supabase.table("user_invitations").insert(invitation_data).execute()
         logger.info(f"Created driver invitation {invitation_id} for {request.email}")
 
         # Send invitation email
@@ -377,47 +410,90 @@ async def update_driver(
     request: UpdateDriverRequest,
     user_data: dict = Depends(require_manager)
 ):
-    """Update driver details - managers only."""
+    """Update driver details - managers only. Handles both drivers table and profiles table entries."""
+    logger.info(f"=== UPDATE DRIVER REQUEST === driver_id={driver_id}, request={request.model_dump()}")
     supabase = get_supabase_admin_client()
 
     try:
-        # Check driver exists
-        existing = supabase.table("drivers").select("id").eq("id", driver_id).single().execute()
+        # First, check if driver exists in drivers table
+        existing_driver = supabase.table("drivers").select("id").eq("id", driver_id).execute()
 
-        if not existing.data:
+        # Check if driver exists in profiles table (any role - they may be listed as a driver from profile)
+        existing_profile = supabase.table("profiles").select("id, user_id, role").eq("id", driver_id).execute()
+
+        is_drivers_table = existing_driver.data and len(existing_driver.data) > 0
+        is_profile = existing_profile.data and len(existing_profile.data) > 0
+
+        logger.info(f"Update driver {driver_id}: in_drivers_table={is_drivers_table}, in_profile={is_profile}")
+
+        if not is_drivers_table and not is_profile:
             raise HTTPException(status_code=404, detail="Driver not found")
 
-        # Build update data
-        update_data = {}
+        # Build update data for profiles table (subset of fields)
+        profile_update_data = {}
         if request.full_name is not None:
-            update_data["full_name"] = request.full_name
+            profile_update_data["full_name"] = request.full_name
         if request.phone is not None:
-            update_data["phone"] = request.phone
-        if request.license_number is not None:
-            update_data["license_number"] = request.license_number
-        if request.license_expiry is not None:
-            update_data["license_expiry"] = request.license_expiry
-        if request.notes is not None:
-            update_data["notes"] = request.notes
+            profile_update_data["phone"] = request.phone
         if request.is_active is not None:
-            update_data["is_active"] = request.is_active
+            profile_update_data["is_active"] = request.is_active
 
-        if not update_data:
+        # Build update data for drivers table (all fields)
+        drivers_update_data = {}
+        if request.full_name is not None:
+            drivers_update_data["full_name"] = request.full_name
+        if request.phone is not None:
+            drivers_update_data["phone"] = request.phone
+        if request.license_number is not None:
+            drivers_update_data["license_number"] = request.license_number
+        if request.license_expiry is not None:
+            drivers_update_data["license_expiry"] = request.license_expiry
+        if request.notes is not None:
+            drivers_update_data["notes"] = request.notes
+        if request.is_active is not None:
+            drivers_update_data["is_active"] = request.is_active
+
+        if not profile_update_data and not drivers_update_data:
             raise HTTPException(status_code=400, detail="No fields to update")
 
-        result = supabase.table("drivers").update(update_data).eq("id", driver_id).execute()
+        result_data = None
+
+        # Update the appropriate table(s)
+        if is_profile and profile_update_data:
+            # Update profiles table for profile-based drivers
+            result = supabase.table("profiles").update(profile_update_data).eq("id", driver_id).execute()
+            # Handle both list and dict responses from Supabase
+            if result.data:
+                if isinstance(result.data, list) and len(result.data) > 0:
+                    result_data = result.data[0]
+                elif isinstance(result.data, dict):
+                    result_data = result.data
+            logger.info(f"Updated driver profile {driver_id}")
+
+        if is_drivers_table and drivers_update_data:
+            # Update drivers table
+            result = supabase.table("drivers").update(drivers_update_data).eq("id", driver_id).execute()
+            # Handle both list and dict responses from Supabase
+            if result.data:
+                if isinstance(result.data, list) and len(result.data) > 0:
+                    result_data = result.data[0]
+                elif isinstance(result.data, dict):
+                    result_data = result.data
+            logger.info(f"Updated driver record {driver_id}")
 
         return {
             "success": True,
             "message": "Driver updated",
-            "driver": result.data[0] if result.data else None
+            "driver": result_data
         }
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error updating driver: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error updating driver {driver_id}: {type(e).__name__}: {e}")
+        # Provide more helpful error message
+        error_msg = str(e) if str(e) else f"Database error: {type(e).__name__}"
+        raise HTTPException(status_code=500, detail=error_msg)
 
 
 @router.delete("/{driver_id}")

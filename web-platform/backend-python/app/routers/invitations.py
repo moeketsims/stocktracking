@@ -199,7 +199,7 @@ async def create_invitation(
             "expires_at": expires_at.isoformat(),
         }
 
-        result = supabase.table("user_invitations").insert(invitation_data)
+        result = supabase.table("user_invitations").insert(invitation_data).execute()
 
         # Send invitation email
         inviter_name = actor_profile.get("full_name") or "Admin"

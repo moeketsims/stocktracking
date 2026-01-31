@@ -80,7 +80,7 @@ async def create_test_admin():
                 "created_at": datetime.utcnow().isoformat(),
             }
 
-            supabase.table("profiles").insert(profile_data)
+            supabase.table("profiles").insert(profile_data).execute()
 
             return {
                 "success": True,
@@ -175,7 +175,7 @@ async def create_test_location_manager():
                 "created_at": datetime.utcnow().isoformat(),
             }
 
-            supabase.table("profiles").insert(profile_data)
+            supabase.table("profiles").insert(profile_data).execute()
 
             return {
                 "success": True,
@@ -565,7 +565,7 @@ async def accept_invite(request: AcceptInviteRequest):
         logger.info(f"[AUTH] Creating profile for user {new_user_id} with data: {profile_data}")
 
         try:
-            profile_result = supabase.table("profiles").insert(profile_data)
+            profile_result = supabase.table("profiles").insert(profile_data).execute()
             logger.info(f"[AUTH] Profile created successfully: {profile_result.data}")
         except Exception as profile_error:
             logger.error(f"[AUTH] Error creating profile: {profile_error}")
@@ -623,7 +623,7 @@ async def accept_invite(request: AcceptInviteRequest):
                     "is_active": True
                 }
                 logger.info(f"[AUTH] Creating driver record {driver_id} for user {new_user_id}")
-                driver_result = supabase.table("drivers").insert(driver_data)
+                driver_result = supabase.table("drivers").insert(driver_data).execute()
                 logger.info(f"[AUTH] Driver created successfully: {driver_result.data}")
         except Exception as driver_error:
             logger.error(f"[AUTH] Error creating driver record: {driver_error}", exc_info=True)
