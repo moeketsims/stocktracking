@@ -41,7 +41,7 @@ router = APIRouter(prefix="/loans", tags=["Loans"])
 class CreateLoanRequest(BaseModel):
     lender_location_id: str
     quantity_requested: int
-    estimated_return_date: date
+    estimated_return_date: Optional[date] = None
     notes: Optional[str] = None
 
 
@@ -358,7 +358,7 @@ async def create_loan_request(
         "lender_location_id": request.lender_location_id,
         "requested_by": profile["id"],
         "quantity_requested": request.quantity_requested,
-        "estimated_return_date": request.estimated_return_date.isoformat(),
+        "estimated_return_date": request.estimated_return_date.isoformat() if request.estimated_return_date else None,
         "notes": request.notes,
         "status": "pending"
     }
@@ -372,12 +372,13 @@ async def create_loan_request(
     try:
         lender_manager = get_location_manager_email(supabase, request.lender_location_id)
         if lender_manager and lender_manager.get("email"):
+            return_date_str = request.estimated_return_date.strftime("%B %d, %Y") if request.estimated_return_date else "Not specified"
             send_loan_request_notification(
                 to_email=lender_manager["email"],
                 manager_name=lender_manager.get("full_name", "Manager"),
                 borrower_shop=profile["location"]["name"],
                 quantity=request.quantity_requested,
-                return_date=request.estimated_return_date.strftime("%B %d, %Y"),
+                return_date=return_date_str,
                 requester_name=profile.get("full_name", "A manager"),
                 notes=request.notes
             )

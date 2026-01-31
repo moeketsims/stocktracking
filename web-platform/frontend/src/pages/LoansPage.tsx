@@ -157,7 +157,7 @@ export default function LoansPage({ onNavigateToTrip }: LoansPageProps) {
 
   // Mutations
   const createLoanMutation = useMutation({
-    mutationFn: (data: { lender_location_id: string; quantity_requested: number; estimated_return_date: string; notes?: string }) =>
+    mutationFn: (data: { lender_location_id: string; quantity_requested: number; estimated_return_date?: string; notes?: string }) =>
       loansApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['loans'] });
@@ -976,7 +976,7 @@ function CreateLoanModal({
 }: {
   locations: { id: string; name: string; current_stock_bags?: number }[];
   onClose: () => void;
-  onSubmit: (data: { lender_location_id: string; quantity_requested: number; estimated_return_date: string; notes?: string }) => void;
+  onSubmit: (data: { lender_location_id: string; quantity_requested: number; estimated_return_date?: string; notes?: string }) => void;
   isSubmitting: boolean;
 }) {
   const [lenderId, setLenderId] = useState('');
@@ -991,18 +991,20 @@ function CreateLoanModal({
     e.preventDefault();
     if (!lenderId) return setError('Please select a shop to borrow from');
     if (!quantity || parseInt(quantity) <= 0) return setError('Please enter a valid quantity');
-    if (!returnDate) return setError('Please select an estimated return date');
 
-    const returnDateObj = new Date(returnDate);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (returnDateObj < today) return setError('Return date must be in the future');
+    // Validate return date only if provided
+    if (returnDate) {
+      const returnDateObj = new Date(returnDate);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (returnDateObj < today) return setError('Return date must be in the future');
+    }
 
     setError(null);
     onSubmit({
       lender_location_id: lenderId,
       quantity_requested: parseInt(quantity),
-      estimated_return_date: returnDate,
+      estimated_return_date: returnDate || undefined,
       notes: notes || undefined,
     });
   };
@@ -1061,7 +1063,7 @@ function CreateLoanModal({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Estimated Return Date *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Estimated Return Date (optional)</label>
               <input
                 type="date"
                 value={returnDate}

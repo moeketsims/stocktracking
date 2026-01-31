@@ -236,7 +236,7 @@ function App() {
         { id: 'fleet-status' as const, label: 'Fleet Status', icon: Navigation },
       ]
     : [
-        { id: 'stock' as const, label: 'Stock', icon: Package },
+        { id: 'stock' as const, label: 'Stocks', icon: Package },
         ...(!isDriver() ? [{ id: 'kitchen' as const, label: isAdmin ? 'Kitchens' : 'Kitchen', icon: UtensilsCrossed }] : []),
         { id: 'requests' as const, label: 'Requests', icon: ClipboardList },
         ...(!isDriver() ? [{ id: 'loans' as const, label: 'Loans', icon: ArrowLeftRight }] : []),

@@ -136,6 +136,7 @@ export default function StockPage() {
   const queryClient = useQueryClient();
   const { data, isLoading, error, refetch } = useStockByLocation();
   const { isManager, isDriver, user } = useAuthStore();
+  const isAdmin = user?.role === 'admin';
 
   // Search/filter/sort state
   const [searchQuery, setSearchQuery] = useState('');
@@ -337,30 +338,32 @@ export default function StockPage() {
       )}
 
       {/* Summary Tiles - Clickable to filter */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <SummaryTile
-          icon={Package}
-          iconBg={
-            summaryStats.totalStockStatus === 'critical' ? 'bg-red-100' :
-            summaryStats.totalStockStatus === 'low' ? 'bg-amber-100' :
-            'bg-emerald-100'
-          }
-          iconColor={
-            summaryStats.totalStockStatus === 'critical' ? 'text-red-600' :
-            summaryStats.totalStockStatus === 'low' ? 'text-amber-600' :
-            'text-emerald-600'
-          }
-          label="Total Stock"
-          value={totalFormatted.value}
-          unit={totalFormatted.unit}
-          highlight={
-            summaryStats.totalStockStatus === 'critical' ? 'error' :
-            summaryStats.totalStockStatus === 'low' ? 'warning' :
-            undefined
-          }
-          onClick={() => setStatusFilter('all')}
-          isActive={statusFilter === 'all'}
-        />
+      <div className={`grid grid-cols-3 ${isAdmin ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}>
+        {isAdmin && (
+          <SummaryTile
+            icon={Package}
+            iconBg={
+              summaryStats.totalStockStatus === 'critical' ? 'bg-red-100' :
+              summaryStats.totalStockStatus === 'low' ? 'bg-amber-100' :
+              'bg-emerald-100'
+            }
+            iconColor={
+              summaryStats.totalStockStatus === 'critical' ? 'text-red-600' :
+              summaryStats.totalStockStatus === 'low' ? 'text-amber-600' :
+              'text-emerald-600'
+            }
+            label="Total Stock"
+            value={totalFormatted.value}
+            unit={totalFormatted.unit}
+            highlight={
+              summaryStats.totalStockStatus === 'critical' ? 'error' :
+              summaryStats.totalStockStatus === 'low' ? 'warning' :
+              undefined
+            }
+            onClick={() => setStatusFilter('all')}
+            isActive={statusFilter === 'all'}
+          />
+        )}
         <SummaryTile
           icon={MapPin}
           iconBg="bg-gray-100"
