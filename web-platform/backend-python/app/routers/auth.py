@@ -4,11 +4,15 @@ from datetime import datetime
 from uuid import uuid4
 from pydantic import BaseModel, EmailStr, Field
 import logging
+import os
 from ..config import get_supabase_client, get_supabase_admin_client
 from ..models.requests import LoginRequest
 from ..models.responses import LoginResponse, UserProfile, AuthStatusResponse
 
 logger = logging.getLogger(__name__)
+
+# Environment check for development-only endpoints
+IS_DEVELOPMENT = os.environ.get("ENVIRONMENT", "production").lower() == "development"
 
 
 # Additional request models for auth extensions
@@ -31,6 +35,8 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 @router.post("/create-test-admin")
 async def create_test_admin():
     """Create a test admin user for development. Email: test@admin.com, Password: password123"""
+    if not IS_DEVELOPMENT:
+        raise HTTPException(status_code=404, detail="Not found")
     supabase = get_supabase_admin_client()
 
     test_email = "test@admin.com"
@@ -121,6 +127,8 @@ async def create_test_admin():
 @router.post("/create-test-manager")
 async def create_test_location_manager():
     """Create a test location manager user for development. Email: manager@test.com, Password: Test123!"""
+    if not IS_DEVELOPMENT:
+        raise HTTPException(status_code=404, detail="Not found")
     supabase = get_supabase_admin_client()
 
     test_email = "manager@test.com"

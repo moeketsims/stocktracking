@@ -195,12 +195,12 @@ async def get_user(
     try:
         result = supabase.table("profiles").select(
             "*, zones(name), locations(name)"
-        ).eq("id", user_id).single().execute()
+        ).eq("id", user_id).execute()
 
-        if not result.data:
+        if not result.data or len(result.data) == 0:
             raise HTTPException(status_code=404, detail="User not found")
 
-        profile = result.data
+        profile = result.data[0]
 
         # Check scope
         if not is_user_in_actor_scope(actor_profile, profile):
@@ -249,13 +249,14 @@ async def update_user(
     actor_profile = user_data["profile"]
 
     try:
-        # Get existing profile
-        existing = supabase.table("profiles").select("*").eq("id", user_id).single().execute()
+        # Get existing profile - don't use .single() to avoid exceptions on empty results
+        existing = supabase.table("profiles").select("*").eq("id", user_id).execute()
 
-        if not existing.data:
+        if not existing.data or len(existing.data) == 0:
             raise HTTPException(status_code=404, detail="User not found")
 
-        target_profile = existing.data
+        # Get first result
+        target_profile = existing.data[0]
 
         # Check scope
         if not is_user_in_actor_scope(actor_profile, target_profile):
@@ -315,13 +316,15 @@ async def deactivate_user(
 
     try:
         # Get existing profile
-        existing = supabase.table("profiles").select("*").eq("id", user_id).single().execute()
+        existing = supabase.table("profiles").select("*").eq("id", user_id).execute()
 
-        if not existing.data:
+        if not existing.data or len(existing.data) == 0:
             raise HTTPException(status_code=404, detail="User not found")
 
+        profile_data = existing.data[0]
+
         # Don't allow self-deactivation
-        if existing.data["user_id"] == user_data["user"].id:
+        if profile_data["user_id"] == user_data["user"].id:
             raise HTTPException(status_code=400, detail="Cannot deactivate your own account")
 
         # Deactivate user profile
@@ -331,8 +334,8 @@ async def deactivate_user(
         }).eq("id", user_id).execute()
 
         # If user is a driver, also deactivate their driver record
-        auth_user_id = existing.data.get("user_id")
-        if auth_user_id and existing.data.get("role") == "driver":
+        auth_user_id = profile_data.get("user_id")
+        if auth_user_id and profile_data.get("role") == "driver":
             # Find and deactivate linked driver record
             supabase.table("drivers").update({
                 "is_active": False
@@ -340,7 +343,7 @@ async def deactivate_user(
 
         return {
             "success": True,
-            "message": f"User {existing.data.get('full_name', 'Unknown')} deactivated"
+            "message": f"User {profile_data.get('full_name', 'Unknown')} deactivated"
         }
 
     except HTTPException:
@@ -359,10 +362,12 @@ async def activate_user(
 
     try:
         # Get existing profile
-        existing = supabase.table("profiles").select("*").eq("id", user_id).single().execute()
+        existing = supabase.table("profiles").select("*").eq("id", user_id).execute()
 
-        if not existing.data:
+        if not existing.data or len(existing.data) == 0:
             raise HTTPException(status_code=404, detail="User not found")
+
+        profile_data = existing.data[0]
 
         # Activate
         supabase.table("profiles").update({
@@ -372,7 +377,7 @@ async def activate_user(
 
         return {
             "success": True,
-            "message": f"User {existing.data.get('full_name', 'Unknown')} activated"
+            "message": f"User {profile_data.get('full_name', 'Unknown')} activated"
         }
 
     except HTTPException:
@@ -391,15 +396,17 @@ async def admin_reset_password(
 
     try:
         # Get profile to find auth user
-        profile = supabase.table("profiles").select("user_id, full_name").eq(
+        profile_result = supabase.table("profiles").select("user_id, full_name").eq(
             "id", user_id
-        ).single().execute()
+        ).execute()
 
-        if not profile.data:
+        if not profile_result.data or len(profile_result.data) == 0:
             raise HTTPException(status_code=404, detail="User not found")
 
+        profile_data = profile_result.data[0]
+
         # Get user email
-        auth_user = supabase.auth.admin.get_user_by_id(profile.data["user_id"])
+        auth_user = supabase.auth.admin.get_user_by_id(profile_data["user_id"])
         if not auth_user or not auth_user.user:
             raise HTTPException(status_code=404, detail="Auth user not found")
 

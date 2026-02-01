@@ -1,6 +1,12 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 import httpx
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Default timeout for HTTP client connections (in seconds)
+DEFAULT_HTTP_TIMEOUT = 30.0
 
 
 class Settings(BaseSettings):
@@ -8,6 +14,9 @@ class Settings(BaseSettings):
     supabase_anon_key: str
     supabase_service_key: str = ""
     port: int = 3001
+
+    # CORS settings
+    cors_origins: str = ""  # Comma-separated list of allowed origins
 
     # Email settings (Gmail SMTP)
     smtp_host: str = "smtp.gmail.com"
@@ -159,16 +168,16 @@ class TableQuery:
         if self._single:
             headers["Accept"] = "application/vnd.pgrst.object+json"
 
-        with httpx.Client() as http:
+        with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT) as http:
             response = http.get(url, headers=headers, params=params)
 
             if response.status_code >= 400:
-                print(f"[SUPABASE ERROR] {self.table_name}: {response.status_code} - {response.text[:200]}")
+                logger.error(f"Supabase error on {self.table_name}: {response.status_code} - {response.text[:200]}")
                 return QueryResult(data=None, error=response.text)
 
             data = response.json()
             row_count = len(data) if isinstance(data, list) else 1
-            print(f"[SUPABASE] {self.table_name}: {row_count} rows")
+            logger.debug(f"Supabase query on {self.table_name}: {row_count} rows")
             return QueryResult(data=data, error=None)
 
     def insert(self, data, returning: str = "*") -> "TableQuery":
@@ -191,7 +200,7 @@ class TableQuery:
             response = http.post(url, headers=headers, params=params, json=self._insert_data)
 
             if response.status_code >= 400:
-                print(f"[SUPABASE ERROR] {self.table_name}: {response.status_code} - {response.text[:200]}")
+                logger.error(f"Supabase error on {self.table_name}: {response.status_code} - {response.text[:200]}")
                 return QueryResult(data=None, error=response.text)
 
             result = response.json()
@@ -217,11 +226,11 @@ class TableQuery:
         headers = self.client.headers.copy()
         headers["Prefer"] = "return=representation"
 
-        with httpx.Client() as http:
+        with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT) as http:
             response = http.patch(url, headers=headers, params=params, json=self._update_data)
 
             if response.status_code >= 400:
-                print(f"[SUPABASE ERROR] {self.table_name}: {response.status_code} - {response.text[:200]}")
+                logger.error(f"Supabase error on {self.table_name}: {response.status_code} - {response.text[:200]}")
                 return QueryResult(data=None, error=response.text)
 
             result = response.json()
@@ -248,12 +257,12 @@ class TableQuery:
             response = http.delete(url, headers=headers, params=params)
 
             if response.status_code >= 400:
-                print(f"[SUPABASE DELETE ERROR] {self.table_name}: {response.status_code} - {response.text[:200]}")
+                logger.error(f"Supabase delete error on {self.table_name}: {response.status_code} - {response.text[:200]}")
                 return QueryResult(data=None, error=response.text)
 
             result = response.json() if response.text else []
             row_count = len(result) if isinstance(result, list) else 1
-            print(f"[SUPABASE DELETE] {self.table_name}: {row_count} rows deleted")
+            logger.debug(f"Supabase delete on {self.table_name}: {row_count} rows deleted")
             return QueryResult(data=result, error=None)
 
 
@@ -277,7 +286,7 @@ class AuthClient:
             "Content-Type": "application/json"
         }
 
-        with httpx.Client() as http:
+        with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT) as http:
             response = http.post(url, headers=headers, json=credentials)
 
             if response.status_code >= 400:
@@ -304,7 +313,7 @@ class AuthClient:
             "Content-Type": "application/json"
         }
 
-        with httpx.Client() as http:
+        with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT) as http:
             response = http.post(url, headers=headers, json=credentials)
 
             if response.status_code >= 400:
@@ -330,7 +339,7 @@ class AuthClient:
             "Content-Type": "application/json"
         }
 
-        with httpx.Client() as http:
+        with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT) as http:
             response = http.get(url, headers=headers)
 
             if response.status_code >= 400:
@@ -351,7 +360,7 @@ class AuthClient:
             "Content-Type": "application/json"
         }
 
-        with httpx.Client() as http:
+        with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT) as http:
             response = http.post(url, headers=headers, json={"refresh_token": refresh_token})
 
             if response.status_code >= 400:
@@ -387,7 +396,7 @@ class AuthAdmin:
             "Content-Type": "application/json"
         }
 
-        with httpx.Client() as http:
+        with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT) as http:
             response = http.post(url, headers=headers, json=user_data)
 
             if response.status_code >= 400:
@@ -411,7 +420,7 @@ class AuthAdmin:
             "Content-Type": "application/json"
         }
 
-        with httpx.Client() as http:
+        with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT) as http:
             response = http.get(url, headers=headers)
 
             if response.status_code >= 400:
@@ -435,7 +444,7 @@ class AuthAdmin:
             "Content-Type": "application/json"
         }
 
-        with httpx.Client() as http:
+        with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT) as http:
             response = http.put(url, headers=headers, json=update_data)
 
             if response.status_code >= 400:
@@ -463,7 +472,7 @@ class AuthAdmin:
             "Content-Type": "application/json"
         }
 
-        with httpx.Client() as http:
+        with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT) as http:
             response = http.post(url, headers=headers, json=link_data)
 
             if response.status_code >= 400:
@@ -500,5 +509,6 @@ def get_supabase_client() -> SupabaseClient:
 
 def get_supabase_admin_client() -> SupabaseClient:
     settings = get_settings()
-    key = settings.supabase_service_key or settings.supabase_anon_key
-    return SupabaseClient(settings.supabase_url, key)
+    if not settings.supabase_service_key:
+        raise RuntimeError("SUPABASE_SERVICE_KEY is required for admin operations")
+    return SupabaseClient(settings.supabase_url, settings.supabase_service_key)

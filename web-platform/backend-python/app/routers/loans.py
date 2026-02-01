@@ -31,7 +31,9 @@ from app.email import (
 )
 
 # Secret key for JWT tokens for KM submission
-KM_SUBMISSION_SECRET = os.environ.get("KM_SUBMISSION_SECRET", "default-secret-change-me")
+KM_SUBMISSION_SECRET = os.environ.get("KM_SUBMISSION_SECRET")
+if not KM_SUBMISSION_SECRET:
+    raise RuntimeError("KM_SUBMISSION_SECRET environment variable is required")
 
 router = APIRouter(prefix="/loans", tags=["Loans"])
 
@@ -55,7 +57,7 @@ class RejectLoanRequest(BaseModel):
 
 
 class AssignDriverRequest(BaseModel):
-    vehicle_id: str
+    vehicle_id: Optional[str] = None  # Optional for pickup (driver selects), required for return
     driver_id: str
     odometer_start: Optional[float] = None
     estimated_arrival_time: Optional[str] = None
@@ -567,7 +569,7 @@ async def assign_pickup_driver(
     request: AssignDriverRequest,
     user_data: dict = Depends(require_auth)
 ):
-    """Borrower assigns a driver to pick up the loaned stock."""
+    """Borrower assigns a driver to pick up the loaned stock. Vehicle is optional - driver will select when accepting."""
     supabase = get_supabase_admin_client()
     profile = get_user_profile(supabase, user_data["user"].id)
 
@@ -581,10 +583,11 @@ async def assign_pickup_driver(
     if loan["status"] != "confirmed":
         raise HTTPException(status_code=400, detail=f"Cannot assign pickup for loan with status '{loan['status']}'")
 
-    # Get vehicle info
-    vehicle = supabase.table("vehicles").select("*").eq("id", request.vehicle_id).execute()
-    if not vehicle.data:
-        raise HTTPException(status_code=404, detail="Vehicle not found")
+    # Get vehicle info if provided (optional for pickup - driver will select)
+    if request.vehicle_id:
+        vehicle = supabase.table("vehicles").select("*").eq("id", request.vehicle_id).execute()
+        if not vehicle.data:
+            raise HTTPException(status_code=404, detail="Vehicle not found")
 
     # Get driver name - check both drivers and profiles tables
     driver_name = None
@@ -618,10 +621,11 @@ async def assign_pickup_driver(
     trip_number = f"TRP-{year}-{max_seq + 1:04d}"
 
     # Create trip for pickup - starts as "planned" until driver accepts
+    # Vehicle is optional - driver will select when accepting
     trip_data = {
         "id": str(uuid4()),
         "trip_number": trip_number,
-        "vehicle_id": request.vehicle_id,
+        "vehicle_id": request.vehicle_id if request.vehicle_id else None,
         "driver_id": request.driver_id if driver_found else None,
         "driver_name": driver_name,
         "status": "planned",  # Driver needs to accept before it becomes in_progress
@@ -657,14 +661,14 @@ async def assign_pickup_driver(
     if not loan_update.data:
         raise HTTPException(status_code=500, detail="Failed to update loan")
 
-    # Update vehicle odometer if provided
-    if request.odometer_start is not None:
+    # Update vehicle odometer if provided and vehicle was selected
+    if request.odometer_start is not None and request.vehicle_id:
         supabase.table("vehicles").update({
             "current_km": request.odometer_start
         }).eq("id", request.vehicle_id).execute()
 
     return {
-        "message": "Pickup driver assigned. Driver needs to accept the assignment.",
+        "message": "Pickup driver assigned. Driver needs to accept and select a vehicle.",
         "loan": loan_update.data,
         "trip": trip_result.data
     }
@@ -673,6 +677,7 @@ async def assign_pickup_driver(
 class AcceptPickupRequest(BaseModel):
     """Request body for driver accepting loan pickup."""
     odometer_start: int  # Required - driver must enter starting odometer
+    vehicle_id: str  # Required - driver must select vehicle
 
 
 @router.post("/{loan_id}/accept-pickup")
@@ -681,13 +686,18 @@ async def accept_pickup_assignment(
     request: AcceptPickupRequest,
     user_data: dict = Depends(require_auth)
 ):
-    """Driver accepts the loan pickup assignment. This starts the trip."""
+    """Driver accepts the loan pickup assignment and selects vehicle. This starts the trip."""
     supabase = get_supabase_admin_client()
     user = user_data["user"]
 
     # Validate odometer value
     if request.odometer_start < 0:
         raise HTTPException(status_code=400, detail="Odometer value cannot be negative")
+
+    # Validate vehicle
+    vehicle = supabase.table("vehicles").select("*").eq("id", request.vehicle_id).execute()
+    if not vehicle.data:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
 
     # Get driver IDs from both tables
     driver_ids = []
@@ -729,12 +739,18 @@ async def accept_pickup_assignment(
     if trip_data["status"] != "planned":
         raise HTTPException(status_code=400, detail=f"Trip is already {trip_data['status']}")
 
-    # Update trip to in_progress with starting odometer
+    # Update trip to in_progress with starting odometer and vehicle
     trip_update = supabase.table("trips").update({
         "status": "in_progress",
         "departure_time": datetime.now().isoformat(),
-        "odometer_start": request.odometer_start
+        "odometer_start": request.odometer_start,
+        "vehicle_id": request.vehicle_id
     }).eq("id", loan["pickup_trip_id"]).execute()
+
+    # Update vehicle odometer
+    supabase.table("vehicles").update({
+        "current_km": request.odometer_start
+    }).eq("id", request.vehicle_id).execute()
 
     # Update loan to in_transit
     loan_update = supabase.table("loans").update({

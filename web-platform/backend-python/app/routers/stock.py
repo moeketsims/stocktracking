@@ -2,6 +2,10 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import Optional
 from datetime import datetime, timedelta
 from uuid import uuid4
+from functools import lru_cache
+from threading import Lock
+import os
+import logging
 from ..config import get_supabase_admin_client
 from ..routers.auth import require_auth, require_manager, get_view_location_id
 from ..models.requests import (
@@ -13,13 +17,21 @@ from ..models.requests import (
 from ..models.responses import (
     StockScreenResponse, StockOverview, BatchInfo, FIFOSuggestion
 )
+from ..utils.errors import handle_exception
+
+logger = logging.getLogger(__name__)
+
+# Environment check for development-only endpoints
+IS_DEVELOPMENT = os.environ.get("ENVIRONMENT", "production").lower() == "development"
 
 router = APIRouter(prefix="/stock", tags=["Stock Operations"])
 
 
 @router.get("/debug")
 async def debug_stock_state(user_data: dict = Depends(require_auth)):
-    """Debug endpoint to check actual database state."""
+    """Debug endpoint to check actual database state. Only available in development."""
+    if not IS_DEVELOPMENT:
+        raise HTTPException(status_code=404, detail="Not found")
     supabase = get_supabase_admin_client()
     user = user_data["user"]
     
@@ -62,25 +74,30 @@ async def debug_stock_state(user_data: dict = Depends(require_auth)):
         return {"error": str(e)}
 
 
-# Cache for default item (potatoes)
+# Thread-safe cache for default item (potatoes)
 _default_item_cache = {"item": None, "cached_at": None}
+_cache_lock = Lock()
 
 
 def get_default_item(supabase) -> dict:
-    """Get the default 'Potatoes' item. Caches the result for 10 minutes."""
+    """Get the default 'Potatoes' item. Thread-safe caching for 10 minutes."""
     global _default_item_cache
 
     now = datetime.utcnow()
-    if (_default_item_cache["item"] and
-        _default_item_cache["cached_at"] and
-        (now - _default_item_cache["cached_at"]).seconds < 600):
-        return _default_item_cache["item"]
+
+    # Check cache with lock
+    with _cache_lock:
+        if (_default_item_cache["item"] and
+            _default_item_cache["cached_at"] and
+            (now - _default_item_cache["cached_at"]).seconds < 600):
+            return _default_item_cache["item"]
 
     # Fetch the default item (first item or one named 'Potatoes')
     result = supabase.table("items").select("*").limit(1).execute()
     if result.data:
-        _default_item_cache["item"] = result.data[0]
-        _default_item_cache["cached_at"] = now
+        with _cache_lock:
+            _default_item_cache["item"] = result.data[0]
+            _default_item_cache["cached_at"] = now
         return result.data[0]
 
     raise HTTPException(status_code=500, detail="No items configured in the system")
@@ -135,7 +152,7 @@ def get_batch_totals(supabase, location_id: str = None) -> list:
             # Set cursor for next page
             last_id = batches.data[-1]["id"]
 
-        print(f"[BATCH_TOTALS] Found {len(all_batches)} total batches ({page_count} pages)")
+        logger.debug(f"[BATCH_TOTALS] Found {len(all_batches)} total batches ({page_count} pages)")
 
         # Aggregate by location + item
         totals = {}
@@ -151,11 +168,11 @@ def get_batch_totals(supabase, location_id: str = None) -> list:
             totals[key]["on_hand_qty"] += b["remaining_qty"]
 
         total_kg = sum(t["on_hand_qty"] for t in totals.values())
-        print(f"[BATCH_TOTALS] Total: {total_kg} kg ({int(total_kg/10)} bags)")
+        logger.debug(f"[BATCH_TOTALS] Total: {total_kg} kg ({int(total_kg/10)} bags)")
 
         return list(totals.values())
     except Exception as e:
-        print(f"[BATCH_TOTALS] ERROR: {e}")
+        logger.error(f"[BATCH_TOTALS] Error: {e}")
         return []
 
 
@@ -500,10 +517,10 @@ async def receive_stock(request: ReceiveStockRequest, user_data: dict = Depends(
 @router.post("/issue")
 async def issue_stock(request: IssueStockRequest, user_data: dict = Depends(require_auth)):
     """Issue stock - deducts from batch using FIFO automatically."""
-    print(f"[ISSUE] ===== WITHDRAWAL REQUEST =====")
+    logger.debug("[ISSUE] ===== WITHDRAWAL REQUEST =====")
     supabase = get_supabase_admin_client()
     user = user_data["user"]
-    print(f"[ISSUE] User ID: {user.id}")
+    logger.debug(f"[ISSUE] User ID: {user.id}")
 
     try:
         # Get user profile
@@ -515,7 +532,7 @@ async def issue_stock(request: IssueStockRequest, user_data: dict = Depends(requ
             raise HTTPException(status_code=400, detail="User profile not found")
 
         location_id = profile.data.get("location_id")
-        print(f"[ISSUE] Profile location_id from DB: {location_id}")
+        logger.debug(f"[ISSUE] Profile location_id from DB: {location_id}")
         if not location_id:
             raise HTTPException(status_code=400, detail="User has no assigned location")
 
@@ -540,7 +557,7 @@ async def issue_stock(request: IssueStockRequest, user_data: dict = Depends(requ
         if request.unit == "bag":
             conversion_factor = 10.0
         qty_kg = convert_to_kg(request.quantity, request.unit, conversion_factor)
-        print(f"[ISSUE] Converting {request.quantity} {request.unit} with factor {conversion_factor} = {qty_kg} kg")
+        logger.debug(f"[ISSUE] Converting {request.quantity} {request.unit} with factor {conversion_factor} = {qty_kg} kg")
 
         # Get current balance
         balance = supabase.table("stock_balance").select("on_hand_qty").eq(
@@ -572,13 +589,13 @@ async def issue_stock(request: IssueStockRequest, user_data: dict = Depends(requ
             # Subtract quantity from oldest batch (FIFO)
             old_remaining = oldest_batch.data[0]["remaining_qty"]
             new_remaining = old_remaining - qty_kg
-            print(f"[ISSUE] Batch {batch_id}: {old_remaining} - {qty_kg} = {new_remaining}")
+            logger.debug(f"[ISSUE] Batch {batch_id}: {old_remaining} - {qty_kg} = {new_remaining}")
             update_result = supabase.table("stock_batches").update({
                 "remaining_qty": new_remaining
             }).eq("id", batch_id).execute()
-            print(f"[ISSUE] Update result: {update_result.data}")
+            logger.debug(f"[ISSUE] Update result: {update_result.data}")
         else:
-            print(f"[ISSUE] WARNING: No batch found to deduct from!")
+            logger.warning("[ISSUE] No batch found to deduct from!")
 
         # Create transaction
         transaction_data = {
@@ -598,12 +615,12 @@ async def issue_stock(request: IssueStockRequest, user_data: dict = Depends(requ
         }
 
         transaction = supabase.table("stock_transactions").insert(transaction_data).execute()
-        print(f"[ISSUE] Created transaction: id={transaction.data['id'] if transaction.data else 'NONE'}, location_id_from={location_id}, type=issue")
+        logger.debug(f"[ISSUE] Created transaction: id={transaction.data['id'] if transaction.data else 'NONE'}, location_id_from={location_id}, type=issue")
 
         # Calculate new total for verification
         new_total_batches = get_batch_totals(supabase, location_id)
         new_total_kg = sum(bt.get("on_hand_qty", 0) or 0 for bt in new_total_batches)
-        print(f"[ISSUE] New total after withdrawal: {new_total_kg} kg ({new_total_kg/10:.0f} bags)")
+        logger.debug(f"[ISSUE] New total after withdrawal: {new_total_kg} kg ({new_total_kg/10:.0f} bags)")
 
         return {
             "success": True,
@@ -778,7 +795,7 @@ async def return_stock(request: IssueStockRequest, user_data: dict = Depends(req
         if request.unit == "bag":
             conversion_factor = 10.0
         qty_kg = convert_to_kg(request.quantity, request.unit, conversion_factor)
-        print(f"[RETURN] Converting {request.quantity} {request.unit} with factor {conversion_factor} = {qty_kg} kg")
+        logger.debug(f"[RETURN] Converting {request.quantity} {request.unit} with factor {conversion_factor} = {qty_kg} kg")
 
         # Get most recent batch for this location/item to add back to
         recent_batch = supabase.table("stock_batches").select("id, remaining_qty").eq(
@@ -793,11 +810,11 @@ async def return_stock(request: IssueStockRequest, user_data: dict = Depends(req
             # Add quantity back to batch
             old_remaining = recent_batch.data[0]["remaining_qty"]
             new_remaining = old_remaining + qty_kg
-            print(f"[RETURN] Batch {batch_id}: {old_remaining} + {qty_kg} = {new_remaining}")
+            logger.debug(f"[RETURN] Batch {batch_id}: {old_remaining} + {qty_kg} = {new_remaining}")
             update_result = supabase.table("stock_batches").update({
                 "remaining_qty": new_remaining
             }).eq("id", batch_id).execute()
-            print(f"[RETURN] Update result: {update_result.data}")
+            logger.debug(f"[RETURN] Update result: {update_result.data}")
         else:
             # No existing batch, create a new one for the return
             batch_id = str(uuid4())
@@ -832,7 +849,7 @@ async def return_stock(request: IssueStockRequest, user_data: dict = Depends(req
         }
 
         transaction = supabase.table("stock_transactions").insert(transaction_data).execute()
-        print(f"[RETURN] Created transaction: id={transaction.data['id'] if transaction.data else 'NONE'}, location_id_to={location_id}, type=return")
+        logger.debug(f"[RETURN] Created transaction: id={transaction.data['id'] if transaction.data else 'NONE'}, location_id_to={location_id}, type=return")
 
         return {
             "success": True,
@@ -853,7 +870,7 @@ async def get_stock_balance(
     user_data: dict = Depends(require_auth)
 ):
     """Get current stock balance."""
-    print(f"[BALANCE] ===== FETCHING STOCK BALANCE =====")
+    logger.debug("[BALANCE] ===== FETCHING STOCK BALANCE =====")
     supabase = get_supabase_admin_client()
     user = user_data["user"]
 
@@ -864,7 +881,7 @@ async def get_stock_balance(
 
         # Get effective location for viewing (location_manager can view other shops)
         location_id = get_view_location_id(profile.data, view_location_id) if profile.data else None
-        print(f"[BALANCE] Location ID: {location_id}")
+        logger.debug(f"[BALANCE] Location ID: {location_id}")
 
         query = supabase.table("stock_balance").select(
             "*, locations(name), items(name, sku, unit)"
@@ -880,8 +897,8 @@ async def get_stock_balance(
         # Log the totals for debugging
         balance_total = sum(item.get("on_hand_qty", 0) or 0 for item in (balance.data or []))
         batch_total = sum(bt.get("on_hand_qty", 0) or 0 for bt in batch_totals)
-        print(f"[BALANCE] stock_balance view total: {balance_total} kg ({balance_total/10:.0f} bags)")
-        print(f"[BALANCE] batch_totals calculation: {batch_total} kg ({batch_total/10:.0f} bags)")
+        logger.debug(f"[BALANCE] stock_balance view total: {balance_total} kg ({balance_total/10:.0f} bags)")
+        logger.debug(f"[BALANCE] batch_totals calculation: {batch_total} kg ({batch_total/10:.0f} bags)")
 
         return {
             "balance": [

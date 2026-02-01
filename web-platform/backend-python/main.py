@@ -3,10 +3,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import uvicorn
 import logging
+import os
 # Force reload v4
 
 from app.config import get_settings
 from app.scheduler import start_scheduler, shutdown_scheduler
+
+# Environment check for development-only features
+IS_DEVELOPMENT = os.environ.get("ENVIRONMENT", "production").lower() == "development"
 
 # Configure logging
 logging.basicConfig(
@@ -35,8 +39,11 @@ from app.routers.vehicles import router as vehicles_router
 from app.routers.trips import router as trips_router
 from app.routers.drivers import router as drivers_router
 from app.routers.barcode import router as barcode_router
-from app.routers.demo_data import router as demo_data_router
 from app.routers.users import router as users_router
+
+# Conditionally import demo router only in development
+if IS_DEVELOPMENT:
+    from app.routers.demo_data import router as demo_data_router
 from app.routers.invitations import router as invitations_router
 from app.routers.stock_requests import router as stock_requests_router
 from app.routers.pending_deliveries import router as pending_deliveries_router
@@ -44,18 +51,21 @@ from app.routers.locations import router as locations_router
 from app.routers.loans import router as loans_router
 
 
+logger = logging.getLogger(__name__)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    print("Starting Potato Stock Tracking API...")
+    logger.info("Starting Potato Stock Tracking API...")
     # Start the background scheduler for automated jobs
     start_scheduler()
-    print("Background scheduler started")
+    logger.info("Background scheduler started")
     yield
     # Shutdown
-    print("Shutting down...")
+    logger.info("Shutting down...")
     shutdown_scheduler()
-    print("Background scheduler stopped")
+    logger.info("Background scheduler stopped")
 
 
 app = FastAPI(
@@ -65,19 +75,32 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS middleware
+# CORS middleware - configure allowed origins
+settings = get_settings()
+cors_origins = settings.cors_origins.split(",") if settings.cors_origins else ["http://localhost:5173"]
+# Strip whitespace from origins
+cors_origins = [origin.strip() for origin in cors_origins if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins in development
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Health check
+# Health check with database connectivity verification
 @app.get("/health", tags=["Health"])
 async def health_check():
-    return {"status": "ok", "service": "potato-stock-api"}
+    from app.config import get_supabase_client
+    try:
+        # Verify Supabase connectivity
+        supabase = get_supabase_client()
+        supabase.table("locations").select("id").limit(1).execute()
+        return {"status": "ok", "service": "potato-stock-api", "database": "connected"}
+    except Exception as e:
+        logger.error(f"Health check database connection failed: {e}")
+        return {"status": "degraded", "service": "potato-stock-api", "database": "error"}
 
 
 # Include routers
@@ -101,7 +124,9 @@ app.include_router(vehicles_router, prefix="/api")
 app.include_router(trips_router, prefix="/api")
 app.include_router(drivers_router, prefix="/api")
 app.include_router(barcode_router, prefix="/api")
-app.include_router(demo_data_router, prefix="/api")
+# Only include demo router in development environment
+if IS_DEVELOPMENT:
+    app.include_router(demo_data_router, prefix="/api")
 app.include_router(users_router, prefix="/api")
 app.include_router(invitations_router, prefix="/api")
 app.include_router(stock_requests_router, prefix="/api")
@@ -116,5 +141,5 @@ if __name__ == "__main__":
         "main:app",
         host="0.0.0.0",
         port=settings.port,
-        reload=True
+        reload=IS_DEVELOPMENT  # Only enable hot reload in development
     )
