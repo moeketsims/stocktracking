@@ -152,14 +152,14 @@ export default function AnalyticsPage() {
                     />
                   </div>
                   {index % 2 === 0 && (
-                    <span className="text-xs text-gray-400 mt-1">{hourLabel}</span>
+                    <span className="text-xs text-gray-500 mt-1">{hourLabel}</span>
                   )}
                 </div>
               );
             })}
           </div>
         </div>
-        <p className="text-xs text-gray-400 text-center mt-2">Working hours (6am - 10pm)</p>
+        <p className="text-xs text-gray-500 text-center mt-2">Working hours (6am - 10pm)</p>
       </Card>
 
       {/* Peak Usage */}

@@ -201,7 +201,7 @@ export default function OwnerDashboardPage() {
       </Card>
 
       {/* Last updated */}
-      <p className="text-xs text-gray-400 text-center">
+      <p className="text-xs text-gray-500 text-center">
         Last updated: {new Date(dataUpdatedAt).toLocaleTimeString()}
       </p>
     </div>

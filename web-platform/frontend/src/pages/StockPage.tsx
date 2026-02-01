@@ -25,6 +25,7 @@ import {
   Mail,
   Bell,
   User,
+  Plus,
 } from 'lucide-react';
 import { Button } from '../components/ui';
 import { useStockByLocation } from '../hooks/useData';
@@ -141,7 +142,7 @@ export default function StockPage() {
   // Search/filter/sort state
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'healthy' | 'low' | 'critical'>('all');
-  const [sortBy, setSortBy] = useState<SortOption>('name');
+  const [sortBy, setSortBy] = useState<SortOption>('lowest_percent'); // Default: critical locations first
   const [showSortMenu, setShowSortMenu] = useState(false);
 
   // Drawer state
@@ -233,8 +234,17 @@ export default function StockPage() {
         break;
     }
 
+    // Always put the user's own location first (for location managers)
+    if (user?.location_id) {
+      const userLocationIndex = result.findIndex(loc => loc.location_id === user.location_id);
+      if (userLocationIndex > 0) {
+        const [userLocation] = result.splice(userLocationIndex, 1);
+        result.unshift(userLocation);
+      }
+    }
+
     return result;
-  }, [locationsWithStatus, searchQuery, statusFilter, sortBy]);
+  }, [locationsWithStatus, searchQuery, statusFilter, sortBy, user?.location_id]);
 
   // Calculate summary stats with computed status
   // For location_managers, show only their location's stock in the Total Stock tile
@@ -528,7 +538,7 @@ export default function StockPage() {
         <div className="text-center py-16 bg-gray-50 rounded-2xl">
           <MapPin className="w-12 h-12 mx-auto mb-4 text-gray-300" />
           <h3 className="text-lg font-medium text-gray-600">No locations found</h3>
-          <p className="text-sm text-gray-400 mt-1">
+          <p className="text-sm text-gray-500 mt-1">
             {searchQuery || statusFilter !== 'all'
               ? 'Try adjusting your search or filters'
               : 'No locations have been set up yet'}
@@ -543,6 +553,11 @@ export default function StockPage() {
               status={location.computedStatus}
               capacityPercent={location.capacityPercent}
               onClick={() => setSelectedLocation(location)}
+              canRequestStock={user?.role === 'zone_manager' || user?.role === 'location_manager'}
+              onRequestStock={(loc) => {
+                setSelectedLocation(loc);
+                setShowRequestModal(true);
+              }}
             />
           ))}
         </div>
@@ -655,8 +670,8 @@ function SummaryTile({
           <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">{label}</p>
           <div className="flex items-baseline gap-1.5 mt-1">
             <span className="text-2xl font-bold text-gray-900 tabular-nums">{value}</span>
-            {unit && <span className="text-xs text-gray-400">{unit}</span>}
-            {subtitle && <span className="text-xs text-gray-400">{subtitle}</span>}
+            {unit && <span className="text-xs text-gray-500">{unit}</span>}
+            {subtitle && <span className="text-xs text-gray-500">{subtitle}</span>}
           </div>
         </div>
         {/* Hover chevron hint */}
@@ -679,11 +694,15 @@ function LocationCard({
   status,
   capacityPercent,
   onClick,
+  canRequestStock = false,
+  onRequestStock,
 }: {
   location: LocationStockItem;
   status: StockStatus;
   capacityPercent: number;
   onClick: () => void;
+  canRequestStock?: boolean;
+  onRequestStock?: (location: LocationStockItem) => void;
 }) {
   // Use location-specific thresholds
   const lowThreshold = location.low_stock_threshold || 50;
@@ -701,8 +720,12 @@ function LocationCard({
       onClick={onClick}
       className="group bg-white rounded-2xl border border-gray-100 text-left hover:shadow-lg hover:shadow-gray-100/50 hover:border-gray-200 transition-all duration-200 w-full overflow-hidden flex"
     >
-      {/* Left accent bar - thinner (w-0.5 = 2px), softer color */}
-      <div className={`w-0.5 shrink-0 ${statusStyle.accentColor}`} />
+      {/* Left accent bar - thinner (w-0.5 = 2px), purple for warehouse critical */}
+      <div className={`w-0.5 shrink-0 ${
+        location.location_type === 'warehouse' && status === 'critical'
+          ? 'bg-purple-500'
+          : statusStyle.accentColor
+      }`} />
 
       {/* Card content */}
       <div className="flex-1 p-5">
@@ -718,19 +741,25 @@ function LocationCard({
             </div>
             <div>
               <h3 className="font-semibold text-gray-900 text-[15px] leading-tight">{location.location_name}</h3>
-              <p className="text-xs text-gray-400 capitalize">{location.location_type}</p>
+              <p className="text-xs text-gray-500 capitalize">{location.location_type}</p>
             </div>
           </div>
-          <div className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusStyle.bgColor} ${statusStyle.textColor}`}>
-            {statusStyle.label}
+          <div className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+            location.location_type === 'warehouse' && status === 'critical'
+              ? 'bg-purple-100 text-purple-700'
+              : `${statusStyle.bgColor} ${statusStyle.textColor}`
+          }`}>
+            {location.location_type === 'warehouse' && status === 'critical'
+              ? 'Supply Critical'
+              : statusStyle.label}
           </div>
         </div>
 
         {/* Stock Value */}
         <div className="mb-3">
           <div className="flex items-baseline gap-1.5">
-            <span className="text-3xl font-bold text-gray-900 tabular-nums">{stockFormatted.value}</span>
-            <span className="text-xs text-gray-400">{stockFormatted.unit}</span>
+            <span className="text-3xl font-bold text-gray-900 tabular-nums leading-none">{stockFormatted.value}</span>
+            <span className="text-xs text-gray-500 leading-none">{stockFormatted.unit}</span>
           </div>
         </div>
 
@@ -738,7 +767,7 @@ function LocationCard({
         <div className="mb-2">
           <div className="flex items-center justify-between text-xs mb-1">
             <span className={`font-medium ${statusStyle.textColor}`}>{capacityPercent}% of target</span>
-            <span className="text-gray-400">Target: {targetFormatted.value} {targetFormatted.unit}</span>
+            <span className="text-gray-500">Target: {targetFormatted.value} {targetFormatted.unit}</span>
           </div>
           <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
             <div
@@ -748,21 +777,49 @@ function LocationCard({
           </div>
         </div>
 
-        {/* Needed to target - only show for low/critical */}
+        {/* Needed to target with Request button - only show for low/critical */}
         {status !== 'healthy' && neededToTarget > 0 && (
-          <p className="text-xs text-gray-500 mb-2">
-            Need <span className="font-medium text-gray-700">+{neededFormatted.value} {neededFormatted.unit}</span> to reach target
-          </p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs text-gray-500">
+              Need <span className="font-medium text-gray-700">+{neededFormatted.value} {neededFormatted.unit}</span> to reach target
+            </p>
+            {canRequestStock && onRequestStock && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRequestStock(location);
+                }}
+                className={`flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md transition-colors ${
+                  location.location_type === 'warehouse'
+                    ? 'text-white bg-purple-500 hover:bg-purple-600'
+                    : 'text-orange-600 bg-orange-50 hover:bg-orange-100'
+                }`}
+              >
+                <Plus className="w-3 h-3" />
+                Request
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Warehouse critical warning banner */}
+        {location.location_type === 'warehouse' && status === 'critical' && (
+          <div className="mb-2 p-2 bg-purple-50 border border-purple-200 rounded-lg">
+            <p className="text-xs text-purple-700 flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3" />
+              Distribution source is empty - all shops affected
+            </p>
+          </div>
         )}
 
         {/* Footer - secondary metrics */}
         <div className="flex items-center justify-between pt-2 border-t border-gray-50">
-          <div className={`flex items-center gap-1.5 text-xs ${stale ? 'text-amber-500' : 'text-gray-400'}`}>
+          <div className={`flex items-center gap-1.5 text-xs ${stale ? 'text-amber-500' : 'text-gray-500'}`}>
             {stale ? <AlertCircle className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
             <span>{getRelativeTime(location.last_activity)}</span>
           </div>
           {location.recent_activity.length > 0 && (
-            <div className="flex items-center gap-1 text-xs text-gray-400">
+            <div className="flex items-center gap-1 text-xs text-gray-500">
               <Activity className="w-3 h-3" />
               <span>{location.recent_activity.length} recent</span>
             </div>
@@ -927,7 +984,7 @@ function DetailsDrawer({
               <div className={`px-2.5 py-1 rounded-full text-xs font-medium ${statusStyle.bgColor} ${statusStyle.textColor}`}>
                 {statusStyle.label}
               </div>
-              <div className={`flex items-center gap-1.5 text-sm ${stale ? 'text-amber-600' : 'text-gray-400'}`}>
+              <div className={`flex items-center gap-1.5 text-sm ${stale ? 'text-amber-600' : 'text-gray-500'}`}>
                 {stale ? <AlertCircle className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
                 <span>{stale ? 'Stale data' : getRelativeTime(location.last_activity)}</span>
               </div>
@@ -935,8 +992,8 @@ function DetailsDrawer({
 
             <div className="flex items-baseline gap-2 mb-1">
               <span className="text-4xl font-bold text-gray-900 tabular-nums">{stockFormatted.value}</span>
-              <span className="text-sm text-gray-400">{stockFormatted.unit}</span>
-              <span className="text-xs text-gray-400">({formatNumber(location.on_hand_qty, 0)} kg)</span>
+              <span className="text-sm text-gray-500">{stockFormatted.unit}</span>
+              <span className="text-xs text-gray-500">({formatNumber(location.on_hand_qty, 0)} kg)</span>
             </div>
 
             {/* Needed to target guidance */}
@@ -971,7 +1028,7 @@ function DetailsDrawer({
                   style={{ width: `${capacityPercent}%` }}
                 />
               </div>
-              <div className="flex justify-between text-xs text-gray-400">
+              <div className="flex justify-between text-xs text-gray-500">
                 <span>Critical &lt;65%</span>
                 <span>Low 65-84%</span>
                 <span>Healthy ≥85%</span>
@@ -1017,7 +1074,7 @@ function DetailsDrawer({
                 ) : (
                   <div className="text-center py-6 bg-gray-50 rounded-xl">
                     <ClipboardList className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                    <p className="text-sm text-gray-400">No pending requests</p>
+                    <p className="text-sm text-gray-500">No pending requests</p>
                   </div>
                 )}
               </div>
@@ -1055,7 +1112,7 @@ function DetailsDrawer({
                 ) : (
                   <div className="text-center py-6 bg-gray-50 rounded-xl">
                     <Truck className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                    <p className="text-sm text-gray-400">You haven't delivered to this store yet</p>
+                    <p className="text-sm text-gray-500">You haven't delivered to this store yet</p>
                   </div>
                 )}
               </div>
@@ -1115,7 +1172,7 @@ function DetailsDrawer({
                 ) : (
                   <div className="text-center py-6 bg-gray-50 rounded-xl">
                     <Bell className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                    <p className="text-sm text-gray-400">No active alerts</p>
+                    <p className="text-sm text-gray-500">No active alerts</p>
                   </div>
                 )}
               </div>
@@ -1165,7 +1222,7 @@ function DetailsDrawer({
                   ) : (
                     <div className="text-center py-6 bg-gray-50 rounded-xl">
                       <ClipboardList className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                      <p className="text-sm text-gray-400">No pending shop requests</p>
+                      <p className="text-sm text-gray-500">No pending shop requests</p>
                     </div>
                   )}
                 </div>
@@ -1202,7 +1259,7 @@ function DetailsDrawer({
                 ) : (
                   <div className="text-center py-6 bg-gray-50 rounded-xl">
                     <Truck className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                    <p className="text-sm text-gray-400">No incoming deliveries</p>
+                    <p className="text-sm text-gray-500">No incoming deliveries</p>
                   </div>
                 )}
               </div>
@@ -1242,7 +1299,7 @@ function DetailsDrawer({
                   ) : (
                     <div className="text-center py-6 bg-gray-50 rounded-xl">
                       <ClipboardList className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                      <p className="text-sm text-gray-400">No open requests</p>
+                      <p className="text-sm text-gray-500">No open requests</p>
                     </div>
                   )}
                 </div>
@@ -1263,7 +1320,7 @@ function DetailsDrawer({
                 ) : (
                   <div className="text-center py-8 bg-gray-50 rounded-xl">
                     <Activity className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                    <p className="text-sm text-gray-400">No recent activity</p>
+                    <p className="text-sm text-gray-500">No recent activity</p>
                   </div>
                 )}
               </div>
@@ -1298,7 +1355,7 @@ function DetailsDrawer({
                 ) : (
                   <div className="text-center py-6 bg-gray-50 rounded-xl">
                     <User className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                    <p className="text-sm text-gray-400">No manager assigned</p>
+                    <p className="text-sm text-gray-500">No manager assigned</p>
                   </div>
                 )}
               </div>
@@ -1350,7 +1407,7 @@ function DetailsDrawer({
                   ) : (
                     <div className="text-center py-8 bg-gray-50 rounded-xl">
                       <Activity className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                      <p className="text-sm text-gray-400">No recent activity</p>
+                      <p className="text-sm text-gray-500">No recent activity</p>
                     </div>
                   )}
                 </div>
@@ -1394,7 +1451,7 @@ function DetailsDrawer({
                   ) : (
                     <div className="text-center py-6 bg-gray-50 rounded-xl">
                       <Truck className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                      <p className="text-sm text-gray-400">No recent deliveries</p>
+                      <p className="text-sm text-gray-500">No recent deliveries</p>
                     </div>
                   )}
                 </div>
@@ -1429,7 +1486,7 @@ function DetailsDrawer({
                   ) : (
                     <div className="text-center py-6 bg-gray-50 rounded-xl">
                       <User className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                      <p className="text-sm text-gray-400">No manager assigned</p>
+                      <p className="text-sm text-gray-500">No manager assigned</p>
                     </div>
                   )}
                 </div>
@@ -1489,7 +1546,7 @@ function DetailsDrawer({
                 ) : (
                   <div className="text-center py-8 bg-gray-50 rounded-xl">
                     <Activity className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                    <p className="text-sm text-gray-400">No recent activity</p>
+                    <p className="text-sm text-gray-500">No recent activity</p>
                   </div>
                 )}
               </div>
@@ -1562,7 +1619,7 @@ function ActivityItem({ activity }: { activity: RecentActivity }) {
         <p className={`text-sm font-semibold tabular-nums ${typeConfig.color}`}>
           {typeConfig.sign}{formatNumber(kgToBags(activity.qty), activity.qty % KG_PER_BAG === 0 ? 0 : 1)} bags
         </p>
-        <p className="text-xs text-gray-400">{getRelativeTime(activity.created_at)}</p>
+        <p className="text-xs text-gray-500">{getRelativeTime(activity.created_at)}</p>
       </div>
     </div>
   );

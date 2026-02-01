@@ -233,7 +233,7 @@ export default function SubmitKmPage() {
             </div>
           </div>
 
-          <p className="text-sm text-gray-400 mt-6">You can close this page now.</p>
+          <p className="text-sm text-gray-500 mt-6">You can close this page now.</p>
         </Card>
       </div>
     );
@@ -305,7 +305,7 @@ export default function SubmitKmPage() {
           </Button>
         </form>
 
-        <p className="text-xs text-gray-400 text-center mt-4">
+        <p className="text-xs text-gray-500 text-center mt-4">
           Potato Stock Tracking System
         </p>
       </Card>

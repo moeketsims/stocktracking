@@ -157,7 +157,7 @@ export default function NotificationsPage() {
                   {notification.body}
                 </p>
               </div>
-              <span className="text-xs text-gray-400 flex-shrink-0">
+              <span className="text-xs text-gray-500 flex-shrink-0">
                 {formatTime(notification.created_at)}
               </span>
             </div>
@@ -167,7 +167,7 @@ export default function NotificationsPage() {
             <div className="p-12 text-center">
               <Bell className="w-12 h-12 text-gray-300 mx-auto mb-3" />
               <p className="text-gray-500">No notifications</p>
-              <p className="text-sm text-gray-400">
+              <p className="text-sm text-gray-500">
                 You're all caught up!
               </p>
             </div>

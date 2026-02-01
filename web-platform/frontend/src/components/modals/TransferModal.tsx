@@ -91,7 +91,7 @@ export default function TransferModal({ isOpen, onClose, onSuccess, fromLocation
             type="number"
             label="Quantity *"
             value={form.quantity || ''}
-            onChange={(e) => setForm({ ...form, quantity: parseFloat(e.target.value) || 0 })}
+            onChange={(e) => setForm({ ...form, quantity: e.target.value ? parseFloat(e.target.value) : undefined })}
             min={0}
             step={0.1}
           />

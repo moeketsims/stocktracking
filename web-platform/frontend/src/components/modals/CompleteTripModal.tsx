@@ -110,7 +110,7 @@ export default function CompleteTripModal({
               type="number"
               label="Fuel Cost (R) *"
               value={form.fuel_cost || ''}
-              onChange={(e) => setForm({ ...form, fuel_cost: parseFloat(e.target.value) || 0 })}
+              onChange={(e) => setForm({ ...form, fuel_cost: e.target.value ? parseFloat(e.target.value) : undefined })}
               min={0}
               step={0.01}
               placeholder="0.00"
@@ -131,7 +131,7 @@ export default function CompleteTripModal({
               type="number"
               label="Toll Cost (R)"
               value={form.toll_cost || ''}
-              onChange={(e) => setForm({ ...form, toll_cost: parseFloat(e.target.value) || 0 })}
+              onChange={(e) => setForm({ ...form, toll_cost: e.target.value ? parseFloat(e.target.value) : undefined })}
               min={0}
               step={0.01}
               placeholder="0.00"
@@ -140,7 +140,7 @@ export default function CompleteTripModal({
               type="number"
               label="Other Costs (R)"
               value={form.other_cost || ''}
-              onChange={(e) => setForm({ ...form, other_cost: parseFloat(e.target.value) || 0 })}
+              onChange={(e) => setForm({ ...form, other_cost: e.target.value ? parseFloat(e.target.value) : undefined })}
               min={0}
               step={0.01}
               placeholder="0.00"

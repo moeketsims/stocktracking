@@ -176,7 +176,7 @@ export default function FleetStatusPage() {
         <div className="text-center py-16 bg-gray-50 rounded-2xl">
           <Truck className="w-12 h-12 mx-auto mb-4 text-gray-300" />
           <h3 className="text-lg font-medium text-gray-600">All vehicles available</h3>
-          <p className="text-sm text-gray-400 mt-1">
+          <p className="text-sm text-gray-500 mt-1">
             No vehicles are currently on trips.
           </p>
         </div>
@@ -468,7 +468,7 @@ function KmStatusBadge({ awaitingKm, kmSubmitted }: { awaitingKm: boolean; kmSub
   }
 
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs text-gray-400">
+    <span className="inline-flex items-center gap-1.5 text-xs text-gray-500">
       <Clock className="w-3.5 h-3.5" />
       Pending
     </span>

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Truck, Plus, Edit2, CheckCircle, XCircle, ChevronRight, AlertTriangle, Navigation, Clock } from 'lucide-react';
-import { Card, Button, Badge } from '../components/ui';
+import { Card, Button, Badge, toast } from '../components/ui';
 import VehicleModal from '../components/modals/VehicleModal';
 import VehicleHealthDrawer from '../components/VehicleHealthDrawer';
 import { useVehicles, useDeleteVehicle, useUpdateVehicle } from '../hooks/useData';
@@ -38,7 +38,8 @@ export default function VehiclesPage() {
   const { isVehicleManager, isAdmin } = useAuthStore();
   const isVehicleMgr = isVehicleManager();
   const isAdminUser = isAdmin();
-  const isManager = user?.role && ['admin', 'zone_manager', 'location_manager', 'vehicle_manager'].includes(user.role);
+  // Only vehicle_manager and admin can edit vehicles
+  const canEditVehicles = isAdminUser || isVehicleMgr;
 
   const { data, isLoading, error, refetch } = useVehicles(!showInactive, true); // Include trip status
   const deleteMutation = useDeleteVehicle();
@@ -53,8 +54,8 @@ export default function VehiclesPage() {
     if (window.confirm(`Are you sure you want to deactivate ${vehicle.registration_number}?`)) {
       try {
         await deleteMutation.mutateAsync(vehicle.id);
-      } catch (err) {
-        console.error('Failed to deactivate vehicle:', err);
+      } catch {
+        toast.error('Failed to deactivate vehicle');
       }
     }
   };
@@ -62,8 +63,8 @@ export default function VehiclesPage() {
   const handleReactivate = async (vehicle: Vehicle) => {
     try {
       await updateMutation.mutateAsync({ vehicleId: vehicle.id, data: { is_active: true } });
-    } catch (err) {
-      console.error('Failed to reactivate vehicle:', err);
+    } catch {
+      toast.error('Failed to reactivate vehicle');
     }
   };
 
@@ -87,9 +88,8 @@ export default function VehiclesPage() {
     setSelectedVehicle(null);
   };
 
-  const handleSaveHealth = async (vehicleId: string, health: Partial<VehicleHealth>) => {
+  const handleSaveHealth = async (_vehicleId: string, _health: Partial<VehicleHealth>) => {
     // TODO: Implement API call to save vehicle health data
-    console.log('Saving health for vehicle:', vehicleId, health);
     // For now, just close the drawer - backend integration will be added later
     refetch();
   };
@@ -141,7 +141,7 @@ export default function VehiclesPage() {
             />
             Show inactive
           </label>
-          {isManager && (
+          {canEditVehicles && (
             <Button onClick={() => setShowModal(true)}>
               <Plus className="w-4 h-4 mr-1" />
               Add Vehicle
@@ -245,7 +245,7 @@ export default function VehiclesPage() {
                     </p>
                   )}
                   {vehicle.notes && !vehicle.current_trip && (
-                    <p className="text-xs text-gray-400 mt-1 truncate">{vehicle.notes}</p>
+                    <p className="text-xs text-gray-500 mt-1 truncate">{vehicle.notes}</p>
                   )}
 
                   {/* Health indicators for Vehicle Managers and Admins */}
@@ -258,8 +258,8 @@ export default function VehiclesPage() {
                   )}
                 </div>
 
-                {/* Action buttons - only for regular managers, not vehicle managers */}
-                {isManager && !isVehicleMgr && (
+                {/* Action buttons - only for vehicle_manager and admin */}
+                {canEditVehicles && (
                   <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={() => handleEdit(vehicle)}
@@ -299,8 +299,8 @@ export default function VehiclesPage() {
             <div className="p-12 text-center">
               <Truck className="w-12 h-12 text-gray-300 mx-auto mb-3" />
               <p className="text-gray-500">No vehicles registered</p>
-              {isManager && (
-                <p className="text-sm text-gray-400">
+              {canEditVehicles && (
+                <p className="text-sm text-gray-500">
                   Click "Add Vehicle" to register your first vehicle
                 </p>
               )}

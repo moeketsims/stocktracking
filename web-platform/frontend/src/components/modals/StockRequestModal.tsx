@@ -1,10 +1,25 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { X, Package, AlertTriangle, Clock, MapPin, CheckCircle } from 'lucide-react';
+import { X, Package, AlertTriangle, Clock, MapPin, CheckCircle, Calendar } from 'lucide-react';
 import { Button } from '../ui';
 import { stockRequestsApi } from '../../lib/api';
 import { useLocations } from '../../hooks/useData';
 import type { CreateStockRequestForm, StockRequestUrgency, Location } from '../../types';
+
+// Helper to get today's date in YYYY-MM-DD format
+const getTodayDate = () => {
+  const today = new Date();
+  return today.toISOString().split('T')[0];
+};
+
+// Helper to get current time rounded up to next 30 min
+const getDefaultTime = () => {
+  const now = new Date();
+  const minutes = now.getMinutes();
+  const roundedMinutes = minutes < 30 ? 30 : 0;
+  const hours = minutes < 30 ? now.getHours() : now.getHours() + 1;
+  return `${String(hours).padStart(2, '0')}:${String(roundedMinutes).padStart(2, '0')}`;
+};
 
 interface StockRequestModalProps {
   isOpen: boolean;
@@ -41,6 +56,8 @@ export default function StockRequestModal({
     notes: '',
   });
   const [selectedLocationId, setSelectedLocationId] = useState<string | undefined>(locationId);
+  const [deliveryDate, setDeliveryDate] = useState(getTodayDate());
+  const [deliveryTime, setDeliveryTime] = useState(getDefaultTime());
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
@@ -63,6 +80,8 @@ export default function StockRequestModal({
         urgency: 'normal',
         notes: '',
       });
+      setDeliveryDate(getTodayDate());
+      setDeliveryTime(getDefaultTime());
       setError(null);
       setSuccess(false);
     }
@@ -106,10 +125,19 @@ export default function StockRequestModal({
       setError('Quantity must be greater than 0');
       return;
     }
+    if (!deliveryDate || !deliveryTime) {
+      setError('Please specify a delivery date and time');
+      return;
+    }
     setError(null);
+
+    // Combine date and time into ISO string
+    const requestedDeliveryTime = new Date(`${deliveryDate}T${deliveryTime}:00`).toISOString();
+
     mutation.mutate({
       ...formData,
       location_id: selectedLocationId,
+      requested_delivery_time: requestedDeliveryTime,
     });
   };
 
@@ -296,6 +324,40 @@ export default function StockRequestModal({
                   <p className="text-xs text-gray-500">Within 3 days</p>
                 </button>
               </div>
+            </div>
+
+            {/* Requested Delivery Time */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4" />
+                  Requested Delivery Time *
+                </div>
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Date</label>
+                  <input
+                    type="date"
+                    value={deliveryDate}
+                    onChange={(e) => setDeliveryDate(e.target.value)}
+                    min={getTodayDate()}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Time</label>
+                  <input
+                    type="time"
+                    value={deliveryTime}
+                    onChange={(e) => setDeliveryTime(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-gray-400 mt-1">
+                When do you need the stock delivered?
+              </p>
             </div>
 
             {/* Notes */}

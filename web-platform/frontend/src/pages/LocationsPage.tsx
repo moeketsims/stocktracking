@@ -9,7 +9,7 @@ import {
   Search,
   Sliders,
 } from 'lucide-react';
-import { Card, Button, Badge, Select } from '../components/ui';
+import { Card, Button, Badge, Select, toast } from '../components/ui';
 import CreateLocationModal from '../components/modals/CreateLocationModal';
 import EditLocationModal from '../components/modals/EditLocationModal';
 import EditThresholdsModal from '../components/modals/EditThresholdsModal';
@@ -69,7 +69,7 @@ export default function LocationsPage() {
     } catch (err: any) {
       setDeleteError(err.response?.data?.detail || 'Failed to delete location');
       setDeletingLocation(null);
-      alert(err.response?.data?.detail || 'Failed to delete location');
+      toast.error(err.response?.data?.detail || 'Failed to delete location');
     }
   };
 
@@ -189,7 +189,7 @@ export default function LocationsPage() {
                       </span>
                     )}
                     {loc.address && (
-                      <span className="text-gray-400">
+                      <span className="text-gray-500">
                         {loc.address}
                       </span>
                     )}
@@ -229,7 +229,7 @@ export default function LocationsPage() {
               <div className="p-12 text-center">
                 <MapPin className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                 <p className="text-gray-500">No locations found</p>
-                <p className="text-sm text-gray-400">
+                <p className="text-sm text-gray-500">
                   {searchQuery || typeFilter || zoneFilter
                     ? 'Try adjusting your filters'
                     : 'Click "Add Location" to create your first location'}

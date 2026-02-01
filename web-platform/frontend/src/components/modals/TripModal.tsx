@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MapPin, AlertCircle, Truck, Package, User, Plus, Trash2, CheckCircle, Clock, AlertTriangle } from 'lucide-react';
+import { MapPin, AlertCircle, Truck, Package, User, Plus, Trash2, CheckCircle, Clock, AlertTriangle, Calendar, FileText } from 'lucide-react';
 import { Modal, Button, Select } from '../ui';
 import { useCreateTrip, useCreateMultiStopTrip, useVehicles, useDrivers, useLocations, useSuppliers } from '../../hooks/useData';
 import { stockRequestsApi } from '../../lib/api';
@@ -597,7 +597,26 @@ export default function TripModal({
                           <Clock className="w-3 h-3" />
                           {new Date(request.created_at).toLocaleDateString()}
                         </span>
+                        {request.requested_delivery_time && (
+                          <span className="flex items-center gap-1 text-blue-600 font-medium">
+                            <Calendar className="w-3 h-3" />
+                            Deliver by {new Date(request.requested_delivery_time).toLocaleDateString('en-ZA', {
+                              day: 'numeric',
+                              month: 'short',
+                            })}{' '}
+                            {new Date(request.requested_delivery_time).toLocaleTimeString('en-ZA', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </span>
+                        )}
                       </div>
+                      {request.notes && (
+                        <div className="flex items-start gap-1 mt-1.5 text-xs text-gray-600 bg-gray-50 rounded px-2 py-1">
+                          <FileText className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                          <span className="line-clamp-2">{request.notes}</span>
+                        </div>
+                      )}
                     </div>
                   </label>
                 );
@@ -626,10 +645,32 @@ export default function TripModal({
             {/* Request Info Banner */}
             <div className="bg-emerald-100 border border-emerald-300 rounded-lg p-3">
               {selectedRequests.length === 1 ? (
-                <p className="text-sm font-medium text-emerald-800">
-                  Creating trip to deliver <strong>{selectedRequests[0].quantity_bags} bags</strong> to{' '}
-                  <strong>{selectedRequests[0].location?.name}</strong>
-                </p>
+                <div className="text-sm text-emerald-800">
+                  <p className="font-medium">
+                    Creating trip to deliver <strong>{selectedRequests[0].quantity_bags} bags</strong> to{' '}
+                    <strong>{selectedRequests[0].location?.name}</strong>
+                  </p>
+                  {selectedRequests[0].requested_delivery_time && (
+                    <p className="flex items-center gap-1 mt-1.5 text-blue-700 bg-blue-50 rounded px-2 py-1 text-xs font-medium">
+                      <Calendar className="w-3.5 h-3.5" />
+                      Deliver by: {new Date(selectedRequests[0].requested_delivery_time).toLocaleDateString('en-ZA', {
+                        weekday: 'short',
+                        day: 'numeric',
+                        month: 'short',
+                      })}{' '}at{' '}
+                      {new Date(selectedRequests[0].requested_delivery_time).toLocaleTimeString('en-ZA', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </p>
+                  )}
+                  {selectedRequests[0].notes && (
+                    <p className="flex items-start gap-1 mt-1.5 text-gray-700 bg-white/50 rounded px-2 py-1 text-xs">
+                      <FileText className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                      <span>{selectedRequests[0].notes}</span>
+                    </p>
+                  )}
+                </div>
               ) : (
                 <div className="text-sm font-medium text-emerald-800">
                   <p className="mb-2">
@@ -637,10 +678,22 @@ export default function TripModal({
                     <strong>{selectedRequests.reduce((sum, r) => sum + r.quantity_bags, 0)} bags</strong> to{' '}
                     <strong>{selectedRequests.length} locations</strong>:
                   </p>
-                  <ol className="list-decimal list-inside text-xs space-y-1 ml-2">
+                  <ol className="list-decimal list-inside text-xs space-y-1.5 ml-2">
                     {selectedRequests.map((r, idx) => (
-                      <li key={r.id}>
-                        {r.location?.name} ({r.quantity_bags} bags)
+                      <li key={r.id} className="text-emerald-700">
+                        <span className="font-medium">{r.location?.name}</span> ({r.quantity_bags} bags)
+                        {r.requested_delivery_time && (
+                          <span className="ml-2 inline-flex items-center gap-0.5 text-blue-600">
+                            <Calendar className="w-2.5 h-2.5" />
+                            by {new Date(r.requested_delivery_time).toLocaleTimeString('en-ZA', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </span>
+                        )}
+                        {r.notes && (
+                          <span className="block ml-4 mt-0.5 text-gray-600 italic">"{r.notes}"</span>
+                        )}
                       </li>
                     ))}
                   </ol>

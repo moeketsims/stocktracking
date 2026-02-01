@@ -941,6 +941,8 @@ export function useUpdateLocationThresholds() {
       queryClient.invalidateQueries({ queryKey: ['location-thresholds', variables.locationId] });
       queryClient.invalidateQueries({ queryKey: ['locations'] });
       queryClient.invalidateQueries({ queryKey: ['alerts'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-by-location'] });
     },
   });
 }

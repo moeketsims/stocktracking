@@ -25,7 +25,7 @@ import {
   Calendar,
   ArrowLeftRight,
 } from 'lucide-react';
-import { Button } from '../components/ui';
+import { Button, toast } from '../components/ui';
 import { pendingDeliveriesApi, tripsApi, loansApi } from '../lib/api';
 import ConfirmDeliveryModal from '../components/modals/ConfirmDeliveryModal';
 import { useAuthStore } from '../stores/authStore';
@@ -136,8 +136,7 @@ export default function DeliveriesPage() {
       setTimeout(() => setSuccessMessage(null), 2000);
     },
     onError: (error: any) => {
-      console.error('Failed to complete trip:', error);
-      alert(error.response?.data?.detail || 'Failed to mark trip as arrived');
+      toast.error(error.response?.data?.detail || 'Failed to mark trip as arrived');
       setCompletingTripId(null);
     },
   });
@@ -146,11 +145,11 @@ export default function DeliveriesPage() {
   const resendKmEmailMutation = useMutation({
     mutationFn: (deliveryId: string) => pendingDeliveriesApi.resendKmEmail(deliveryId),
     onSuccess: (response) => {
-      alert(`KM submission email sent to ${response.data.driver_email}`);
+      toast.success(`KM submission email sent to ${response.data.driver_email}`);
       setResendingEmailId(null);
     },
     onError: (error: any) => {
-      alert(error.response?.data?.detail || 'Failed to resend email');
+      toast.error(error.response?.data?.detail || 'Failed to resend email');
       setResendingEmailId(null);
     },
   });
@@ -168,10 +167,10 @@ export default function DeliveriesPage() {
       queryClient.invalidateQueries({ queryKey: ['vehicles'] });
       setShowCorrectKmModal(false);
       setSelectedTripForCorrection(null);
-      alert('Closing km corrected successfully');
+      toast.success('Closing km corrected successfully');
     },
     onError: (error: any) => {
-      alert(error.response?.data?.detail || 'Failed to correct km');
+      toast.error(error.response?.data?.detail || 'Failed to correct km');
     },
   });
 
@@ -215,7 +214,6 @@ export default function DeliveriesPage() {
 
       if (isAlreadyConfirmed) {
         // Already confirmed - just refresh the data (trip should disappear with our filter)
-        console.log('Collection was already confirmed, refreshing data');
         queryClient.invalidateQueries({ queryKey: ['trips'] });
         queryClient.invalidateQueries({ queryKey: ['pending-deliveries'] });
         setSuccessMessage('Collection already confirmed. Refreshing...');
@@ -225,8 +223,7 @@ export default function DeliveriesPage() {
         if (context?.previousTrips) {
           queryClient.setQueryData(['trips', 'in_progress'], context.previousTrips);
         }
-        console.error('Failed to confirm collection:', error);
-        alert(errorDetail || 'Failed to confirm collection');
+        toast.error(errorDetail || 'Failed to confirm collection');
       }
       setCompletingTripId(null);
     },
@@ -271,7 +268,6 @@ export default function DeliveriesPage() {
 
       if (isAlreadyConfirmed) {
         // Already confirmed - just refresh the data
-        console.log('Receipt was already confirmed, refreshing data');
         queryClient.invalidateQueries({ queryKey: ['trips'] });
         queryClient.invalidateQueries({ queryKey: ['pending-deliveries'] });
         setSuccessMessage('Receipt already confirmed. Refreshing...');
@@ -281,8 +277,7 @@ export default function DeliveriesPage() {
         if (context?.previousTrips) {
           queryClient.setQueryData(['trips', 'in_progress'], context.previousTrips);
         }
-        console.error('Failed to confirm receipt:', error);
-        alert(errorDetail || 'Failed to confirm receipt');
+        toast.error(errorDetail || 'Failed to confirm receipt');
       }
       setCompletingTripId(null);
     },
@@ -416,7 +411,7 @@ export default function DeliveriesPage() {
         }
 
         if (!loan) {
-          alert('Could not find the associated loan for this trip');
+          toast.error('Could not find the associated loan for this trip');
           setCompletingTripId(null);
           return;
         }
@@ -429,9 +424,8 @@ export default function DeliveriesPage() {
           // Borrower confirming receipt (stock arrives at their location)
           confirmLoanReceiptMutation.mutate(loan.id);
         }
-      } catch (error) {
-        console.error('Error handling loan trip:', error);
-        alert('Failed to process loan action');
+      } catch {
+        toast.error('Failed to process loan action');
         setCompletingTripId(null);
       }
     } else {
@@ -621,7 +615,7 @@ export default function DeliveriesPage() {
             <div className="text-center py-16 bg-gray-50 rounded-2xl">
               <Truck className="w-12 h-12 mx-auto mb-4 text-gray-300" />
               <h3 className="text-lg font-medium text-gray-600">No active deliveries</h3>
-              <p className="text-sm text-gray-400 mt-1 max-w-sm mx-auto">
+              <p className="text-sm text-gray-500 mt-1 max-w-sm mx-auto">
                 When drivers start deliveries from accepted stock requests, they'll appear here for tracking.
               </p>
             </div>
@@ -636,7 +630,7 @@ export default function DeliveriesPage() {
             <div className="text-center py-16 bg-gray-50 rounded-2xl">
               <CheckCircle className="w-12 h-12 mx-auto mb-4 text-gray-300" />
               <h3 className="text-lg font-medium text-gray-600">No delivery history</h3>
-              <p className="text-sm text-gray-400 mt-1">
+              <p className="text-sm text-gray-500 mt-1">
                 Confirmed deliveries will appear here.
               </p>
             </div>
@@ -729,18 +723,6 @@ function EnRouteCard({
   const isOriginLocation = userLocationId && fromLocationId === userLocationId;
   const isDestinationLocation = userLocationId && toLocationId === userLocationId;
 
-  // Debug logging
-  console.log('Loan Trip Debug:', {
-    tripId: trip.id,
-    tripType: trip.trip_type,
-    isLoanTrip,
-    userLocationId,
-    fromLocationId,
-    toLocationId,
-    isOriginLocation,
-    isDestinationLocation,
-  });
-
   // Determine button text based on trip type and user's location
   let buttonText = 'Mark Arrived';
   let buttonColor = 'bg-blue-600 hover:bg-blue-700';
@@ -806,7 +788,7 @@ function EnRouteCard({
                   {isLoanPickup ? 'Loan Pickup' : 'Loan Return'}
                 </span>
               )}
-              <span className="text-xs text-gray-400 flex items-center gap-1">
+              <span className="text-xs text-gray-500 flex items-center gap-1">
                 <Clock className="w-3 h-3" />
                 Started {getRelativeTime(trip.departure_time || trip.created_at)}
               </span>
@@ -927,7 +909,7 @@ function PendingDeliveryCard({
                 {isLoanPickup ? 'Loan Pickup' : 'Loan Return'}
               </span>
             )}
-            <span className="text-xs text-gray-400 flex items-center gap-1">
+            <span className="text-xs text-gray-500 flex items-center gap-1">
               <Clock className="w-3 h-3" />
               Arrived {getRelativeTime(delivery.created_at)}
             </span>
@@ -953,7 +935,7 @@ function PendingDeliveryCard({
           <div className="flex items-center gap-2">
             <Package className={`w-4 h-4 ${isLoanTrip ? 'text-purple-500' : 'text-orange-500'}`} />
             <span className="text-lg font-bold text-gray-900">{driverClaimedBags} bags</span>
-            <span className="text-sm text-gray-400">({delivery.driver_claimed_qty_kg} kg)</span>
+            <span className="text-sm text-gray-500">({delivery.driver_claimed_qty_kg} kg)</span>
           </div>
 
           {/* Location */}
@@ -1050,7 +1032,7 @@ function DeliveryHistoryCard({
                 Rejected
               </span>
             )}
-            <span className="text-xs text-gray-400">|</span>
+            <span className="text-xs text-gray-500">|</span>
             <span className="text-sm font-mono text-gray-600">
               {delivery.trip?.trip_number || 'Unknown'}
             </span>
@@ -1090,7 +1072,7 @@ function DeliveryHistoryCard({
             <div className="text-sm">
               <span className="font-semibold text-gray-900">{confirmedBags} bags</span>
               {confirmedBags !== driverClaimedBags && (
-                <span className="text-gray-400 ml-1">
+                <span className="text-gray-500 ml-1">
                   (driver claimed {driverClaimedBags})
                 </span>
               )}
@@ -1107,13 +1089,13 @@ function DeliveryHistoryCard({
         <div className="flex items-start gap-2">
           {/* Timestamp */}
           <div className="text-right">
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-gray-500">
               {delivery.confirmed_at
                 ? formatDate(delivery.confirmed_at)
                 : formatDate(delivery.created_at)}
             </p>
             {delivery.confirmer && (
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-gray-500">
                 by {delivery.confirmer.full_name}
               </p>
             )}

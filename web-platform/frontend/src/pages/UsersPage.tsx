@@ -15,7 +15,7 @@ import {
   X,
   RefreshCw,
 } from 'lucide-react';
-import { Card, Button, Badge, Select } from '../components/ui';
+import { Card, Button, Badge, Select, toast } from '../components/ui';
 import InviteUserModal from '../components/modals/InviteUserModal';
 import EditUserModal from '../components/modals/EditUserModal';
 import ConfirmationModal from '../components/modals/ConfirmationModal';
@@ -92,8 +92,7 @@ export default function UsersPage() {
       await deactivateMutation.mutateAsync(deactivatingUser.id);
       setDeactivatingUser(null);
     } catch (err: any) {
-      console.error('Failed to deactivate user:', err);
-      alert(err.response?.data?.detail || 'Failed to deactivate user');
+      toast.error(err.response?.data?.detail || 'Failed to deactivate user');
       setDeactivatingUser(null);
     }
   };
@@ -101,8 +100,8 @@ export default function UsersPage() {
   const handleActivate = async (u: ManagedUser) => {
     try {
       await activateMutation.mutateAsync(u.id);
-    } catch (err) {
-      console.error('Failed to activate user:', err);
+    } catch {
+      toast.error('Failed to activate user');
     }
   };
 
@@ -110,9 +109,9 @@ export default function UsersPage() {
     if (window.confirm(`Send password reset email to ${u.email}?`)) {
       try {
         await resetPasswordMutation.mutateAsync(u.id);
-        alert('Password reset email sent');
+        toast.success('Password reset email sent');
       } catch (err: any) {
-        alert(err.response?.data?.detail || 'Failed to send reset email');
+        toast.error(err.response?.data?.detail || 'Failed to send reset email');
       }
     }
   };
@@ -126,17 +125,17 @@ export default function UsersPage() {
     try {
       await cancelInvitationMutation.mutateAsync(cancellingInvitation.id);
       setCancellingInvitation(null);
-    } catch (err) {
-      console.error('Failed to cancel invitation:', err);
+    } catch {
+      toast.error('Failed to cancel invitation');
     }
   };
 
   const handleResendInvitation = async (inv: UserInvitation) => {
     try {
       await resendInvitationMutation.mutateAsync(inv.id);
-      alert('Invitation resent');
+      toast.success('Invitation resent');
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to resend invitation');
+      toast.error(err.response?.data?.detail || 'Failed to resend invitation');
     }
   };
 
@@ -359,7 +358,7 @@ export default function UsersPage() {
                   <div className="p-12 text-center">
                     <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                     <p className="text-gray-500">No users found</p>
-                    <p className="text-sm text-gray-400">
+                    <p className="text-sm text-gray-500">
                       {searchQuery || roleFilter
                         ? 'Try adjusting your filters'
                         : 'Click "Invite User" to add your first user'}
@@ -431,7 +430,7 @@ export default function UsersPage() {
                   <div className="p-12 text-center">
                     <Send className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                     <p className="text-gray-500">No pending invitations</p>
-                    <p className="text-sm text-gray-400">
+                    <p className="text-sm text-gray-500">
                       Click "Invite User" to send an invitation
                     </p>
                   </div>

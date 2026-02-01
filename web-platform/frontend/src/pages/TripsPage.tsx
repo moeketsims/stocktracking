@@ -271,7 +271,7 @@ export default function TripsPage({ highlightTripId, pendingRequestId, onTripVie
             {trip.status === 'completed' ? (
               <span className="font-semibold text-gray-900">{formatCurrency(trip.total_cost)}</span>
             ) : (
-              <span className="text-gray-400">—</span>
+              <span className="text-gray-500">—</span>
             )}
           </div>
 
@@ -417,7 +417,7 @@ export default function TripsPage({ highlightTripId, pendingRequestId, onTripVie
               </div>
             </Card>
           ))}
-          <p className="col-span-full text-xs text-gray-400 -mt-2">Last 30 days</p>
+          <p className="col-span-full text-xs text-gray-500 -mt-2">Last 30 days</p>
         </div>
       )}
 
@@ -478,7 +478,7 @@ export default function TripsPage({ highlightTripId, pendingRequestId, onTripVie
           <Card className="p-12 text-center">
             <MapPin className="w-12 h-12 text-gray-300 mx-auto mb-3" />
             <p className="text-gray-500 font-medium">No trips found</p>
-            <p className="text-sm text-gray-400 mt-1">
+            <p className="text-sm text-gray-500 mt-1">
               {searchQuery ? 'Try a different search term' : 'Create a new trip to get started'}
             </p>
           </Card>

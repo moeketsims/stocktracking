@@ -54,7 +54,7 @@ function getCapacityPercent(qtyKg: number, lowThresholdBags: number = 50): numbe
 
 // Helper to get relative time
 const getRelativeTime = (dateStr: string | null): string => {
-    if (!dateStr) return 'No activity';
+    if (!dateStr) return 'Updated just now';
     const date = new Date(dateStr);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
@@ -434,7 +434,7 @@ export default function KitchenPage() {
 
     // Admin two-panel layout
     return (
-        <div className="h-[calc(100vh-120px)] flex flex-col">
+        <div className="min-h-[calc(100vh-4rem)] lg:h-[calc(100vh-120px)] flex flex-col">
             {/* Compact Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-white">
                 <div className="flex items-center gap-3">
@@ -455,10 +455,35 @@ export default function KitchenPage() {
                 </button>
             </div>
 
+            {/* Mobile Location Selector (shown on mobile only) */}
+            <div className="lg:hidden px-4 py-3 border-b border-gray-200 bg-white">
+                <label className="text-xs font-medium text-gray-500 mb-1.5 block">Select Kitchen</label>
+                <select
+                    value={selectedLocation?.id || ''}
+                    onChange={(e) => {
+                        const loc = shopLocations.find((l: any) => l.id === e.target.value);
+                        if (loc) setSelectedLocation(loc);
+                    }}
+                    className="w-full px-3 py-2.5 text-sm font-medium border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-gray-50"
+                >
+                    {shopLocations.map((loc: any) => {
+                        const stock = loc.stock?.find((s: any) => s.item_name === 'Potatoes');
+                        const currentBags = stock ? Math.round(stock.on_hand_qty / 10) : 0;
+                        const lowThreshold = loc.low_stock_threshold || 50;
+                        const statusLabel = currentBags < (loc.critical_stock_threshold || 20) ? '🔴 Critical' : currentBags < lowThreshold ? '🟡 Low' : '🟢 Healthy';
+                        return (
+                            <option key={loc.id} value={loc.id}>
+                                {loc.name} - {currentBags} bags ({statusLabel})
+                            </option>
+                        );
+                    })}
+                </select>
+            </div>
+
             {/* Two-Panel Layout */}
             <div className="flex-1 flex overflow-hidden">
-                {/* Left Panel - Kitchen List */}
-                <div className="w-[380px] flex-shrink-0 border-r border-gray-200 bg-gray-50 flex flex-col">
+                {/* Left Panel - Kitchen List (hidden on mobile, shown on lg+) */}
+                <div className="hidden lg:flex w-[320px] xl:w-[380px] flex-shrink-0 border-r border-gray-200 bg-gray-50 flex-col">
                     {/* Search & Filters */}
                     <div className="p-4 space-y-3 border-b border-gray-200 bg-white">
                         {/* Search */}
@@ -606,7 +631,7 @@ export default function KitchenPage() {
                             )}
 
                             {/* Summary Cards Row */}
-                            <div className="grid grid-cols-3 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                 {/* Stock Card */}
                                 <div className={`rounded-xl border-2 ${statusStyle.borderColor} ${statusStyle.bgColor} p-4`}>
                                     <div className="flex items-center gap-2 mb-2">
@@ -650,7 +675,7 @@ export default function KitchenPage() {
                                         style={{ width: `${capacityPercent}%` }}
                                     />
                                 </div>
-                                <div className="flex justify-between text-xs text-gray-400 mt-1.5">
+                                <div className="flex justify-between text-xs text-gray-500 mt-1.5">
                                     <span>0</span>
                                     <span>Target: {formatNumber(lowThreshold)} bags</span>
                                 </div>
@@ -757,9 +782,9 @@ export default function KitchenPage() {
 
                                             <input
                                                 type="number"
-                                                value={quantity}
+                                                value={quantity || ''}
                                                 onChange={(e) => {
-                                                    const val = parseInt(e.target.value) || 0;
+                                                    const val = e.target.value === '' ? 0 : parseInt(e.target.value);
                                                     if (mode === 'withdraw') {
                                                         setQuantity(Math.min(Math.max(0, val), currentBags));
                                                     } else {
@@ -793,7 +818,7 @@ export default function KitchenPage() {
                                             <span className={`font-medium ${mode === 'withdraw' ? 'text-amber-600' : 'text-teal-600'}`}>
                                                 {mode === 'withdraw' ? 'Removing' : 'Adding'} {quantity} bag{quantity !== 1 ? 's' : ''}
                                             </span>
-                                            <span className="text-gray-400">→</span>
+                                            <span className="text-gray-500">→</span>
                                             <span className="font-semibold text-gray-800">
                                                 New: {formatNumber(newBags)} bags
                                             </span>
@@ -878,9 +903,9 @@ export default function KitchenPage() {
                                                         <p className={`text-sm font-medium ${isWithdraw ? 'text-amber-800' : 'text-teal-800'}`}>
                                                             {isWithdraw ? 'Withdrew' : 'Returned'} {bags} bag{bags !== 1 ? 's' : ''}
                                                         </p>
-                                                        <p className="text-xs text-gray-400">{t.notes || 'Kitchen operation'}</p>
+                                                        <p className="text-xs text-gray-500">{t.notes || 'Kitchen operation'}</p>
                                                     </div>
-                                                    <span className="text-xs text-gray-400">{timeStr}</span>
+                                                    <span className="text-xs text-gray-500">{timeStr}</span>
                                                 </div>
                                             );
                                         })
@@ -1039,35 +1064,36 @@ function StandardKitchenUI({
 
     return (
         <>
-            {/* Stock Summary */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
+            {/* Stock Summary - Improved Layout */}
+            <div className="space-y-4">
+                {/* Main Stock Card */}
+                <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
                     <div className={`h-1.5 ${statusStyle.barColor}`} />
-                    <div className="p-6 lg:p-8">
-                        <div className="flex items-center justify-between mb-6">
+                    <div className="p-5 lg:p-6">
+                        <div className="flex items-center justify-between mb-5">
                             <div className="flex items-center gap-4">
-                                <div className={`w-14 h-14 rounded-2xl ${statusStyle.bgColor} flex items-center justify-center`}>
-                                    <Package className={`w-7 h-7 ${statusStyle.textColor}`} />
+                                <div className={`w-12 h-12 rounded-xl ${statusStyle.bgColor} flex items-center justify-center`}>
+                                    <Package className={`w-6 h-6 ${statusStyle.textColor}`} />
                                 </div>
                                 <div>
-                                    <p className="text-sm text-gray-500 uppercase tracking-wide font-medium">Current Stock</p>
+                                    <p className="text-xs text-gray-500 uppercase tracking-wider font-medium">Current Stock</p>
                                     <div className="flex items-baseline gap-2">
-                                        <span className="text-5xl font-bold text-gray-900 tabular-nums">{formatNumber(currentBags)}</span>
-                                        <span className="text-lg text-gray-400">bags</span>
+                                        <span className="text-4xl font-bold text-gray-900 tabular-nums">{formatNumber(currentBags)}</span>
+                                        <span className="text-base text-gray-500">bags</span>
                                     </div>
                                 </div>
                             </div>
-                            <div className={`px-4 py-2 rounded-full text-sm font-semibold ${statusStyle.bgColor} ${statusStyle.textColor}`}>
+                            <div className={`px-3 py-1.5 rounded-full text-sm font-semibold ${statusStyle.bgColor} ${statusStyle.textColor}`}>
                                 {statusStyle.label}
                             </div>
                         </div>
 
-                        <div className="mb-4">
-                            <div className="flex justify-between text-sm mb-2">
+                        <div className="mb-3">
+                            <div className="flex justify-between text-sm mb-1.5">
                                 <span className="text-gray-500">Stock Level</span>
-                                <span className="font-medium text-gray-700">{capacityPercent}% of target</span>
+                                <span className="font-medium text-gray-700">{capacityPercent}%</span>
                             </div>
-                            <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
                                 <div
                                     className={`h-full ${statusStyle.barColor} transition-all duration-500 rounded-full`}
                                     style={{ width: `${capacityPercent}%` }}
@@ -1075,38 +1101,39 @@ function StandardKitchenUI({
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-6 text-sm text-gray-500 pt-2 border-t border-gray-100">
-                            <div className="flex items-center gap-2">
-                                <Scale className="w-5 h-5" />
+                        <div className="flex items-center gap-5 text-sm text-gray-500 pt-3 border-t border-gray-100">
+                            <div className="flex items-center gap-1.5">
+                                <Scale className="w-4 h-4" />
                                 <span className="font-medium">{formatNumber(currentKg)} kg</span>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <Clock className="w-5 h-5" />
-                                <span>Last: {getRelativeTime(potatoStock?.last_activity || null)}</span>
+                            <div className="flex items-center gap-1.5">
+                                <Clock className="w-4 h-4" />
+                                <span>{getRelativeTime(potatoStock?.last_activity || null)}</span>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div className="flex flex-col gap-4">
-                    <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm flex-1">
-                        <div className="flex items-center gap-3 mb-3">
-                            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
-                                <ArrowDownToLine className="w-5 h-5 text-amber-600" />
-                            </div>
-                            <span className="text-sm font-medium text-gray-500">Withdrawals</span>
+                {/* Stats Row - Inline below main card */}
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
+                            <ArrowDownToLine className="w-5 h-5 text-amber-600" />
                         </div>
-                        <p className="text-3xl font-bold text-gray-900 tabular-nums">{withdrawCount}</p>
+                        <div>
+                            <p className="text-2xl font-bold text-gray-900 tabular-nums">{withdrawCount}</p>
+                            <p className="text-xs text-gray-500 font-medium">Withdrawals today</p>
+                        </div>
                     </div>
 
-                    <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm flex-1">
-                        <div className="flex items-center gap-3 mb-3">
-                            <div className="w-10 h-10 rounded-xl bg-teal-100 flex items-center justify-center">
-                                <ArrowUpFromLine className="w-5 h-5 text-teal-600" />
-                            </div>
-                            <span className="text-sm font-medium text-gray-500">Returns</span>
+                    <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-teal-100 flex items-center justify-center flex-shrink-0">
+                            <ArrowUpFromLine className="w-5 h-5 text-teal-600" />
                         </div>
-                        <p className="text-3xl font-bold text-gray-900 tabular-nums">{returnCount}</p>
+                        <div>
+                            <p className="text-2xl font-bold text-gray-900 tabular-nums">{returnCount}</p>
+                            <p className="text-xs text-gray-500 font-medium">Returns today</p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1135,46 +1162,46 @@ function StandardKitchenUI({
                 </div>
             )}
 
-            {/* Action Card */}
+            {/* Action Card - More Compact */}
             <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
-                <div className={`h-1.5 ${mode === 'withdraw' ? 'bg-amber-500' : 'bg-teal-500'}`} />
-                <div className="p-6 lg:p-8">
-                    <div className="flex items-center gap-1 bg-gray-100 p-1.5 rounded-xl mb-6 max-w-md mx-auto">
+                <div className={`h-1 ${mode === 'withdraw' ? 'bg-amber-500' : 'bg-teal-500'}`} />
+                <div className="p-5 lg:p-6">
+                    <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg mb-5 max-w-md mx-auto">
                         <button
                             onClick={() => { setMode('withdraw'); setQuantity(1); setShowCustomInput(false); }}
-                            className={`flex-1 py-3 px-6 text-base font-medium rounded-lg transition-all flex items-center justify-center gap-2 ${mode === 'withdraw'
+                            className={`flex-1 py-2.5 px-4 text-sm font-medium rounded-md transition-all flex items-center justify-center gap-2 ${mode === 'withdraw'
                                 ? 'bg-white text-gray-900 shadow-sm'
                                 : 'text-gray-500 hover:text-gray-700'
                                 }`}
                         >
-                            <ArrowDownToLine className="w-5 h-5" />
+                            <ArrowDownToLine className="w-4 h-4" />
                             Withdraw
                         </button>
                         <button
                             onClick={() => { setMode('return'); setQuantity(1); setShowCustomInput(false); }}
-                            className={`flex-1 py-3 px-6 text-base font-medium rounded-lg transition-all flex items-center justify-center gap-2 ${mode === 'return'
+                            className={`flex-1 py-2.5 px-4 text-sm font-medium rounded-md transition-all flex items-center justify-center gap-2 ${mode === 'return'
                                 ? 'bg-white text-gray-900 shadow-sm'
                                 : 'text-gray-500 hover:text-gray-700'
                                 }`}
                         >
-                            <ArrowUpFromLine className="w-5 h-5" />
+                            <ArrowUpFromLine className="w-4 h-4" />
                             Return
                         </button>
                     </div>
 
-                    <p className="text-sm text-gray-500 uppercase tracking-wide font-medium mb-3 text-center">
-                        {mode === 'withdraw' ? 'How many bags to withdraw?' : 'How many bags to return?'}
+                    <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-2 text-center">
+                        {mode === 'withdraw' ? 'Bags to withdraw' : 'Bags to return'}
                     </p>
-                    <div className="flex gap-3 mb-5 max-w-lg mx-auto">
+                    <div className="flex gap-2 mb-4 max-w-lg mx-auto">
                         {QUICK_AMOUNTS.map((amount) => (
                             <button
                                 key={amount}
                                 onClick={() => handleQuickSelect(amount)}
                                 disabled={mode === 'withdraw' && amount > currentBags}
-                                className={`flex-1 py-4 rounded-xl font-bold text-xl transition-all ${quantity === amount && !showCustomInput
+                                className={`flex-1 py-3 rounded-lg font-bold text-lg transition-all ${quantity === amount && !showCustomInput
                                     ? mode === 'withdraw'
-                                        ? 'bg-amber-500 text-white shadow-md'
-                                        : 'bg-teal-500 text-white shadow-md'
+                                        ? 'bg-amber-500 text-white shadow-sm'
+                                        : 'bg-teal-500 text-white shadow-sm'
                                     : `bg-gray-100 text-gray-700 hover:bg-gray-200 ${mode === 'withdraw' && amount > currentBags ? 'opacity-40 cursor-not-allowed' : ''}`
                                     }`}
                             >
@@ -1183,10 +1210,10 @@ function StandardKitchenUI({
                         ))}
                         <button
                             onClick={handleCustomClick}
-                            className={`flex-1 py-4 rounded-xl font-semibold text-base transition-all ${showCustomInput
+                            className={`flex-1 py-3 rounded-lg font-medium text-sm transition-all ${showCustomInput
                                 ? mode === 'withdraw'
-                                    ? 'bg-amber-500 text-white shadow-md'
-                                    : 'bg-teal-500 text-white shadow-md'
+                                    ? 'bg-amber-500 text-white shadow-sm'
+                                    : 'bg-teal-500 text-white shadow-sm'
                                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                                 }`}
                         >
@@ -1195,30 +1222,30 @@ function StandardKitchenUI({
                     </div>
 
                     {showCustomInput && (
-                        <div className="flex items-center justify-center gap-5 mb-5">
+                        <div className="flex items-center justify-center gap-4 mb-4">
                             <button
                                 onClick={decrementQuantity}
                                 disabled={quantity <= 1}
-                                className={`w-14 h-14 rounded-full flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed ${mode === 'withdraw'
+                                className={`w-11 h-11 rounded-full flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed ${mode === 'withdraw'
                                     ? 'bg-amber-100 text-amber-600 hover:bg-amber-200'
                                     : 'bg-teal-100 text-teal-600 hover:bg-teal-200'
                                     }`}
                             >
-                                <Minus className="w-6 h-6" />
+                                <Minus className="w-5 h-5" />
                             </button>
 
                             <input
                                 type="number"
-                                value={quantity}
+                                value={quantity || ''}
                                 onChange={(e) => {
-                                    const val = parseInt(e.target.value) || 0;
+                                    const val = e.target.value === '' ? 0 : parseInt(e.target.value);
                                     if (mode === 'withdraw') {
                                         setQuantity(Math.min(Math.max(0, val), currentBags));
                                     } else {
                                         setQuantity(Math.max(0, val));
                                     }
                                 }}
-                                className={`w-36 h-16 text-center text-4xl font-bold border-2 rounded-xl focus:outline-none focus:ring-2 ${mode === 'withdraw'
+                                className={`w-28 h-12 text-center text-3xl font-bold border-2 rounded-lg focus:outline-none focus:ring-2 ${mode === 'withdraw'
                                     ? 'border-amber-300 focus:ring-amber-500/30'
                                     : 'border-teal-300 focus:ring-teal-500/30'
                                     }`}
@@ -1229,24 +1256,24 @@ function StandardKitchenUI({
                             <button
                                 onClick={incrementQuantity}
                                 disabled={mode === 'withdraw' && quantity >= currentBags}
-                                className={`w-14 h-14 rounded-full flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed ${mode === 'withdraw'
+                                className={`w-11 h-11 rounded-full flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed ${mode === 'withdraw'
                                     ? 'bg-amber-100 text-amber-600 hover:bg-amber-200'
                                     : 'bg-teal-100 text-teal-600 hover:bg-teal-200'
                                     }`}
                             >
-                                <Plus className="w-6 h-6" />
+                                <Plus className="w-5 h-5" />
                             </button>
                         </div>
                     )}
 
-                    <div className={`p-4 rounded-xl mb-5 max-w-lg mx-auto ${mode === 'withdraw' ? 'bg-amber-50' : 'bg-teal-50'}`}>
-                        <div className="flex items-center justify-center gap-3 text-base">
+                    <div className={`p-3 rounded-lg mb-4 max-w-lg mx-auto ${mode === 'withdraw' ? 'bg-amber-50' : 'bg-teal-50'}`}>
+                        <div className="flex items-center justify-center gap-2 text-sm">
                             <span className={`font-medium ${mode === 'withdraw' ? 'text-amber-600' : 'text-teal-600'}`}>
                                 {mode === 'withdraw' ? 'Removing' : 'Adding'} {quantity} bag{quantity !== 1 ? 's' : ''}
                             </span>
                             <span className="text-gray-400">→</span>
                             <span className="font-semibold text-gray-800">
-                                New total: {formatNumber(newBags)} bags ({formatNumber(newKg)} kg)
+                                New: {formatNumber(newBags)} bags
                             </span>
                         </div>
                     </div>
@@ -1254,29 +1281,29 @@ function StandardKitchenUI({
                     <button
                         onClick={handleSubmit}
                         disabled={!isValidQuantity || isPending}
-                        className={`w-full max-w-lg mx-auto block py-5 rounded-xl font-bold text-xl text-white transition-all shadow-md hover:shadow-lg active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 ${mode === 'withdraw'
+                        className={`w-full max-w-lg mx-auto block py-4 rounded-xl font-semibold text-base text-white transition-all shadow-sm hover:shadow-md active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${mode === 'withdraw'
                             ? 'bg-amber-500 hover:bg-amber-600'
                             : 'bg-teal-500 hover:bg-teal-600'
                             }`}
                     >
                         {isPending ? (
-                            <RefreshCw className="animate-spin w-6 h-6" />
+                            <RefreshCw className="animate-spin w-5 h-5" />
                         ) : mode === 'withdraw' ? (
                             <>
-                                <ArrowDownToLine className="w-6 h-6" />
+                                <ArrowDownToLine className="w-5 h-5" />
                                 Withdraw {quantity} Bag{quantity !== 1 ? 's' : ''}
                             </>
                         ) : (
                             <>
-                                <ArrowUpFromLine className="w-6 h-6" />
+                                <ArrowUpFromLine className="w-5 h-5" />
                                 Return {quantity} Bag{quantity !== 1 ? 's' : ''}
                             </>
                         )}
                     </button>
 
                     {mode === 'withdraw' && quantity > currentBags && (
-                        <p className="text-red-500 text-sm text-center mt-3 flex items-center justify-center gap-1.5">
-                            <AlertCircle className="w-4 h-4" />
+                        <p className="text-red-500 text-xs text-center mt-2 flex items-center justify-center gap-1">
+                            <AlertCircle className="w-3 h-3" />
                             Cannot withdraw more than available stock
                         </p>
                     )}
@@ -1374,8 +1401,8 @@ function StandardKitchenUI({
                                     {kitchenTransactions.length === 0 ? (
                                         <div className="text-center py-12 bg-gray-50 rounded-2xl">
                                             <Activity className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                                            <p className="text-base text-gray-400 font-medium">No transactions yet</p>
-                                            <p className="text-sm text-gray-400">Withdrawals and returns will appear here</p>
+                                            <p className="text-base text-gray-500 font-medium">No transactions yet</p>
+                                            <p className="text-sm text-gray-500">Withdrawals and returns will appear here</p>
                                         </div>
                                     ) : (
                                         kitchenTransactions.map((t: any) => {
@@ -1410,7 +1437,7 @@ function StandardKitchenUI({
                                                     </div>
                                                     <div className="text-right">
                                                         <p className="text-sm font-semibold text-gray-700">{timeStr}</p>
-                                                        <p className="text-sm text-gray-400">{dateStr}</p>
+                                                        <p className="text-sm text-gray-500">{dateStr}</p>
                                                     </div>
                                                 </div>
                                             );

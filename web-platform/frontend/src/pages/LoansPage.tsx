@@ -7,7 +7,6 @@ import {
   Check,
   RefreshCw,
   Filter,
-  X,
   ArrowLeftRight,
   ArrowDownLeft,
   ArrowUpRight,
@@ -25,25 +24,12 @@ import { Button } from '../components/ui';
 import { loansApi, vehiclesApi, driversApi } from '../lib/api';
 import { useAuthStore } from '../stores/authStore';
 import type { Loan, LoanStatus, Vehicle, Driver } from '../types';
-
-// Status configuration for loan badges
-const LOAN_STATUS_CONFIG: Record<string, { label: string; bgColor: string; color: string; borderColor: string }> = {
-  pending: { label: 'Pending', bgColor: 'bg-amber-50', color: 'text-amber-700', borderColor: 'border-amber-200' },
-  accepted: { label: 'Accepted', bgColor: 'bg-blue-50', color: 'text-blue-700', borderColor: 'border-blue-200' },
-  rejected: { label: 'Rejected', bgColor: 'bg-red-50', color: 'text-red-700', borderColor: 'border-red-200' },
-  confirmed: { label: 'Confirmed', bgColor: 'bg-purple-50', color: 'text-purple-700', borderColor: 'border-purple-200' },
-  pickup_pending: { label: 'Pending', bgColor: 'bg-orange-50', color: 'text-orange-700', borderColor: 'border-orange-200' },
-  in_transit: { label: 'In Transit', bgColor: 'bg-indigo-50', color: 'text-indigo-700', borderColor: 'border-indigo-200' },
-  collected: { label: 'Collected', bgColor: 'bg-teal-50', color: 'text-teal-700', borderColor: 'border-teal-200' },
-  active: { label: 'Received', bgColor: 'bg-emerald-50', color: 'text-emerald-700', borderColor: 'border-emerald-200' },
-  // New return statuses
-  return_initiated: { label: 'Return Started', bgColor: 'bg-orange-50', color: 'text-orange-700', borderColor: 'border-orange-200' },
-  return_assigned: { label: 'Returning', bgColor: 'bg-orange-50', color: 'text-orange-700', borderColor: 'border-orange-200' },
-  return_in_progress: { label: 'Return In Progress', bgColor: 'bg-cyan-50', color: 'text-cyan-700', borderColor: 'border-cyan-200' },
-  return_in_transit: { label: 'Return In Transit', bgColor: 'bg-cyan-50', color: 'text-cyan-700', borderColor: 'border-cyan-200' },
-  completed: { label: 'Completed', bgColor: 'bg-gray-50', color: 'text-gray-600', borderColor: 'border-gray-200' },
-  overdue: { label: 'Overdue', bgColor: 'bg-red-100', color: 'text-red-800', borderColor: 'border-red-300' },
-};
+import { LOAN_STATUS_CONFIG } from '../constants/loan';
+import CreateLoanModal from '../components/modals/CreateLoanModal';
+import AcceptLoanModal from '../components/modals/AcceptLoanModal';
+import RejectLoanModal from '../components/modals/RejectLoanModal';
+import AssignLoanDriverModal from '../components/modals/AssignLoanDriverModal';
+import LoanDetailsModal from '../components/modals/LoanDetailsModal';
 
 type TabFilter = 'borrowed' | 'lent' | 'requests' | 'all';
 type StatusFilter = 'all' | 'active' | 'pending' | 'completed';
@@ -222,13 +208,13 @@ export default function LoansPage({ onNavigateToTrip }: LoansPageProps) {
   });
 
   const assignPickupMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { driver_id?: string; vehicle_id: string; notes?: string } }) =>
+    mutationFn: ({ id, data }: { id: string; data: { driver_id: string; vehicle_id?: string; notes?: string } }) =>
       loansApi.assignPickup(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['loans'] });
       setShowAssignDriverModal(false);
       setSelectedLoan(null);
-      setSuccessMessage('Pickup driver assigned');
+      setSuccessMessage('Pickup driver assigned. Driver will select vehicle when accepting.');
       setTimeout(() => setSuccessMessage(null), 3000);
     },
     onError: (err: any) => {
@@ -487,7 +473,7 @@ export default function LoansPage({ onNavigateToTrip }: LoansPageProps) {
         <div className="text-center py-12 bg-gray-50 rounded-xl">
           <Package className="w-10 h-10 mx-auto mb-3 text-gray-300" />
           <h3 className="text-sm font-medium text-gray-600">No loans found</h3>
-          <p className="text-xs text-gray-400 mt-1">
+          <p className="text-xs text-gray-500 mt-1">
             {activeTab === 'requests'
               ? 'No pending requests'
               : activeTab === 'borrowed'
@@ -584,7 +570,7 @@ export default function LoansPage({ onNavigateToTrip }: LoansPageProps) {
       )}
 
       {showAssignDriverModal && selectedLoan && (
-        <AssignDriverModal
+        <AssignLoanDriverModal
           loan={selectedLoan}
           type={assignDriverType}
           vehicles={vehiclesData?.vehicles || []}
@@ -728,7 +714,7 @@ function LoanCard({
               <span className="text-xs font-medium text-emerald-700">Received by Borrower</span>
             </div>
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] text-gray-400 font-medium">Return Inbound</span>
+              <span className="text-[10px] text-gray-500 font-medium">Return Inbound</span>
               <div className="w-32 h-1 bg-gray-200 rounded-full overflow-hidden">
                 <div className="h-full w-1/3 bg-gradient-to-r from-orange-400 to-orange-500 rounded-full animate-slide-right" />
               </div>
@@ -745,7 +731,7 @@ function LoanCard({
               <span className="text-xs font-medium text-emerald-700">Received by Borrower</span>
             </div>
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] text-gray-400 font-medium">Driver en route</span>
+              <span className="text-[10px] text-gray-500 font-medium">Driver en route</span>
               <div className="w-32 h-1 bg-gray-200 rounded-full overflow-hidden">
                 <div className="h-full w-1/3 bg-gradient-to-r from-orange-400 to-orange-500 rounded-full animate-slide-right" />
               </div>
@@ -927,7 +913,7 @@ function LoanCard({
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-semibold text-gray-900">{quantity} bags</span>
-              <span className="text-gray-400">{directionLabel}</span>
+              <span className="text-gray-500">{directionLabel}</span>
               <span className="font-medium text-gray-700 truncate">{otherShop?.name || 'Unknown'}</span>
               <span className={`px-2 py-0.5 rounded border text-[11px] font-semibold ${statusConfig.bgColor} ${statusConfig.color} ${statusConfig.borderColor}`}>
                 {statusConfig.label}
@@ -964,581 +950,5 @@ function LoanCard({
         </div>
       </div>
     </div>
-  );
-}
-
-// Create Loan Modal
-function CreateLoanModal({
-  locations,
-  onClose,
-  onSubmit,
-  isSubmitting,
-}: {
-  locations: { id: string; name: string; current_stock_bags?: number }[];
-  onClose: () => void;
-  onSubmit: (data: { lender_location_id: string; quantity_requested: number; estimated_return_date?: string; notes?: string }) => void;
-  isSubmitting: boolean;
-}) {
-  const [lenderId, setLenderId] = useState('');
-  const [quantity, setQuantity] = useState('');
-  const [returnDate, setReturnDate] = useState('');
-  const [notes, setNotes] = useState('');
-  const [error, setError] = useState<string | null>(null);
-
-  const selectedLender = locations.find(l => l.id === lenderId);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!lenderId) return setError('Please select a shop to borrow from');
-    if (!quantity || parseInt(quantity) <= 0) return setError('Please enter a valid quantity');
-
-    // Validate return date only if provided
-    if (returnDate) {
-      const returnDateObj = new Date(returnDate);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      if (returnDateObj < today) return setError('Return date must be in the future');
-    }
-
-    setError(null);
-    onSubmit({
-      lender_location_id: lenderId,
-      quantity_requested: parseInt(quantity),
-      estimated_return_date: returnDate || undefined,
-      notes: notes || undefined,
-    });
-  };
-
-  // Default return date to 7 days from now
-  const defaultReturnDate = new Date();
-  defaultReturnDate.setDate(defaultReturnDate.getDate() + 7);
-  const minDate = new Date().toISOString().split('T')[0];
-
-  return (
-    <>
-      <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50" onClick={onClose} />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl w-full max-w-md shadow-xl">
-          <div className="flex items-center justify-between p-4 border-b border-gray-100">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">Request Stock Loan</h2>
-              <p className="text-xs text-gray-500">Borrow stock from another shop</p>
-            </div>
-            <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center">
-              <X className="w-5 h-5 text-gray-400" />
-            </button>
-          </div>
-
-          <form onSubmit={handleSubmit} className="p-4 space-y-4">
-            {error && (
-              <div className="p-3 bg-red-50 text-red-600 rounded-xl text-sm">{error}</div>
-            )}
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Borrow From *</label>
-              <select
-                value={lenderId}
-                onChange={(e) => setLenderId(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              >
-                <option value="">Select a shop...</option>
-                {locations.map((loc) => (
-                  <option key={loc.id} value={loc.id}>
-                    {loc.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Quantity (bags) *</label>
-              <input
-                type="number"
-                min="1"
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                placeholder="Enter number of bags"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Estimated Return Date (optional)</label>
-              <input
-                type="date"
-                value={returnDate}
-                onChange={(e) => setReturnDate(e.target.value)}
-                min={minDate}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Notes (optional)</label>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={2}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none text-sm"
-                placeholder="Reason for loan, etc."
-              />
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <Button type="button" variant="secondary" onClick={onClose} className="flex-1">
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting} className="flex-1 bg-emerald-600 hover:bg-emerald-700">
-                {isSubmitting ? 'Sending...' : 'Send Request'}
-              </Button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </>
-  );
-}
-
-// Accept Loan Modal
-function AcceptLoanModal({
-  loan,
-  onClose,
-  onSubmit,
-  isSubmitting,
-}: {
-  loan: Loan;
-  onClose: () => void;
-  onSubmit: (data: { quantity_approved: number; notes?: string }) => void;
-  isSubmitting: boolean;
-}) {
-  const [quantity, setQuantity] = useState(loan.quantity_requested.toString());
-  const [notes, setNotes] = useState('');
-  const [error, setError] = useState<string | null>(null);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const qty = parseInt(quantity);
-    if (!qty || qty <= 0) return setError('Please enter a valid quantity');
-    if (qty > loan.quantity_requested) return setError('Cannot approve more than requested');
-
-    setError(null);
-    onSubmit({
-      quantity_approved: qty,
-      notes: notes || undefined,
-    });
-  };
-
-  return (
-    <>
-      <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50" onClick={onClose} />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl w-full max-w-md shadow-xl">
-          <div className="flex items-center justify-between p-4 border-b border-gray-100">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">Accept Loan Request</h2>
-              <p className="text-xs text-gray-500">From {loan.borrower_location?.name}</p>
-            </div>
-            <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center">
-              <X className="w-5 h-5 text-gray-400" />
-            </button>
-          </div>
-
-          <form onSubmit={handleSubmit} className="p-4 space-y-4">
-            <div className="p-3 bg-blue-50 rounded-xl">
-              <p className="text-sm text-blue-800">
-                <span className="font-semibold">{loan.borrower_location?.name}</span> requested{' '}
-                <span className="font-bold">{loan.quantity_requested} bags</span>
-              </p>
-              <p className="text-xs text-blue-600 mt-1">
-                Return by: {new Date(loan.estimated_return_date).toLocaleDateString()}
-              </p>
-            </div>
-
-            {error && (
-              <div className="p-3 bg-red-50 text-red-600 rounded-xl text-sm">{error}</div>
-            )}
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Quantity to Approve (bags) *
-              </label>
-              <input
-                type="number"
-                min="1"
-                max={loan.quantity_requested}
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                You can approve the full amount or a smaller quantity
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Notes (optional)</label>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={2}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none text-sm"
-                placeholder="Any notes for the borrower..."
-              />
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <Button type="button" variant="secondary" onClick={onClose} className="flex-1">
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting} className="flex-1 bg-emerald-600 hover:bg-emerald-700">
-                {isSubmitting ? 'Accepting...' : 'Accept'}
-              </Button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </>
-  );
-}
-
-// Reject Loan Modal
-function RejectLoanModal({
-  loan,
-  onClose,
-  onSubmit,
-  isSubmitting,
-}: {
-  loan: Loan;
-  onClose: () => void;
-  onSubmit: (reason: string) => void;
-  isSubmitting: boolean;
-}) {
-  const [reason, setReason] = useState('');
-  const [error, setError] = useState<string | null>(null);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!reason.trim()) return setError('Please provide a reason');
-    setError(null);
-    onSubmit(reason);
-  };
-
-  return (
-    <>
-      <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50" onClick={onClose} />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl w-full max-w-md shadow-xl">
-          <div className="flex items-center justify-between p-4 border-b border-gray-100">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">Reject Loan</h2>
-              <p className="text-xs text-gray-500">{loan.quantity_requested} bags from {loan.borrower_location?.name}</p>
-            </div>
-            <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center">
-              <X className="w-5 h-5 text-gray-400" />
-            </button>
-          </div>
-
-          <form onSubmit={handleSubmit} className="p-4 space-y-4">
-            {error && (
-              <div className="p-3 bg-red-50 text-red-600 rounded-xl text-sm">{error}</div>
-            )}
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Reason *</label>
-              <textarea
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                rows={3}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 resize-none text-sm"
-                placeholder="Why are you rejecting this request?"
-              />
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <Button type="button" variant="secondary" onClick={onClose} className="flex-1">
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting} className="flex-1 bg-red-600 hover:bg-red-700 text-white">
-                {isSubmitting ? 'Rejecting...' : 'Reject'}
-              </Button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </>
-  );
-}
-
-// Assign Driver Modal
-function AssignDriverModal({
-  loan,
-  type,
-  vehicles,
-  drivers,
-  onClose,
-  onSubmit,
-  isSubmitting,
-}: {
-  loan: Loan;
-  type: 'pickup' | 'return';
-  vehicles: Vehicle[];
-  drivers: Driver[];
-  onClose: () => void;
-  onSubmit: (data: { driver_id?: string; vehicle_id: string; notes?: string }) => void;
-  isSubmitting: boolean;
-}) {
-  const [vehicleId, setVehicleId] = useState('');
-  const [driverId, setDriverId] = useState('');
-  const [notes, setNotes] = useState('');
-  const [error, setError] = useState<string | null>(null);
-
-  const availableVehicles = vehicles.filter(v => v.is_active && (v.is_available !== false));
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!vehicleId) return setError('Please select a vehicle');
-    setError(null);
-    onSubmit({
-      vehicle_id: vehicleId,
-      driver_id: driverId || undefined,
-      notes: notes || undefined,
-    });
-  };
-
-  return (
-    <>
-      <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50" onClick={onClose} />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl w-full max-w-md shadow-xl">
-          <div className="flex items-center justify-between p-4 border-b border-gray-100">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">
-                Assign {type === 'pickup' ? 'Pickup' : 'Return'} Driver
-              </h2>
-              <p className="text-xs text-gray-500">
-                {loan.quantity_approved || loan.quantity_requested} bags{' '}
-                {type === 'pickup' ? `from ${loan.lender_location?.name}` : `to ${loan.lender_location?.name}`}
-              </p>
-            </div>
-            <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center">
-              <X className="w-5 h-5 text-gray-400" />
-            </button>
-          </div>
-
-          <form onSubmit={handleSubmit} className="p-4 space-y-4">
-            {error && (
-              <div className="p-3 bg-red-50 text-red-600 rounded-xl text-sm">{error}</div>
-            )}
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Vehicle *</label>
-              <select
-                value={vehicleId}
-                onChange={(e) => setVehicleId(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              >
-                <option value="">Select a vehicle...</option>
-                {availableVehicles.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.registration_number} - {v.make} {v.model}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Driver (optional)</label>
-              <select
-                value={driverId}
-                onChange={(e) => setDriverId(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              >
-                <option value="">Select a driver...</option>
-                {drivers.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.full_name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Notes (optional)</label>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={2}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none text-sm"
-                placeholder="Any special instructions..."
-              />
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <Button type="button" variant="secondary" onClick={onClose} className="flex-1">
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting} className="flex-1 bg-blue-600 hover:bg-blue-700">
-                {isSubmitting ? 'Assigning...' : 'Assign'}
-              </Button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </>
-  );
-}
-
-// Loan Details Modal
-function LoanDetailsModal({
-  loan,
-  onClose,
-  onNavigateToTrip,
-}: {
-  loan: Loan;
-  onClose: () => void;
-  onNavigateToTrip?: (tripId: string) => void;
-}) {
-  const statusConfig = LOAN_STATUS_CONFIG[loan.status];
-
-  return (
-    <>
-      <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50" onClick={onClose} />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl max-h-[90vh] overflow-y-auto">
-          <div className="flex items-center justify-between p-4 border-b border-gray-100 sticky top-0 bg-white">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">Loan Details</h2>
-              <span className={`px-2 py-0.5 rounded border text-xs font-semibold ${statusConfig.bgColor} ${statusConfig.color} ${statusConfig.borderColor}`}>
-                {statusConfig.label}
-              </span>
-            </div>
-            <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center">
-              <X className="w-5 h-5 text-gray-400" />
-            </button>
-          </div>
-
-          <div className="p-4 space-y-4">
-            {/* Parties */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-3 bg-blue-50 rounded-xl">
-                <p className="text-xs text-blue-600 font-medium">Borrower</p>
-                <p className="text-sm font-semibold text-blue-900">{loan.borrower_location?.name}</p>
-              </div>
-              <div className="p-3 bg-orange-50 rounded-xl">
-                <p className="text-xs text-orange-600 font-medium">Lender</p>
-                <p className="text-sm font-semibold text-orange-900">{loan.lender_location?.name}</p>
-              </div>
-            </div>
-
-            {/* Quantity */}
-            <div className="p-3 bg-gray-50 rounded-xl">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-gray-500">Requested</p>
-                  <p className="text-lg font-bold text-gray-900">{loan.quantity_requested} bags</p>
-                </div>
-                {loan.quantity_approved && loan.quantity_approved !== loan.quantity_requested && (
-                  <div>
-                    <p className="text-xs text-gray-500">Approved</p>
-                    <p className="text-lg font-bold text-emerald-600">{loan.quantity_approved} bags</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Dates */}
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <p className="text-xs text-gray-500">Created</p>
-                <p className="text-gray-900">{new Date(loan.created_at).toLocaleString()}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Est. Return</p>
-                <p className="text-gray-900">{new Date(loan.estimated_return_date).toLocaleDateString()}</p>
-              </div>
-              {loan.actual_return_date && (
-                <div>
-                  <p className="text-xs text-gray-500">Actual Return</p>
-                  <p className="text-gray-900">{new Date(loan.actual_return_date).toLocaleString()}</p>
-                </div>
-              )}
-            </div>
-
-            {/* People */}
-            <div className="space-y-2 text-sm">
-              <div className="flex items-center gap-2">
-                <User className="w-4 h-4 text-gray-400" />
-                <span className="text-gray-500">Requested by:</span>
-                <span className="text-gray-900">{loan.requester?.full_name || loan.requester?.email}</span>
-              </div>
-              {loan.approver && (
-                <div className="flex items-center gap-2">
-                  <User className="w-4 h-4 text-gray-400" />
-                  <span className="text-gray-500">Approved by:</span>
-                  <span className="text-gray-900">{loan.approver?.full_name || loan.approver?.email}</span>
-                </div>
-              )}
-            </div>
-
-            {/* Trips */}
-            {(loan.pickup_trip_id || loan.return_trip_id) && (
-              <div className="space-y-2">
-                <p className="text-xs font-medium text-gray-500 uppercase">Trips</p>
-                {loan.pickup_trip_id && (
-                  <button
-                    onClick={() => {
-                      onNavigateToTrip?.(loan.pickup_trip_id!);
-                      onClose();
-                    }}
-                    className="w-full p-3 bg-indigo-50 rounded-xl text-left hover:bg-indigo-100 transition-colors"
-                  >
-                    <p className="text-xs text-indigo-600 font-medium">Pickup Trip</p>
-                    <p className="text-sm font-semibold text-indigo-900">
-                      {loan.pickup_trip?.trip_number || 'View Trip'}
-                    </p>
-                  </button>
-                )}
-                {loan.return_trip_id && (
-                  <button
-                    onClick={() => {
-                      onNavigateToTrip?.(loan.return_trip_id!);
-                      onClose();
-                    }}
-                    className="w-full p-3 bg-cyan-50 rounded-xl text-left hover:bg-cyan-100 transition-colors"
-                  >
-                    <p className="text-xs text-cyan-600 font-medium">Return Trip</p>
-                    <p className="text-sm font-semibold text-cyan-900">
-                      {loan.return_trip?.trip_number || 'View Trip'}
-                    </p>
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Notes */}
-            {loan.notes && (
-              <div>
-                <p className="text-xs font-medium text-gray-500 uppercase mb-1">Notes</p>
-                <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-xl">{loan.notes}</p>
-              </div>
-            )}
-
-            {/* Rejection Reason */}
-            {loan.rejection_reason && (
-              <div>
-                <p className="text-xs font-medium text-red-500 uppercase mb-1">Rejection Reason</p>
-                <p className="text-sm text-red-700 bg-red-50 p-3 rounded-xl">{loan.rejection_reason}</p>
-              </div>
-            )}
-          </div>
-
-          <div className="p-4 border-t border-gray-100">
-            <Button variant="secondary" onClick={onClose} className="w-full">
-              Close
-            </Button>
-          </div>
-        </div>
-      </div>
-    </>
   );
 }

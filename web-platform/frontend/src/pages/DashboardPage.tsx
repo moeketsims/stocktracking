@@ -71,6 +71,8 @@ interface GroupedLocation {
   location_type: 'warehouse' | 'shop';
   total_qty: number;
   total_bags: number;
+  critical_threshold: number;  // in bags
+  low_threshold: number;  // in bags
   items: StockBalanceItem[];
 }
 
@@ -86,6 +88,8 @@ const groupByLocation = (items: StockBalanceItem[]): GroupedLocation[] => {
         location_type: item.location_name.toLowerCase().includes('warehouse') ? 'warehouse' : 'shop',
         total_qty: 0,
         total_bags: 0,
+        critical_threshold: item.critical_threshold || 20,
+        low_threshold: item.low_threshold || 50,
         items: [],
       };
     }
@@ -273,7 +277,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (tab: any) 
             </div>
             <div>
               <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Kitchen Mode</p>
-              <p className="text-xs text-gray-400">Tally your bags</p>
+              <p className="text-xs text-gray-500">Tally your bags</p>
             </div>
           </div>
         </div>
@@ -291,7 +295,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (tab: any) 
               <p className="text-2xl font-semibold text-gray-900">
                 +{formatQty(getPreferredValue(stats.received_today_kg, stats.received_today_bags, defaultUnit))}
               </p>
-              <p className="text-xs text-gray-400">{unitLabel} today</p>
+              <p className="text-xs text-gray-500">{unitLabel} today</p>
             </div>
           </div>
         </Card>
@@ -306,7 +310,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (tab: any) 
               <p className="text-2xl font-semibold text-gray-900">
                 -{formatQty(getPreferredValue(stats.issued_today_kg, stats.issued_today_bags, defaultUnit))}
               </p>
-              <p className="text-xs text-gray-400">{unitLabel} today</p>
+              <p className="text-xs text-gray-500">{unitLabel} today</p>
             </div>
           </div>
         </Card>
@@ -321,7 +325,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (tab: any) 
               <p className="text-2xl font-semibold text-gray-900">
                 -{formatQty(getPreferredValue(stats.wasted_today_kg, stats.wasted_today_bags, defaultUnit))}
               </p>
-              <p className="text-xs text-gray-400">{unitLabel} today</p>
+              <p className="text-xs text-gray-500">{unitLabel} today</p>
             </div>
           </div>
         </Card>
@@ -334,7 +338,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (tab: any) 
             <div>
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Alerts</p>
               <p className="text-2xl font-semibold text-gray-900">{totalAlerts}</p>
-              <p className="text-xs text-gray-400">active alerts</p>
+              <p className="text-xs text-gray-500">active alerts</p>
             </div>
           </div>
         </Card>
@@ -357,7 +361,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (tab: any) 
           </div>
           <div className="h-64">
             {analyticsLoading ? (
-              <div className="h-full flex items-center justify-center text-gray-400">
+              <div className="h-full flex items-center justify-center text-gray-500">
                 Loading chart...
               </div>
             ) : dailyUsageData.length > 0 ? (
@@ -385,7 +389,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (tab: any) 
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-full flex items-center justify-center text-gray-400">
+              <div className="h-full flex items-center justify-center text-gray-500">
                 <div className="text-center">
                   <BarChart3 className="w-12 h-12 mx-auto mb-2 opacity-50" />
                   <p>No usage data available</p>
@@ -405,7 +409,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (tab: any) 
           </div>
           <div className="h-64">
             {analyticsLoading ? (
-              <div className="h-full flex items-center justify-center text-gray-400">
+              <div className="h-full flex items-center justify-center text-gray-500">
                 Loading chart...
               </div>
             ) : hourlyData.length > 0 ? (
@@ -424,7 +428,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (tab: any) 
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-full flex items-center justify-center text-gray-400">
+              <div className="h-full flex items-center justify-center text-gray-500">
                 <div className="text-center">
                   <BarChart3 className="w-12 h-12 mx-auto mb-2 opacity-50" />
                   <p>No hourly data available</p>
@@ -459,7 +463,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (tab: any) 
         </div>
         <div className="h-72">
           {analyticsLoading ? (
-            <div className="h-full flex items-center justify-center text-gray-400">
+            <div className="h-full flex items-center justify-center text-gray-500">
               Loading chart...
             </div>
           ) : stockMovementData.length > 0 ? (
@@ -502,7 +506,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (tab: any) 
               </LineChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-full flex items-center justify-center text-gray-400">
+            <div className="h-full flex items-center justify-center text-gray-500">
               <div className="text-center">
                 <BarChart3 className="w-12 h-12 mx-auto mb-2 opacity-50" />
                 <p>No movement data available</p>
@@ -645,10 +649,16 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (tab: any) 
               <Package className="w-8 h-8 text-gray-400" />
             </div>
             <p className="text-gray-600 font-medium">No stock data yet</p>
-            <p className="text-sm text-gray-400 mt-1">Add your first batch or record a delivery</p>
+            <p className="text-sm text-gray-500 mt-1">Add your first batch or record a delivery</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className={`grid gap-4 ${
+            groupedLocations.length === 1
+              ? 'grid-cols-1'
+              : groupedLocations.length === 2
+                ? 'grid-cols-1 md:grid-cols-2'
+                : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'
+          }`}>
             {groupedLocations.map((location) => {
               const maxStock = Math.max(...groupedLocations.map(l => l.total_qty));
               const percentage = maxStock > 0 ? (location.total_qty / maxStock) * 100 : 0;
@@ -684,12 +694,71 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (tab: any) 
                     </div>
                   </div>
                   <div className="px-4 py-3">
-                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mb-3">
-                      <div
-                        className="h-full rounded-full bg-gray-400"
-                        style={{ width: `${percentage}%` }}
-                      />
-                    </div>
+                    {/* Stock Level Bar with Threshold Zones */}
+                    {(() => {
+                      // Calculate the scale - use max of current stock or 2x low threshold
+                      const maxScale = Math.max(location.total_bags, location.low_threshold * 2, 100);
+                      const criticalPosition = (location.critical_threshold / maxScale) * 100;
+                      const lowPosition = (location.low_threshold / maxScale) * 100;
+
+                      return (
+                        <div className="relative h-3 mb-3">
+                          {/* Bar container */}
+                          <div className="absolute inset-0 rounded-full flex overflow-hidden">
+                            {/* Red zone */}
+                            <div className="h-full bg-red-400" style={{ width: `${criticalPosition}%` }} />
+                            {/* Amber zone */}
+                            <div className="h-full bg-amber-400" style={{ width: `${lowPosition - criticalPosition}%` }} />
+                            {/* Green zone */}
+                            <div className="h-full bg-emerald-400 flex-1" />
+                          </div>
+
+                          {/* Hover zones with tooltips (positioned above, not clipped) */}
+                          <div className="absolute inset-0 flex">
+                            {/* Red zone hover area */}
+                            <div
+                              className="h-full relative cursor-pointer [&:hover>.tooltip]:opacity-100"
+                              style={{ width: `${criticalPosition}%` }}
+                            >
+                              <div className="tooltip absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 transition-opacity duration-200 pointer-events-none z-30">
+                                <div className="bg-red-600 text-white text-xs font-medium px-2.5 py-1.5 rounded-lg shadow-lg whitespace-nowrap">
+                                  <div className="text-red-200 text-[10px] uppercase tracking-wide">Critical</div>
+                                  <div className="font-semibold">{location.critical_threshold} bags</div>
+                                </div>
+                                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-red-600" />
+                              </div>
+                            </div>
+
+                            {/* Amber zone hover area */}
+                            <div
+                              className="h-full relative cursor-pointer [&:hover>.tooltip]:opacity-100"
+                              style={{ width: `${lowPosition - criticalPosition}%` }}
+                            >
+                              <div className="tooltip absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 transition-opacity duration-200 pointer-events-none z-30">
+                                <div className="bg-amber-500 text-white text-xs font-medium px-2.5 py-1.5 rounded-lg shadow-lg whitespace-nowrap">
+                                  <div className="text-amber-100 text-[10px] uppercase tracking-wide">Low Stock</div>
+                                  <div className="font-semibold">{location.low_threshold} bags</div>
+                                </div>
+                                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-amber-500" />
+                              </div>
+                            </div>
+
+                            {/* Green zone hover area */}
+                            <div
+                              className="h-full flex-1 relative cursor-pointer [&:hover>.tooltip]:opacity-100"
+                            >
+                              <div className="tooltip absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 transition-opacity duration-200 pointer-events-none z-30">
+                                <div className="bg-emerald-600 text-white text-xs font-medium px-2.5 py-1.5 rounded-lg shadow-lg whitespace-nowrap">
+                                  <div className="text-emerald-200 text-[10px] uppercase tracking-wide">Healthy</div>
+                                  <div className="font-semibold">Above {location.low_threshold} bags</div>
+                                </div>
+                                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-emerald-600" />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
                     <div className="space-y-2">
                       {location.items.slice(0, 3).map((item, idx) => {
                         const itemQty = item.on_hand_qty || 0;
@@ -708,7 +777,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (tab: any) 
                         );
                       })}
                       {location.items.length > 3 && (
-                        <p className="text-xs text-gray-400 text-center pt-1">
+                        <p className="text-xs text-gray-500 text-center pt-1">
                           +{location.items.length - 3} more items
                         </p>
                       )}

@@ -169,7 +169,7 @@ export default function BatchesPage() {
                       <span className="text-gray-700 font-medium">
                         {formatBatchAge(batch.received_at)}
                       </span>
-                      <span className="text-gray-400 ml-1">
+                      <span className="text-gray-500 ml-1">
                         ({new Date(batch.received_at).toLocaleDateString()})
                       </span>
                     </div>
@@ -188,7 +188,7 @@ export default function BatchesPage() {
                           {new Date(batch.expiry_date).toLocaleDateString()}
                         </span>
                         {daysUntilExpiry !== null && (
-                          <span className="text-gray-400 ml-1">
+                          <span className="text-gray-500 ml-1">
                             ({daysUntilExpiry > 0
                               ? `${daysUntilExpiry} ${daysUntilExpiry === 1 ? 'day' : 'days'} left`
                               : daysUntilExpiry === 0
@@ -217,7 +217,7 @@ export default function BatchesPage() {
                       }}
                     />
                   </div>
-                  <p className="text-xs text-gray-400 mt-1">
+                  <p className="text-xs text-gray-500 mt-1">
                     {Math.floor(batch.used_qty / KG_PER_BAG)} bags used
                   </p>
                 </div>
@@ -231,7 +231,7 @@ export default function BatchesPage() {
             <div className="text-center py-8">
               <Boxes className="w-12 h-12 text-gray-300 mx-auto mb-3" />
               <p className="text-gray-500">No batches found</p>
-              <p className="text-sm text-gray-400">
+              <p className="text-sm text-gray-500">
                 {filter !== 'all'
                   ? 'Try changing the filter'
                   : 'Start by receiving some stock'}

@@ -159,7 +159,7 @@ export default function TransactionsPage() {
                     {formatDate(tx.created_at)} • by {tx.created_by_name}
                   </p>
                   {tx.notes && (
-                    <p className="text-sm text-gray-400 mt-1 truncate">{tx.notes}</p>
+                    <p className="text-sm text-gray-500 mt-1 truncate">{tx.notes}</p>
                   )}
                   {tx.type === 'transfer' && (
                     <p className="text-xs text-blue-600 mt-1">
@@ -177,7 +177,7 @@ export default function TransactionsPage() {
                     {tx.quantity.toFixed(1)} {tx.unit}
                   </span>
                   {tx.batch_id && (
-                    <p className="text-xs text-gray-400 font-mono">
+                    <p className="text-xs text-gray-500 font-mono">
                       {tx.batch_id.substring(0, 8)}
                     </p>
                   )}
@@ -189,7 +189,7 @@ export default function TransactionsPage() {
             <div className="p-12 text-center">
               <Filter className="w-12 h-12 text-gray-300 mx-auto mb-3" />
               <p className="text-gray-500">No transactions found</p>
-              <p className="text-sm text-gray-400">
+              <p className="text-sm text-gray-500">
                 {filter !== 'all' ? 'Try changing the filter' : 'Start by receiving some stock'}
               </p>
             </div>

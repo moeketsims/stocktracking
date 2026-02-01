@@ -24,16 +24,16 @@ export default function EditThresholdsModal({
   onSuccess,
   location,
 }: EditThresholdsModalProps) {
-  const [criticalThreshold, setCriticalThreshold] = useState<number>(20);
-  const [lowThreshold, setLowThreshold] = useState<number>(50);
+  const [criticalThreshold, setCriticalThreshold] = useState<string>('');
+  const [lowThreshold, setLowThreshold] = useState<string>('');
   const [error, setError] = useState('');
 
   const updateMutation = useUpdateLocationThresholds();
 
   useEffect(() => {
     if (isOpen && location) {
-      setCriticalThreshold(location.critical_stock_threshold || 20);
-      setLowThreshold(location.low_stock_threshold || 50);
+      setCriticalThreshold(location.critical_stock_threshold?.toString() || '');
+      setLowThreshold(location.low_stock_threshold?.toString() || '');
       setError('');
     }
   }, [isOpen, location]);
@@ -44,12 +44,20 @@ export default function EditThresholdsModal({
 
     if (!location) return;
 
-    if (criticalThreshold >= lowThreshold) {
+    const criticalValue = parseInt(criticalThreshold) || 0;
+    const lowValue = parseInt(lowThreshold) || 0;
+
+    if (!criticalThreshold || !lowThreshold) {
+      setError('Please enter both threshold values');
+      return;
+    }
+
+    if (criticalValue >= lowValue) {
       setError('Critical threshold must be less than low stock threshold');
       return;
     }
 
-    if (criticalThreshold < 0 || lowThreshold < 0) {
+    if (criticalValue < 0 || lowValue < 0) {
       setError('Thresholds cannot be negative');
       return;
     }
@@ -58,8 +66,8 @@ export default function EditThresholdsModal({
       await updateMutation.mutateAsync({
         locationId: location.id,
         data: {
-          critical_stock_threshold: criticalThreshold,
-          low_stock_threshold: lowThreshold,
+          critical_stock_threshold: criticalValue,
+          low_stock_threshold: lowValue,
         },
       });
       onSuccess();
@@ -106,7 +114,8 @@ export default function EditThresholdsModal({
             min={0}
             max={1000}
             value={criticalThreshold}
-            onChange={(e) => setCriticalThreshold(parseInt(e.target.value) || 0)}
+            onChange={(e) => setCriticalThreshold(e.target.value)}
+            placeholder="e.g. 20"
           />
         </div>
 
@@ -122,28 +131,31 @@ export default function EditThresholdsModal({
             min={0}
             max={2000}
             value={lowThreshold}
-            onChange={(e) => setLowThreshold(parseInt(e.target.value) || 0)}
+            onChange={(e) => setLowThreshold(e.target.value)}
+            placeholder="e.g. 50"
           />
         </div>
 
         {/* Preview of thresholds */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
-          <p className="font-medium text-blue-800 mb-2">Threshold Preview:</p>
-          <div className="space-y-1 text-blue-700">
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-green-500" />
-              <span>Healthy: {lowThreshold}+ bags</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-amber-500" />
-              <span>Low Stock: {criticalThreshold} - {lowThreshold - 1} bags</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-red-500" />
-              <span>Critical: Below {criticalThreshold} bags</span>
+        {criticalThreshold && lowThreshold && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
+            <p className="font-medium text-blue-800 mb-2">Threshold Preview:</p>
+            <div className="space-y-1 text-blue-700">
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full bg-green-500" />
+                <span>Healthy: {lowThreshold}+ bags</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full bg-amber-500" />
+                <span>Low Stock: {criticalThreshold} - {(parseInt(lowThreshold) || 1) - 1} bags</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full bg-red-500" />
+                <span>Critical: Below {criticalThreshold} bags</span>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         <div className="flex gap-3 pt-4">
           <Button type="button" variant="outline" onClick={onClose} className="flex-1">

@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { User, Plus, Edit2, CheckCircle, XCircle, Phone, CreditCard, AlertTriangle, Mail, RefreshCw, Clock } from 'lucide-react';
-import { Card, Button, Badge } from '../components/ui';
+import { User, Plus, Edit2, CheckCircle, XCircle, Phone, CreditCard, AlertTriangle, Mail, RefreshCw, Clock, Check } from 'lucide-react';
+import { Card, Button, Badge, toast } from '../components/ui';
 import DriverModal from '../components/modals/DriverModal';
 import ConfirmationModal from '../components/modals/ConfirmationModal';
 import { useDrivers, useDeleteDriver, useUpdateDriver, useResendDriverInvitation } from '../hooks/useData';
@@ -19,6 +19,7 @@ export default function DriversPage() {
   const [editingDriver, setEditingDriver] = useState<Driver | null>(null);
   const [showInactive, setShowInactive] = useState(false);
   const [deactivatingDriver, setDeactivatingDriver] = useState<Driver | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const user = useAuthStore((state) => state.user);
   const isManager = user?.role && ['admin', 'zone_manager', 'location_manager'].includes(user.role);
@@ -43,8 +44,7 @@ export default function DriversPage() {
       await deleteMutation.mutateAsync(deactivatingDriver.id);
       setDeactivatingDriver(null);
     } catch (err: any) {
-      console.error('Failed to deactivate driver:', err);
-      alert(err.response?.data?.detail || 'Failed to deactivate driver');
+      toast.error(err.response?.data?.detail || 'Failed to deactivate driver');
       setDeactivatingDriver(null);
     }
   };
@@ -52,17 +52,17 @@ export default function DriversPage() {
   const handleReactivate = async (driver: Driver) => {
     try {
       await updateMutation.mutateAsync({ id: driver.id, data: { is_active: true } });
-    } catch (err) {
-      console.error('Failed to reactivate driver:', err);
+    } catch {
+      toast.error('Failed to reactivate driver');
     }
   };
 
   const handleResendInvitation = async (driver: Driver) => {
     try {
       await resendInvitationMutation.mutateAsync(driver.id);
-      alert('Invitation resent successfully');
+      toast.success('Invitation resent successfully');
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to resend invitation');
+      toast.error(err.response?.data?.detail || 'Failed to resend invitation');
     }
   };
 
@@ -72,6 +72,9 @@ export default function DriversPage() {
   };
 
   const handleSuccess = () => {
+    const message = editingDriver ? 'Driver updated successfully!' : 'Driver added successfully!';
+    setSuccessMessage(message);
+    setTimeout(() => setSuccessMessage(null), 3000);
     refetch();
     handleModalClose();
   };
@@ -115,6 +118,16 @@ export default function DriversPage() {
 
   return (
     <div className="space-y-6">
+      {/* Success Message */}
+      {successMessage && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center gap-3 animate-in fade-in duration-300">
+          <div className="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center flex-shrink-0">
+            <Check className="w-4 h-4 text-emerald-600" />
+          </div>
+          <span className="text-sm font-medium text-emerald-800">{successMessage}</span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -202,7 +215,7 @@ export default function DriversPage() {
                     )}
                   </div>
                   {driver.notes && (
-                    <p className="text-xs text-gray-400 mt-1 truncate">{driver.notes}</p>
+                    <p className="text-xs text-gray-500 mt-1 truncate">{driver.notes}</p>
                   )}
                 </div>
                 {isManager && (
@@ -251,7 +264,7 @@ export default function DriversPage() {
               <User className="w-12 h-12 text-gray-300 mx-auto mb-3" />
               <p className="text-gray-500">No drivers registered</p>
               {isManager && (
-                <p className="text-sm text-gray-400">
+                <p className="text-sm text-gray-500">
                   Click "Add Driver" to register your first driver
                 </p>
               )}

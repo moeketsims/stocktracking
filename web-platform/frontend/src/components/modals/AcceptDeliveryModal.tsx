@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Truck, MapPin, Clock, AlertCircle, Package, Gauge, AlertTriangle, User, CheckCircle } from 'lucide-react';
+import { Truck, MapPin, Clock, AlertCircle, Package, Gauge, AlertTriangle, User, CheckCircle, Calendar } from 'lucide-react';
 import { Modal, Button, Select } from '../ui';
-import { useVehicles, useSuppliers } from '../../hooks/useData';
+import { useVehicles, useSuppliers, useLocations } from '../../hooks/useData';
 import { stockRequestsApi } from '../../lib/api';
 import { useAuthStore } from '../../stores/authStore';
 import type { StockRequest } from '../../types';
@@ -23,7 +23,7 @@ export default function AcceptDeliveryModal({
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuthStore();
   const [vehicleId, setVehicleId] = useState('');
-  const [supplierId, setSupplierId] = useState('');
+  const [fromLocation, setFromLocation] = useState('');
   const [includeEta, setIncludeEta] = useState(false);
   const [etaTime, setEtaTime] = useState('');
   const [odometerStart, setOdometerStart] = useState('');
@@ -32,23 +32,49 @@ export default function AcceptDeliveryModal({
 
   const { data: vehiclesData } = useVehicles(true, true); // Include trip status
   const { data: suppliersData } = useSuppliers();
+  const { data: locationsData } = useLocations();
 
   const allVehicles = vehiclesData?.vehicles || [];
   const suppliers = suppliersData || [];
+  const warehouses = (locationsData || []).filter((loc: { type: string }) => loc.type === 'warehouse');
 
   // Filter out vehicles that are on trips
   const availableVehicles = allVehicles.filter((v) => v.is_available !== false);
   const vehiclesOnTrips = allVehicles.filter((v) => v.is_available === false && v.current_trip);
 
+  const vehicleOptions = availableVehicles.map((v) => ({
+    value: v.id,
+    label: `${v.registration_number} - ${v.make || ''} ${v.model || ''}`.trim(),
+  }));
+
+  // Build "From" options: Central Warehouse first, then Supplier
+  const fromOptions: { value: string; label: string }[] = [];
+
+  // Add warehouse option(s)
+  warehouses.forEach((w: { id: string; name: string }) => {
+    fromOptions.push({
+      value: `warehouse:${w.id}`,
+      label: w.name,
+    });
+  });
+
+  // Add supplier option(s)
+  suppliers.forEach((s) => {
+    fromOptions.push({
+      value: `supplier:${s.id}`,
+      label: s.name,
+    });
+  });
+
   // Initialize defaults when modal opens
-  useState(() => {
+  useEffect(() => {
     if (isOpen && availableVehicles.length > 0 && !vehicleId) {
       setVehicleId(availableVehicles[0]?.id || '');
     }
-    if (isOpen && suppliers.length > 0 && !supplierId) {
-      setSupplierId(suppliers[0]?.id || '');
+    if (isOpen && fromOptions.length > 0 && !fromLocation) {
+      setFromLocation(fromOptions[0]?.value || '');
     }
-  });
+  }, [isOpen, availableVehicles.length, fromOptions.length]);
 
   const createTripMutation = useMutation({
     mutationFn: (data: { requestId: string; tripData: any }) =>
@@ -71,7 +97,7 @@ export default function AcceptDeliveryModal({
 
   const handleClose = () => {
     setVehicleId('');
-    setSupplierId('');
+    setFromLocation('');
     setIncludeEta(false);
     setEtaTime('');
     setOdometerStart('');
@@ -94,8 +120,8 @@ export default function AcceptDeliveryModal({
       return;
     }
 
-    if (!supplierId) {
-      setError('Please select a supplier');
+    if (!fromLocation) {
+      setError('Please select a pickup location');
       return;
     }
 
@@ -131,12 +157,16 @@ export default function AcceptDeliveryModal({
       estimatedArrivalTime = today.toISOString();
     }
 
+    // Parse the fromLocation value to determine if it's a warehouse or supplier
+    const [fromType, fromId] = fromLocation.split(':');
+
     await createTripMutation.mutateAsync({
       requestId: request.id,
       tripData: {
         vehicle_id: vehicleId,
         driver_id: currentUser?.id,
-        supplier_id: supplierId,
+        supplier_id: fromType === 'supplier' ? fromId : undefined,
+        from_location_id: fromType === 'warehouse' ? fromId : undefined,
         auto_start: true,
         estimated_arrival_time: estimatedArrivalTime,
         odometer_start: odometerStart ? parseInt(odometerStart, 10) : undefined,
@@ -144,17 +174,15 @@ export default function AcceptDeliveryModal({
     });
   };
 
-  const vehicleOptions = availableVehicles.map((v) => ({
-    value: v.id,
-    label: `${v.registration_number} - ${v.make || ''} ${v.model || ''}`.trim(),
-  }));
-
-  const supplierOptions = suppliers.map((s) => ({
-    value: s.id,
-    label: s.name,
-  }));
-
-  const selectedSupplier = suppliers.find((s) => s.id === supplierId);
+  // Parse selected value to get display name
+  const getSelectedFromName = () => {
+    if (!fromLocation) return null;
+    const [type, id] = fromLocation.split(':');
+    if (type === 'warehouse') {
+      return warehouses.find((w: { id: string }) => w.id === id)?.name;
+    }
+    return suppliers.find((s) => s.id === id)?.name;
+  };
 
   if (!request) return null;
 
@@ -206,29 +234,53 @@ export default function AcceptDeliveryModal({
             <p><strong>Quantity:</strong> {request.quantity_bags} bags</p>
             {request.notes && <p><strong>Notes:</strong> {request.notes}</p>}
           </div>
+
+          {/* Requested Delivery Time */}
+          {request.requested_delivery_time && (
+            <div className="mt-3 pt-3 border-t border-emerald-200">
+              <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                <Calendar className="w-4 h-4 text-blue-600" />
+                <div className="text-sm">
+                  <span className="font-medium text-blue-800">Deliver by: </span>
+                  <span className="text-blue-700">
+                    {new Date(request.requested_delivery_time).toLocaleDateString('en-ZA', {
+                      weekday: 'short',
+                      day: 'numeric',
+                      month: 'short',
+                    })}{' '}
+                    at{' '}
+                    {new Date(request.requested_delivery_time).toLocaleTimeString('en-ZA', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Supplier Selection */}
+        {/* Pickup Location Selection */}
         <div className="bg-green-50 border border-green-200 rounded-lg p-4">
           <div className="flex items-center gap-2 mb-3">
             <MapPin className="w-4 h-4 text-green-600" />
             <span className="text-sm font-medium text-green-800">Pickup Location</span>
           </div>
-          {supplierOptions.length === 0 ? (
-            <div className="text-amber-700 text-sm">No suppliers available</div>
+          {fromOptions.length === 0 ? (
+            <div className="text-amber-700 text-sm">No pickup locations available</div>
           ) : (
             <Select
-              label="From (Supplier) *"
-              options={supplierOptions}
-              value={supplierId}
-              onChange={(e) => setSupplierId(e.target.value)}
-              placeholder="Select supplier"
+              label="From *"
+              options={fromOptions}
+              value={fromLocation}
+              onChange={(e) => setFromLocation(e.target.value)}
+              placeholder="Select pickup location"
             />
           )}
-          {selectedSupplier && (
+          {fromLocation && (
             <div className="mt-3 pt-2 border-t border-green-200">
               <p className="text-sm text-green-700">
-                📍 {selectedSupplier.name} → {request.location?.name}
+                📍 {getSelectedFromName()} → {request.location?.name}
               </p>
             </div>
           )}
@@ -375,7 +427,7 @@ export default function AcceptDeliveryModal({
             type="submit"
             className="flex-1 bg-emerald-600 hover:bg-emerald-700"
             isLoading={createTripMutation.isPending}
-            disabled={vehicleOptions.length === 0 || supplierOptions.length === 0 || !vehicleId || !odometerStart}
+            disabled={vehicleOptions.length === 0 || fromOptions.length === 0 || !vehicleId || !fromLocation || !odometerStart}
           >
             Accept & Start Delivery
           </Button>

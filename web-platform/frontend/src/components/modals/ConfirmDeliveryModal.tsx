@@ -298,8 +298,8 @@ export default function ConfirmDeliveryModal({
                       type="number"
                       min="0"
                       step={unit === 'bags' ? '1' : '0.1'}
-                      value={displayQty}
-                      onChange={(e) => handleQtyChange(parseFloat(e.target.value) || 0)}
+                      value={displayQty || ''}
+                      onChange={(e) => handleQtyChange(e.target.value ? parseFloat(e.target.value) : 0)}
                       className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-lg font-semibold"
                     />
                   </div>

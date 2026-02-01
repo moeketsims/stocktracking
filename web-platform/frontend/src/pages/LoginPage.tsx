@@ -184,7 +184,7 @@ export default function LoginPage({ onForgotPassword }: LoginPageProps) {
           )}
         </form>
 
-        <p className="text-center text-xs text-gray-400 mt-6">
+        <p className="text-center text-xs text-gray-500 mt-6">
           Powered by Supabase
         </p>
       </Card>

@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Truck, MapPin, Gauge, AlertCircle, Package, CheckCircle, ArrowRight } from 'lucide-react';
 import { Modal, Button } from '../ui';
-import { loansApi } from '../../lib/api';
+import { loansApi, vehiclesApi } from '../../lib/api';
 
 interface LoanTripData {
   id: string;
@@ -37,25 +37,44 @@ export default function AcceptLoanPickupModal({
 }: AcceptLoanPickupModalProps) {
   const queryClient = useQueryClient();
   const [odometerStart, setOdometerStart] = useState('');
+  const [selectedVehicleId, setSelectedVehicleId] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+
+  const isReturn = loanTrip?.tripType === 'loan_return';
+  const needsVehicleSelection = !isReturn && !loanTrip?.vehicle;
+
+  // Fetch available vehicles for pickup (driver needs to select)
+  const { data: vehiclesData } = useQuery({
+    queryKey: ['vehicles'],
+    queryFn: () => vehiclesApi.getAll().then(r => r.data),
+    enabled: isOpen && needsVehicleSelection,
+  });
+
+  const availableVehicles = (vehiclesData?.vehicles || []).filter(
+    (v: any) => v.is_active && v.is_available !== false
+  );
+
+  // Get selected vehicle details for odometer validation
+  const selectedVehicle = needsVehicleSelection
+    ? availableVehicles.find((v: any) => v.id === selectedVehicleId)
+    : loanTrip?.vehicle;
 
   // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
       setOdometerStart('');
+      setSelectedVehicleId('');
       setError('');
       setSuccess(false);
     }
   }, [isOpen]);
 
-  const isReturn = loanTrip?.tripType === 'loan_return';
-
   const acceptMutation = useMutation({
-    mutationFn: (data: { loanId: string; odometer_start: number }) =>
+    mutationFn: (data: { loanId: string; odometer_start: number; vehicle_id: string }) =>
       isReturn
         ? loansApi.acceptReturnAssignment(data.loanId, { odometer_start: data.odometer_start })
-        : loansApi.acceptPickup(data.loanId, { odometer_start: data.odometer_start }),
+        : loansApi.acceptPickup(data.loanId, { odometer_start: data.odometer_start, vehicle_id: data.vehicle_id }),
     onSuccess: async () => {
       // Invalidate all relevant queries to ensure UI updates
       await queryClient.invalidateQueries({ queryKey: ['driver-loan-trips'] });
@@ -63,6 +82,7 @@ export default function AcceptLoanPickupModal({
       await queryClient.invalidateQueries({ queryKey: ['loans'] });
       await queryClient.invalidateQueries({ queryKey: ['trips'] });
       await queryClient.invalidateQueries({ queryKey: ['stock-requests'] });
+      await queryClient.invalidateQueries({ queryKey: ['vehicles'] });
       onSuccess();
       setSuccess(true);
       // Show success message for 2 seconds then close
@@ -78,6 +98,7 @@ export default function AcceptLoanPickupModal({
 
   const handleClose = () => {
     setOdometerStart('');
+    setSelectedVehicleId('');
     setError('');
     setSuccess(false);
     onClose();
@@ -92,8 +113,10 @@ export default function AcceptLoanPickupModal({
       return;
     }
 
-    if (!loanTrip.vehicle) {
-      setError('No vehicle assigned to this pickup');
+    // For pickups without pre-assigned vehicle, driver must select one
+    const vehicleId = needsVehicleSelection ? selectedVehicleId : loanTrip.vehicle?.id;
+    if (!vehicleId) {
+      setError('Please select a vehicle');
       return;
     }
 
@@ -103,7 +126,7 @@ export default function AcceptLoanPickupModal({
       return;
     }
 
-    const vehicleCurrentKm = loanTrip.vehicle.kilometers_traveled || 0;
+    const vehicleCurrentKm = selectedVehicle?.kilometers_traveled || selectedVehicle?.current_km || 0;
     const enteredKm = parseInt(odometerStart, 10);
 
     if (isNaN(enteredKm) || enteredKm < 0) {
@@ -119,12 +142,13 @@ export default function AcceptLoanPickupModal({
     await acceptMutation.mutateAsync({
       loanId: loanTrip.loanId,
       odometer_start: enteredKm,
+      vehicle_id: vehicleId,
     });
   };
 
   if (!loanTrip) return null;
 
-  const vehicleCurrentKm = loanTrip.vehicle?.kilometers_traveled || 0;
+  const vehicleCurrentKm = selectedVehicle?.kilometers_traveled || selectedVehicle?.current_km || 0;
 
   // Success state - show briefly then close
   if (success) {
@@ -185,60 +209,126 @@ export default function AcceptLoanPickupModal({
           </div>
         </div>
 
-        {/* Assigned Vehicle */}
+        {/* Vehicle Selection or Display */}
         <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
           <div className="flex items-center gap-2 mb-3">
             <Truck className="w-4 h-4 text-gray-600" />
-            <span className="text-sm font-medium text-gray-800">Assigned Vehicle</span>
+            <span className="text-sm font-medium text-gray-800">
+              {needsVehicleSelection ? 'Select Vehicle *' : 'Assigned Vehicle'}
+            </span>
           </div>
 
-          {!loanTrip.vehicle ? (
-            <div className="text-amber-700 text-sm">No vehicle assigned</div>
-          ) : (
-            <div className="bg-white border border-gray-200 rounded-lg p-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-semibold text-gray-900">
-                    {loanTrip.vehicle.registration_number}
-                  </p>
-                  {(loanTrip.vehicle.make || loanTrip.vehicle.model) && (
-                    <p className="text-sm text-gray-500">
-                      {loanTrip.vehicle.make} {loanTrip.vehicle.model}
+          {needsVehicleSelection ? (
+            // Driver selects vehicle for pickup
+            <div className="space-y-3">
+              <select
+                value={selectedVehicleId}
+                onChange={(e) => setSelectedVehicleId(e.target.value)}
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm bg-white"
+              >
+                <option value="">Select a vehicle...</option>
+                {availableVehicles.map((v: any) => (
+                  <option key={v.id} value={v.id}>
+                    {v.registration_number} - {v.make} {v.model}
+                  </option>
+                ))}
+              </select>
+              {selectedVehicle && (
+                <>
+                  <div className="bg-white border border-gray-200 rounded-lg p-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-semibold text-gray-900">
+                          {selectedVehicle.registration_number}
+                        </p>
+                        {(selectedVehicle.make || selectedVehicle.model) && (
+                          <p className="text-sm text-gray-500">
+                            {selectedVehicle.make} {selectedVehicle.model}
+                          </p>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-gray-500">Current Odometer</p>
+                        <p className="font-medium text-gray-700">
+                          {vehicleCurrentKm.toLocaleString()} km
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Odometer Input - only shows after vehicle selected */}
+                  <div className="mt-3 pt-3 border-t border-gray-200">
+                    <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                      <Gauge className="w-4 h-4" />
+                      Start KM (Odometer) *
+                    </label>
+                    <input
+                      type="number"
+                      value={odometerStart}
+                      onChange={(e) => setOdometerStart(e.target.value)}
+                      placeholder={vehicleCurrentKm > 0 ? `Min: ${vehicleCurrentKm.toLocaleString()}` : 'Enter current odometer'}
+                      min={vehicleCurrentKm}
+                      required
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      {vehicleCurrentKm > 0
+                        ? `Must be at least ${vehicleCurrentKm.toLocaleString()} km (vehicle's current reading)`
+                        : 'Enter the current odometer reading before starting the trip'
+                      }
                     </p>
-                  )}
-                </div>
-                <div className="text-right">
-                  <p className="text-xs text-gray-500">Current Odometer</p>
-                  <p className="font-medium text-gray-700">
-                    {vehicleCurrentKm.toLocaleString()} km
-                  </p>
+                  </div>
+                </>
+              )}
+            </div>
+          ) : loanTrip.vehicle ? (
+            // Vehicle already assigned (for returns or pre-assigned pickups)
+            <>
+              <div className="bg-white border border-gray-200 rounded-lg p-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-semibold text-gray-900">
+                      {loanTrip.vehicle.registration_number}
+                    </p>
+                    {(loanTrip.vehicle.make || loanTrip.vehicle.model) && (
+                      <p className="text-sm text-gray-500">
+                        {loanTrip.vehicle.make} {loanTrip.vehicle.model}
+                      </p>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-gray-500">Current Odometer</p>
+                    <p className="font-medium text-gray-700">
+                      {vehicleCurrentKm.toLocaleString()} km
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
+              {/* Odometer Input for pre-assigned vehicle */}
+              <div className="mt-3 pt-3 border-t border-gray-200">
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                  <Gauge className="w-4 h-4" />
+                  Start KM (Odometer) *
+                </label>
+                <input
+                  type="number"
+                  value={odometerStart}
+                  onChange={(e) => setOdometerStart(e.target.value)}
+                  placeholder={vehicleCurrentKm > 0 ? `Min: ${vehicleCurrentKm.toLocaleString()}` : 'Enter current odometer'}
+                  min={vehicleCurrentKm}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  {vehicleCurrentKm > 0
+                    ? `Must be at least ${vehicleCurrentKm.toLocaleString()} km (vehicle's current reading)`
+                    : 'Enter the current odometer reading before starting the trip'
+                  }
+                </p>
+              </div>
+            </>
+          ) : (
+            <div className="text-amber-700 text-sm">No vehicle assigned</div>
           )}
-        </div>
-
-        {/* Odometer Input */}
-        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
-          <label className="flex items-center gap-2 text-sm font-medium text-emerald-800 mb-2">
-            <Gauge className="w-4 h-4" />
-            Starting Odometer Reading *
-          </label>
-          <input
-            type="number"
-            value={odometerStart}
-            onChange={(e) => setOdometerStart(e.target.value)}
-            placeholder={vehicleCurrentKm > 0 ? `Min: ${vehicleCurrentKm.toLocaleString()}` : 'Enter current odometer'}
-            min={vehicleCurrentKm}
-            required
-            className="w-full px-3 py-2.5 border border-emerald-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm bg-white"
-          />
-          <p className="text-xs text-emerald-600 mt-2">
-            {vehicleCurrentKm > 0
-              ? `Enter the current odometer reading (must be at least ${vehicleCurrentKm.toLocaleString()} km)`
-              : 'Enter the current odometer reading before starting the pickup'
-            }
-          </p>
         </div>
 
         {/* Info Banner */}
@@ -262,7 +352,7 @@ export default function AcceptLoanPickupModal({
             type="submit"
             className={`flex-1 ${isReturn ? 'bg-orange-600 hover:bg-orange-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
             isLoading={acceptMutation.isPending}
-            disabled={!loanTrip.vehicle || !odometerStart}
+            disabled={(needsVehicleSelection ? !selectedVehicleId : !loanTrip.vehicle) || !odometerStart}
           >
             {isReturn ? 'Accept & Start Return' : 'Accept & Start Pickup'}
           </Button>

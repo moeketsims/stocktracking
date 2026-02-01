@@ -179,7 +179,7 @@ export default function AlertsPage() {
                         </Badge>
                       </div>
                       <p className="text-sm text-gray-600">{alert.message}</p>
-                      <p className="text-xs text-gray-400 mt-1">
+                      <p className="text-xs text-gray-500 mt-1">
                         {alert.location_name} • {alert.item_name}
                       </p>
 
@@ -235,7 +235,7 @@ export default function AlertsPage() {
                   <CheckCircle className="w-4 h-4 text-green-500" />
                   <div>
                     <p className="text-sm text-gray-600">{alert.title}</p>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-gray-500">
                       {alert.location_name} • {alert.item_name}
                     </p>
                   </div>

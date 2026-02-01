@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Truck, Gauge, CheckCircle, Phone } from 'lucide-react';
 import { tripsApi } from '../lib/api';
 import { useAuthStore } from '../stores/authStore';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 interface AwaitingKmTrip {
   id: string;
@@ -35,11 +36,8 @@ export default function KmSubmissionBlocker() {
     };
   }, []);
 
-  // Debug logging
-  console.log('[KmBlocker] user:', user?.role, 'isDriver:', isDriver);
-
   // Only fetch for drivers
-  const { data, isLoading, error: queryError } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['driver-awaiting-km'],
     queryFn: async () => {
       const response = await tripsApi.getDriverAwaitingKm();
@@ -102,39 +100,48 @@ export default function KmSubmissionBlocker() {
     submitMutation.mutate({ tripId: trip.id, km: kmValue });
   };
 
-  // Debug logging
-  console.log('[KmBlocker] isLoading:', isLoading, 'data:', JSON.stringify(data), 'queryError:', queryError);
+  // Focus trap for the blocker dialog (no escape - this is mandatory)
+  const dialogRef = useFocusTrap<HTMLDivElement>({
+    isActive: !isLoading && !!data?.trip && !success,
+    // No onEscape - this dialog cannot be dismissed
+  });
+
+  const successDialogRef = useFocusTrap<HTMLDivElement>({
+    isActive: success,
+  });
 
   // Don't show for non-drivers
   if (!isDriver) {
-    console.log('[KmBlocker] Not a driver, returning null');
     return null;
   }
 
   // Loading state - show nothing while checking
   if (isLoading) {
-    console.log('[KmBlocker] Loading, returning null');
     return null;
   }
 
   // No pending km submission - don't block
   const trip = data?.trip;
   if (!trip && !success) {
-    console.log('[KmBlocker] No trip awaiting km, returning null');
     return null;
   }
-
-  console.log('[KmBlocker] Showing blocker for trip:', trip?.trip_number);
 
   // Success state - show briefly then disappear
   if (success) {
     return (
       <div className="fixed inset-0 z-[100] bg-black/30 backdrop-blur-sm flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center animate-in fade-in zoom-in duration-300">
+        <div
+          ref={successDialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="km-success-title"
+          tabIndex={-1}
+          className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center animate-in fade-in zoom-in duration-300"
+        >
           <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
             <CheckCircle className="w-10 h-10 text-emerald-600" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+          <h2 id="km-success-title" className="text-2xl font-bold text-gray-900 mb-2">
             Kilometers Submitted!
           </h2>
           <p className="text-gray-600">
@@ -148,7 +155,15 @@ export default function KmSubmissionBlocker() {
   // Block screen with km submission form
   return (
     <div className="fixed inset-0 z-[100] bg-black/30 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="km-blocker-title"
+        aria-describedby="km-blocker-description"
+        tabIndex={-1}
+        className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden"
+      >
         {/* Header */}
         <div className="bg-amber-500 px-6 py-5">
           <div className="flex items-center gap-3">
@@ -156,7 +171,7 @@ export default function KmSubmissionBlocker() {
               <AlertTriangle className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-white">Action Required</h2>
+              <h2 id="km-blocker-title" className="text-xl font-bold text-white">Action Required</h2>
               <p className="text-amber-100 text-sm">Submit closing kilometers to continue</p>
             </div>
           </div>
@@ -164,7 +179,7 @@ export default function KmSubmissionBlocker() {
 
         {/* Content */}
         <div className="p-6">
-          <p className="text-gray-700 mb-6">
+          <p id="km-blocker-description" className="text-gray-700 mb-6">
             Your trip <span className="font-semibold text-gray-900">{trip.trip_number}</span> has been completed by your manager.
             Please submit your closing odometer reading to free up the vehicle for the next driver.
           </p>
@@ -202,12 +217,13 @@ export default function KmSubmissionBlocker() {
 
           {/* Submission Form */}
           <form onSubmit={handleSubmit}>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="closing-km-input" className="block text-sm font-medium text-gray-700 mb-2">
               Enter Closing Odometer Reading
             </label>
             <div className="flex gap-3">
               <div className="flex-1 relative">
                 <input
+                  id="closing-km-input"
                   type="number"
                   value={closingKm}
                   onChange={(e) => {
@@ -219,8 +235,9 @@ export default function KmSubmissionBlocker() {
                   min={trip.odometer_start || 0}
                   autoFocus
                   required
+                  aria-describedby={error ? 'km-error' : undefined}
                 />
-                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium">
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium" aria-hidden="true">
                   km
                 </span>
               </div>
@@ -235,7 +252,7 @@ export default function KmSubmissionBlocker() {
 
             {/* Error Message */}
             {error && (
-              <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
+              <div id="km-error" role="alert" className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
                 {error}
               </div>
             )}
