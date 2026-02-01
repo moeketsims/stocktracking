@@ -12,7 +12,10 @@ from ..models.requests import (
     CreateTripFromMultipleRequestsRequest,
     CancelStockRequestRequest,
     UpdateStockRequestRequest,
-    FulfillRemainingRequest
+    FulfillRemainingRequest,
+    ProposeTimeRequest,
+    AcceptProposalRequest,
+    DeclineProposalRequest
 )
 from ..email import (
     send_stock_request_notification,
@@ -20,7 +23,10 @@ from ..email import (
     send_request_accepted_by_driver_notification,
     send_request_cancelled_notification,
     send_request_updated_notification,
-    send_trip_started_with_eta_notification
+    send_trip_started_with_eta_notification,
+    send_time_proposal_notification,
+    send_proposal_accepted_notification,
+    send_proposal_declined_notification
 )
 
 router = APIRouter(prefix="/stock-requests", tags=["Stock Requests"])
@@ -273,7 +279,8 @@ async def create_stock_request(
             "status": "pending",
             "notes": request.notes,
             "current_stock_kg": current_stock_kg,
-            "target_stock_kg": target_stock_kg
+            "target_stock_kg": target_stock_kg,
+            "requested_delivery_time": request.requested_delivery_time.isoformat() if request.requested_delivery_time else None
         }
         print(f"[STOCK REQUEST] Inserting data: {request_data}")
 
@@ -569,19 +576,38 @@ async def create_trip_from_request(
                 detail=f"Vehicle {vehicle.data['registration_number']} is currently on trip {active_trip['trip_number']} with {driver_info}. Please select a different vehicle."
             )
 
-        # Get supplier info
-        supplier = supabase.table("suppliers").select("*").eq(
-            "id", trip_request.supplier_id
-        ).single().execute()
+        # Get origin info - either supplier or warehouse location
+        origin_name = None
+        trip_type = "supplier_to_shop"  # default
 
-        if not supplier.data:
-            raise HTTPException(status_code=404, detail="Supplier not found")
+        if trip_request.supplier_id:
+            # Pickup from external supplier
+            supplier = supabase.table("suppliers").select("*").eq(
+                "id", trip_request.supplier_id
+            ).single().execute()
+
+            if not supplier.data:
+                raise HTTPException(status_code=404, detail="Supplier not found")
+            origin_name = supplier.data["name"]
+            trip_type = "supplier_to_shop"
+        elif trip_request.from_location_id:
+            # Pickup from warehouse (internal location)
+            from_location = supabase.table("locations").select("*").eq(
+                "id", trip_request.from_location_id
+            ).single().execute()
+
+            if not from_location.data:
+                raise HTTPException(status_code=404, detail="Pickup location not found")
+            origin_name = from_location.data["name"]
+            trip_type = "warehouse_to_shop"
+        else:
+            raise HTTPException(status_code=400, detail="Either supplier_id or from_location_id is required")
 
         # Get driver info if provided - check both drivers table and profiles table
         # Only use driver_id if driver exists in drivers table (FK constraint)
         driver_name = None
         actual_driver_id = None  # Only set if driver exists in drivers table
-        
+
         if trip_request.driver_id:
             try:
                 # First try drivers table
@@ -652,10 +678,11 @@ async def create_trip_from_request(
             "driver_id": actual_driver_id,  # None if driver is from profiles table
             "driver_name": driver_name,
             "status": trip_status,
-            "trip_type": "supplier_to_shop",
-            "supplier_id": trip_request.supplier_id,
+            "trip_type": trip_type,
+            "supplier_id": trip_request.supplier_id if trip_request.supplier_id else None,
+            "from_location_id": trip_request.from_location_id if trip_request.from_location_id else None,
             "to_location_id": existing.data["location_id"],
-            "origin_description": supplier.data["name"],
+            "origin_description": origin_name,
             "destination_description": existing.data["location"]["name"],
             "notes": trip_request.notes,
             "created_by": user.id,
@@ -1667,6 +1694,316 @@ async def fulfill_remaining_request(
             "remaining_bags": remaining_bags,
             "total_requested": requested_bags,
             "already_delivered": total_delivered
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{request_id}/propose-time")
+async def propose_delivery_time(
+    request_id: str,
+    proposal: ProposeTimeRequest,
+    user_data: dict = Depends(require_auth)
+):
+    """Driver proposes alternative delivery time when they cannot meet the requested time.
+
+    This changes the request status to 'time_proposed' and notifies the manager.
+    The driver must have already accepted the request OR be accepting it now.
+    """
+    supabase = get_supabase_admin_client()
+    user = user_data["user"]
+
+    try:
+        # Get user profile
+        profile = supabase.table("profiles").select("*").eq(
+            "user_id", user.id
+        ).single().execute()
+
+        if not profile.data:
+            raise HTTPException(status_code=403, detail="Profile not found")
+
+        # Get the request with location and requester info
+        existing = supabase.table("stock_requests").select(
+            "*, location:locations(id, name, type)"
+        ).eq("id", request_id).single().execute()
+
+        if not existing.data:
+            raise HTTPException(status_code=404, detail="Stock request not found")
+
+        # Check status - must be pending or accepted
+        if existing.data["status"] not in ("pending", "accepted"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot propose time for request with status '{existing.data['status']}'. Only pending or accepted requests can have time proposals."
+            )
+
+        # If pending, the driver is implicitly accepting while proposing
+        # If accepted, verify this driver is the one who accepted
+        if existing.data["status"] == "accepted":
+            if existing.data.get("accepted_by") != profile.data["id"]:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Only the driver who accepted this request can propose a different time"
+                )
+
+        # Update the request with proposal
+        update_data = {
+            "status": "time_proposed",
+            "proposed_delivery_time": proposal.proposed_delivery_time.isoformat(),
+            "proposal_reason": proposal.reason,
+            "accepted_by": profile.data["id"],
+            "accepted_at": existing.data.get("accepted_at") or datetime.now().isoformat()
+        }
+
+        result = supabase.table("stock_requests").update(update_data).eq("id", request_id).execute()
+
+        if not result.data:
+            raise HTTPException(status_code=500, detail="Failed to update request")
+
+        # Notify the manager (requester)
+        try:
+            requester_id = existing.data.get("requested_by")
+            if requester_id:
+                requester_data = supabase.table("profiles_with_email").select(
+                    "email, full_name"
+                ).eq("id", requester_id).execute()
+
+                if requester_data.data and len(requester_data.data) > 0:
+                    requester = requester_data.data[0]
+                    if requester.get("email"):
+                        # Format times for display
+                        requested_time_str = "Not specified"
+                        if existing.data.get("requested_delivery_time"):
+                            rt = datetime.fromisoformat(existing.data["requested_delivery_time"].replace("Z", "+00:00"))
+                            requested_time_str = rt.strftime("%a, %d %b at %H:%M")
+
+                        pt = proposal.proposed_delivery_time
+                        proposed_time_str = pt.strftime("%a, %d %b at %H:%M")
+
+                        send_time_proposal_notification(
+                            to_email=requester["email"],
+                            manager_name=requester.get("full_name", "Store Manager"),
+                            location_name=existing.data["location"]["name"],
+                            quantity_bags=existing.data["quantity_bags"],
+                            driver_name=profile.data.get("full_name", "Driver"),
+                            requested_time=requested_time_str,
+                            proposed_time=proposed_time_str,
+                            reason=proposal.reason,
+                            request_id=request_id
+                        )
+        except Exception as email_err:
+            print(f"[EMAIL ERROR] Failed to notify manager of proposal: {email_err}")
+
+        request_data = result.data if isinstance(result.data, dict) else result.data[0] if result.data else existing.data
+        return {
+            "success": True,
+            "message": "Delivery time proposal submitted. Waiting for manager approval.",
+            "request": request_data
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{request_id}/accept-proposal")
+async def accept_time_proposal(
+    request_id: str,
+    user_data: dict = Depends(require_auth)
+):
+    """Manager accepts driver's proposed delivery time.
+
+    This changes status back to 'accepted' and sets the agreed_delivery_time.
+    """
+    supabase = get_supabase_admin_client()
+    user = user_data["user"]
+
+    try:
+        # Get user profile
+        profile = supabase.table("profiles").select("*").eq(
+            "user_id", user.id
+        ).single().execute()
+
+        if not profile.data:
+            raise HTTPException(status_code=403, detail="Profile not found")
+
+        # Check if user is manager or the requester
+        is_manager = profile.data["role"] in ("admin", "zone_manager", "location_manager")
+
+        # Get the request
+        existing = supabase.table("stock_requests").select(
+            "*, location:locations(id, name, type)"
+        ).eq("id", request_id).single().execute()
+
+        if not existing.data:
+            raise HTTPException(status_code=404, detail="Stock request not found")
+
+        # Check status - must be time_proposed
+        if existing.data["status"] != "time_proposed":
+            raise HTTPException(
+                status_code=400,
+                detail=f"This request does not have a pending time proposal (status: {existing.data['status']})"
+            )
+
+        # Only the requester or a manager can accept
+        is_requester = profile.data["id"] == existing.data["requested_by"]
+        if not (is_manager or is_requester):
+            raise HTTPException(
+                status_code=403,
+                detail="Only the requester or a manager can accept a time proposal"
+            )
+
+        # Accept the proposal - use proposed time as agreed time
+        proposed_time = existing.data.get("proposed_delivery_time")
+
+        update_data = {
+            "status": "accepted",
+            "agreed_delivery_time": proposed_time,
+            "time_confirmed_at": datetime.now().isoformat()
+        }
+
+        result = supabase.table("stock_requests").update(update_data).eq("id", request_id).execute()
+
+        if not result.data:
+            raise HTTPException(status_code=500, detail="Failed to update request")
+
+        # Notify the driver
+        try:
+            acceptor_id = existing.data.get("accepted_by")
+            if acceptor_id:
+                driver_data = supabase.table("profiles_with_email").select(
+                    "email, full_name"
+                ).eq("id", acceptor_id).execute()
+
+                if driver_data.data and len(driver_data.data) > 0:
+                    driver = driver_data.data[0]
+                    if driver.get("email"):
+                        # Format time for display
+                        agreed_time_str = "As proposed"
+                        if proposed_time:
+                            at = datetime.fromisoformat(proposed_time.replace("Z", "+00:00"))
+                            agreed_time_str = at.strftime("%a, %d %b at %H:%M")
+
+                        send_proposal_accepted_notification(
+                            to_email=driver["email"],
+                            driver_name=driver.get("full_name", "Driver"),
+                            location_name=existing.data["location"]["name"],
+                            quantity_bags=existing.data["quantity_bags"],
+                            agreed_time=agreed_time_str,
+                            request_id=request_id
+                        )
+        except Exception as email_err:
+            print(f"[EMAIL ERROR] Failed to notify driver of acceptance: {email_err}")
+
+        request_data = result.data if isinstance(result.data, dict) else result.data[0] if result.data else existing.data
+        return {
+            "success": True,
+            "message": "Time proposal accepted. Driver can now create a trip.",
+            "request": request_data
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{request_id}/decline-proposal")
+async def decline_time_proposal(
+    request_id: str,
+    decline_request: DeclineProposalRequest,
+    user_data: dict = Depends(require_auth)
+):
+    """Manager declines driver's proposed delivery time.
+
+    This resets the request to 'pending' status, removes the acceptor,
+    and makes it available for other drivers.
+    """
+    supabase = get_supabase_admin_client()
+    user = user_data["user"]
+
+    try:
+        # Get user profile
+        profile = supabase.table("profiles").select("*").eq(
+            "user_id", user.id
+        ).single().execute()
+
+        if not profile.data:
+            raise HTTPException(status_code=403, detail="Profile not found")
+
+        # Check if user is manager or the requester
+        is_manager = profile.data["role"] in ("admin", "zone_manager", "location_manager")
+
+        # Get the request
+        existing = supabase.table("stock_requests").select(
+            "*, location:locations(id, name, type)"
+        ).eq("id", request_id).single().execute()
+
+        if not existing.data:
+            raise HTTPException(status_code=404, detail="Stock request not found")
+
+        # Check status - must be time_proposed
+        if existing.data["status"] != "time_proposed":
+            raise HTTPException(
+                status_code=400,
+                detail=f"This request does not have a pending time proposal (status: {existing.data['status']})"
+            )
+
+        # Only the requester or a manager can decline
+        is_requester = profile.data["id"] == existing.data["requested_by"]
+        if not (is_manager or is_requester):
+            raise HTTPException(
+                status_code=403,
+                detail="Only the requester or a manager can decline a time proposal"
+            )
+
+        # Store driver id before clearing for notification
+        previous_driver_id = existing.data.get("accepted_by")
+
+        # Decline the proposal - reset to pending and clear acceptor
+        update_data = {
+            "status": "pending",
+            "proposed_delivery_time": None,
+            "proposal_reason": None,
+            "accepted_by": None,
+            "accepted_at": None
+        }
+
+        result = supabase.table("stock_requests").update(update_data).eq("id", request_id).execute()
+
+        if not result.data:
+            raise HTTPException(status_code=500, detail="Failed to update request")
+
+        # Notify the driver that their proposal was declined
+        try:
+            if previous_driver_id:
+                driver_data = supabase.table("profiles_with_email").select(
+                    "email, full_name"
+                ).eq("id", previous_driver_id).execute()
+
+                if driver_data.data and len(driver_data.data) > 0:
+                    driver = driver_data.data[0]
+                    if driver.get("email"):
+                        send_proposal_declined_notification(
+                            to_email=driver["email"],
+                            driver_name=driver.get("full_name", "Driver"),
+                            location_name=existing.data["location"]["name"],
+                            quantity_bags=existing.data["quantity_bags"],
+                            manager_notes=decline_request.notes or "",
+                            request_id=request_id
+                        )
+        except Exception as email_err:
+            print(f"[EMAIL ERROR] Failed to notify driver of decline: {email_err}")
+
+        request_data = result.data if isinstance(result.data, dict) else result.data[0] if result.data else existing.data
+        return {
+            "success": True,
+            "message": "Time proposal declined. Request is now available for other drivers.",
+            "request": request_data
         }
 
     except HTTPException:

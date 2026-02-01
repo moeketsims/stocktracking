@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense, lazy } from 'react';
 import {
   LayoutDashboard,
   Package,
@@ -15,36 +15,56 @@ import {
   MapPin,
   Navigation,
   ArrowLeftRight,
+  Briefcase,
+  BarChart3,
+  Shield,
 } from 'lucide-react';
 import { useAuthStore } from './stores/authStore';
 import { useLogout } from './hooks/useAuth';
 import { useNotifications, usePendingDeliveriesCount } from './hooks/useData';
-import Sidebar from './components/Sidebar';
+import Sidebar, { type TabGroup } from './components/Sidebar';
 import { MobileMenuButton, MobileDrawer } from './components/MobileMenu';
 import KmSubmissionBlocker from './components/KmSubmissionBlocker';
-import {
-  LoginPage,
-  DashboardPage,
-  StockPage,
-  AlertsPage,
-  BatchesPage,
-  NotificationsPage,
-  SettingsPage,
-  UsersPage,
-  KitchenPage,
-} from './pages';
-import TripsPage from './pages/TripsPage';
-import VehiclesPage from './pages/VehiclesPage';
-import DriversPage from './pages/DriversPage';
-import RequestsPage from './pages/RequestsPage';
-import DeliveriesPage from './pages/DeliveriesPage';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { ToastContainer } from './components/ui/Toast';
+
+// Eagerly loaded pages (critical path)
+import LoginPage from './pages/LoginPage';
 import AcceptInvitePage from './pages/AcceptInvitePage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
-import LocationsPage from './pages/LocationsPage';
 import SubmitKmPage from './pages/SubmitKmPage';
-import FleetStatusPage from './pages/FleetStatusPage';
-import LoansPage from './pages/LoansPage';
+
+// Lazy loaded pages (code splitting)
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const StockPage = lazy(() => import('./pages/StockPage'));
+const AlertsPage = lazy(() => import('./pages/AlertsPage'));
+const BatchesPage = lazy(() => import('./pages/BatchesPage'));
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const UsersPage = lazy(() => import('./pages/UsersPage'));
+const KitchenPage = lazy(() => import('./pages/KitchenPage'));
+const TripsPage = lazy(() => import('./pages/TripsPage'));
+const VehiclesPage = lazy(() => import('./pages/VehiclesPage'));
+const DriversPage = lazy(() => import('./pages/DriversPage'));
+const RequestsPage = lazy(() => import('./pages/RequestsPage'));
+const DeliveriesPage = lazy(() => import('./pages/DeliveriesPage'));
+const LocationsPage = lazy(() => import('./pages/LocationsPage'));
+const FleetStatusPage = lazy(() => import('./pages/FleetStatusPage'));
+const LoansPage = lazy(() => import('./pages/LoansPage'));
+
+// Page loading skeleton for Suspense fallback
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center h-64">
+      <div className="animate-pulse space-y-4 w-full max-w-2xl p-8">
+        <div className="h-8 bg-gray-200 rounded w-1/3"></div>
+        <div className="h-32 bg-gray-200 rounded"></div>
+        <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+      </div>
+    </div>
+  );
+}
 
 type PublicPage = 'login' | 'forgot-password' | 'accept-invite' | 'reset-password' | 'submit-km';
 
@@ -158,7 +178,7 @@ function App() {
   // to avoid race conditions with auth state on first render
 
   const clearUrlParams = () => {
-    window.history.replaceState({}, document.title, '/');
+    window.history.replaceState({}, document.title, import.meta.env.BASE_URL || '/');
     setInviteToken('');
     setResetToken('');
     setKmSubmissionToken('');
@@ -219,61 +239,107 @@ function App() {
     return <LoginPage onForgotPassword={() => setPublicPage('forgot-password')} />;
   }
 
-  // Filter main tabs based on role - drivers, vehicle managers, and staff have limited access
+  // Filter tabs based on role - drivers, vehicle managers, and staff have limited access
   const isAdmin = user?.role === 'admin';
   const isVehicleMgr = isVehicleManager();
   const isStaffUser = user?.role === 'staff';
 
-  // Staff only sees Kitchen
-  // Vehicle Manager only sees Vehicles and Fleet Status
-  const mainTabs = isStaffUser
-    ? [
-        { id: 'kitchen' as const, label: 'Kitchen', icon: UtensilsCrossed },
-      ]
-    : isVehicleMgr
-    ? [
-        { id: 'vehicles' as const, label: 'Vehicles', icon: Truck },
-        { id: 'fleet-status' as const, label: 'Fleet Status', icon: Navigation },
-      ]
-    : [
-        { id: 'stock' as const, label: 'Stocks', icon: Package },
-        ...(!isDriver() ? [{ id: 'kitchen' as const, label: isAdmin ? 'Kitchens' : 'Kitchen', icon: UtensilsCrossed }] : []),
-        { id: 'requests' as const, label: 'Requests', icon: ClipboardList },
-        ...(!isDriver() ? [{ id: 'loans' as const, label: 'Loans', icon: ArrowLeftRight }] : []),
-        { id: 'vehicles' as const, label: 'Vehicles', icon: Truck },
-        ...(!isDriver() ? [{ id: 'alerts' as const, label: 'Alerts', icon: AlertTriangle }] : []),
-        ...(!isDriver() ? [{ id: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard }] : []),
+  // Build tab groups based on role
+  const tabGroups: TabGroup[] = (() => {
+    // Staff only sees Kitchen (Settings is pinned separately)
+    if (isStaffUser) {
+      return [
+        {
+          id: 'operations',
+          label: 'Operations',
+          icon: Briefcase,
+          tabs: [
+            { id: 'kitchen' as const, label: 'Kitchen', icon: UtensilsCrossed },
+          ],
+        },
       ];
+    }
 
-  // Filter more tabs based on role
-  // Staff only sees Settings
-  // Vehicle Manager sees: Drivers, User Management, Notifications, Settings
-  const moreTabs = isStaffUser
-    ? [
-        { id: 'settings' as const, label: 'Settings', icon: Settings },
-      ]
-    : isVehicleMgr
-    ? [
-        { id: 'drivers' as const, label: 'Drivers', icon: Users },
-        { id: 'users' as const, label: 'User Management', icon: UserCog },
-        { id: 'notifications' as const, label: 'Notifications', icon: Bell },
-        { id: 'settings' as const, label: 'Settings', icon: Settings },
-      ]
-    : [
-        ...(!isDriver() ? [{ id: 'deliveries' as const, label: 'Verification', icon: PackageCheck }] : []),
-        ...(isManager()
-          ? [
+    // Vehicle Manager: Vehicles, Fleet Status + Admin tabs (Settings is pinned separately)
+    if (isVehicleMgr) {
+      return [
+        {
+          id: 'operations',
+          label: 'Operations',
+          icon: Briefcase,
+          tabs: [
+            { id: 'vehicles' as const, label: 'Vehicles', icon: Truck },
+            { id: 'fleet-status' as const, label: 'Fleet Status', icon: Navigation },
+          ],
+        },
+        {
+          id: 'admin',
+          label: 'Admin',
+          icon: Shield,
+          tabs: [
             { id: 'drivers' as const, label: 'Drivers', icon: Users },
-            { id: 'batches' as const, label: 'Batches', icon: Boxes },
             { id: 'users' as const, label: 'User Management', icon: UserCog },
-          ]
-          : []),
-        ...(isAdmin ? [{ id: 'locations' as const, label: 'Locations', icon: MapPin }] : []),
-        { id: 'notifications' as const, label: 'Notifications', icon: Bell },
-        { id: 'settings' as const, label: 'Settings', icon: Settings },
+            { id: 'notifications' as const, label: 'Notifications', icon: Bell },
+          ],
+        },
       ];
+    }
 
-  const allTabs = [...mainTabs, ...moreTabs];
+    // Driver: Limited access (Settings is pinned separately)
+    if (isDriver()) {
+      return [
+        {
+          id: 'operations',
+          label: 'Operations',
+          icon: Briefcase,
+          tabs: [
+            { id: 'stock' as const, label: 'Stocks', icon: Package },
+            { id: 'requests' as const, label: 'Requests', icon: ClipboardList },
+            { id: 'vehicles' as const, label: 'Vehicles', icon: Truck },
+            { id: 'notifications' as const, label: 'Notifications', icon: Bell },
+          ],
+        },
+      ];
+    }
+
+    // Manager/Admin: Full access with groups
+    const operationsTabs = [
+      { id: 'stock' as const, label: 'Stocks', icon: Package },
+      { id: 'kitchen' as const, label: isAdmin ? 'Kitchens' : 'Kitchen', icon: UtensilsCrossed },
+      { id: 'requests' as const, label: 'Requests', icon: ClipboardList },
+      { id: 'loans' as const, label: 'Loans', icon: ArrowLeftRight },
+      { id: 'vehicles' as const, label: 'Vehicles', icon: Truck },
+    ];
+
+    const monitoringTabs = [
+      { id: 'alerts' as const, label: 'Alerts', icon: AlertTriangle },
+      { id: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard },
+      { id: 'deliveries' as const, label: 'Verification', icon: PackageCheck },
+    ];
+
+    // Settings is pinned separately at the bottom of the sidebar
+    const adminTabs = [
+      ...(isManager() ? [
+        { id: 'drivers' as const, label: 'Drivers', icon: Users },
+        { id: 'batches' as const, label: 'Batches', icon: Boxes },
+        { id: 'users' as const, label: 'User Management', icon: UserCog },
+      ] : []),
+      ...(isAdmin ? [{ id: 'locations' as const, label: 'Locations', icon: MapPin }] : []),
+      { id: 'notifications' as const, label: 'Notifications', icon: Bell },
+    ];
+
+    return [
+      { id: 'operations', label: 'Operations', icon: Briefcase, tabs: operationsTabs },
+      { id: 'monitoring', label: 'Monitoring', icon: BarChart3, tabs: monitoringTabs },
+      { id: 'admin', label: 'Admin', icon: Shield, tabs: adminTabs },
+    ];
+  })();
+
+  // Include Settings which is pinned separately in the sidebar
+  const allTabs = [
+    ...tabGroups.flatMap(group => group.tabs),
+    { id: 'settings' as const, label: 'Settings', icon: Settings },
+  ];
   const currentTab = allTabs.find((t) => t.id === activeTab);
   const unreadCount = notificationsData?.unread_count || 0;
 
@@ -330,25 +396,31 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 flex">
+    <div className="h-screen bg-gray-100 flex overflow-hidden">
+      {/* Skip link for keyboard accessibility */}
+      <a
+        href="#main-content"
+        className="sr-only sr-only-focusable fixed top-0 left-0 z-50 bg-orange-500 text-white px-4 py-2 rounded-br-lg focus:not-sr-only"
+      >
+        Skip to main content
+      </a>
+
       {/* KM Submission Blocker - blocks driver navigation until km is submitted */}
       <KmSubmissionBlocker />
 
       {/* Mobile Drawer Overlay */}
       <MobileDrawer
-        mainTabs={mainTabs}
-        moreTabs={moreTabs}
+        tabGroups={tabGroups}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         unreadCount={unreadCount}
         pendingDeliveriesCount={pendingDeliveriesCount}
       />
 
-      {/* Desktop Sidebar - hidden on mobile */}
-      <aside className="hidden md:flex w-72 flex-shrink-0">
+      {/* Desktop Sidebar - fixed height with internal scroll */}
+      <aside className="hidden md:flex w-72 flex-shrink-0 h-full">
         <Sidebar
-          mainTabs={mainTabs}
-          moreTabs={moreTabs}
+          tabGroups={tabGroups}
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           unreadCount={unreadCount}
@@ -356,8 +428,8 @@ function App() {
         />
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-auto min-w-0">
+      {/* Main Content - scrolls independently */}
+      <main id="main-content" className="flex-1 overflow-auto min-w-0">
         <header className="bg-white border-b border-gray-200 px-4 md:px-8 py-3 md:py-4 sticky top-0 z-10">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 md:gap-3">
@@ -372,23 +444,32 @@ function App() {
               <button
                 onClick={() => setActiveTab('notifications')}
                 className="relative p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
               >
                 <Bell className="w-5 h-5" />
                 {unreadCount > 0 && (
-                  <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
+                  <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" aria-hidden="true" />
                 )}
               </button>
               <button
                 onClick={() => setActiveTab('settings')}
                 className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                aria-label="Settings"
               >
                 <Settings className="w-5 h-5" />
               </button>
             </div>
           </div>
         </header>
-        <div className="p-4 md:p-8">{renderPage()}</div>
+        <ErrorBoundary>
+          <Suspense fallback={<PageLoader />}>
+            <div className="p-4 md:p-8">{renderPage()}</div>
+          </Suspense>
+        </ErrorBoundary>
       </main>
+
+      {/* Toast notifications */}
+      <ToastContainer />
     </div>
   );
 }

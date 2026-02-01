@@ -1,9 +1,12 @@
 """Email utility for sending invitation and notification emails."""
 
 import smtplib
+import logging
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from .config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 def send_email(to_email: str, subject: str, html_content: str, text_content: str = None) -> bool:
@@ -11,7 +14,7 @@ def send_email(to_email: str, subject: str, html_content: str, text_content: str
     settings = get_settings()
 
     if not settings.smtp_user or not settings.smtp_password:
-        print("[EMAIL] SMTP not configured, skipping email send")
+        logger.warning("SMTP not configured, skipping email send")
         return False
 
     try:
@@ -33,11 +36,11 @@ def send_email(to_email: str, subject: str, html_content: str, text_content: str
             server.login(settings.smtp_user, settings.smtp_password)
             server.send_message(msg)
 
-        print(f"[EMAIL] Sent to {to_email}: {subject}")
+        logger.info(f"Email sent to {to_email}: {subject}")
         return True
 
     except Exception as e:
-        print(f"[EMAIL ERROR] Failed to send to {to_email}: {str(e)}")
+        logger.error(f"Failed to send email to {to_email}: {str(e)}")
         return False
 
 
@@ -2362,5 +2365,246 @@ def send_loan_overdue_reminder(
     """
 
     text_content = f"Hi {manager_name}, Your loan is overdue by {days_overdue} days. Arrange return: {loans_url}"
+
+    return send_email(to_email, subject, html_content, text_content)
+
+
+def send_time_proposal_notification(
+    to_email: str,
+    manager_name: str,
+    location_name: str,
+    quantity_bags: int,
+    driver_name: str,
+    requested_time: str,
+    proposed_time: str,
+    reason: str,
+    request_id: str
+) -> bool:
+    """Send notification to manager when driver proposes different delivery time."""
+    settings = get_settings()
+    requests_url = f"{settings.app_url}/requests"
+
+    # Map reason codes to human-readable text
+    reason_text = {
+        "vehicle_issue": "Vehicle broke down or needs repairs",
+        "another_urgent_request": "Another urgent request took priority",
+        "route_conditions": "Route conditions (weather/road issues)",
+        "schedule_conflict": "Schedule conflict with existing commitments",
+        "other": "Other reason"
+    }.get(reason, reason)
+
+    subject = f"⏰ Delivery Time Proposal - {location_name}"
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+            .content {{ background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; }}
+            .info-box {{ background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin: 15px 0; }}
+            .time-comparison {{ display: flex; justify-content: space-between; margin: 20px 0; }}
+            .time-box {{ text-align: center; padding: 15px; border-radius: 8px; flex: 1; margin: 0 5px; }}
+            .requested {{ background: #fee2e2; color: #dc2626; }}
+            .proposed {{ background: #d1fae5; color: #059669; }}
+            .button {{ display: inline-block; background: #f59e0b; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0; }}
+            .footer {{ text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1 style="margin: 0;">⏰ Delivery Time Proposal</h1>
+            </div>
+            <div class="content">
+                <h2>Hi {manager_name}!</h2>
+                <p><strong>{driver_name}</strong> has proposed a different delivery time for your stock request.</p>
+
+                <div class="info-box">
+                    <p><strong>Location:</strong> {location_name}</p>
+                    <p><strong>Quantity:</strong> {quantity_bags} bags</p>
+                    <p><strong>Reason:</strong> {reason_text}</p>
+                </div>
+
+                <div class="time-comparison">
+                    <div class="time-box requested">
+                        <p style="margin: 0; font-size: 12px;">Your Request</p>
+                        <p style="margin: 5px 0; font-weight: bold;">{requested_time}</p>
+                    </div>
+                    <div class="time-box proposed">
+                        <p style="margin: 0; font-size: 12px;">Driver's Proposal</p>
+                        <p style="margin: 5px 0; font-weight: bold;">{proposed_time}</p>
+                    </div>
+                </div>
+
+                <p style="text-align: center;">
+                    <a href="{requests_url}" class="button">Review Proposal</a>
+                </p>
+            </div>
+            <div class="footer">
+                <p>Potato Stock Tracking System</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    text_content = f"""Hi {manager_name},
+
+{driver_name} has proposed a different delivery time for your stock request.
+
+Location: {location_name}
+Quantity: {quantity_bags} bags
+
+Your requested time: {requested_time}
+Driver's proposed time: {proposed_time}
+Reason: {reason_text}
+
+Review the proposal: {requests_url}
+"""
+
+    return send_email(to_email, subject, html_content, text_content)
+
+
+def send_proposal_accepted_notification(
+    to_email: str,
+    driver_name: str,
+    location_name: str,
+    quantity_bags: int,
+    agreed_time: str,
+    request_id: str
+) -> bool:
+    """Send notification to driver when manager accepts their proposed time."""
+    settings = get_settings()
+    requests_url = f"{settings.app_url}/requests"
+
+    subject = f"✅ Time Proposal Accepted - {location_name}"
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ background: linear-gradient(135deg, #059669 0%, #10b981 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+            .content {{ background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; }}
+            .info-box {{ background: #d1fae5; border: 1px solid #6ee7b7; border-radius: 8px; padding: 20px; margin: 15px 0; }}
+            .button {{ display: inline-block; background: #059669; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0; }}
+            .footer {{ text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1 style="margin: 0;">✅ Proposal Accepted!</h1>
+            </div>
+            <div class="content">
+                <h2>Hi {driver_name}!</h2>
+                <p>Great news! The store manager has accepted your proposed delivery time.</p>
+
+                <div class="info-box">
+                    <p><strong>Location:</strong> {location_name}</p>
+                    <p><strong>Quantity:</strong> {quantity_bags} bags</p>
+                    <p><strong>Agreed Delivery Time:</strong> {agreed_time}</p>
+                </div>
+
+                <p>You can now proceed to create a trip for this delivery.</p>
+
+                <p style="text-align: center;">
+                    <a href="{requests_url}" class="button">View Request</a>
+                </p>
+            </div>
+            <div class="footer">
+                <p>Potato Stock Tracking System</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    text_content = f"""Hi {driver_name},
+
+Great news! The store manager has accepted your proposed delivery time.
+
+Location: {location_name}
+Quantity: {quantity_bags} bags
+Agreed Delivery Time: {agreed_time}
+
+You can now proceed to create a trip for this delivery.
+
+View request: {requests_url}
+"""
+
+    return send_email(to_email, subject, html_content, text_content)
+
+
+def send_proposal_declined_notification(
+    to_email: str,
+    driver_name: str,
+    location_name: str,
+    quantity_bags: int,
+    manager_notes: str,
+    request_id: str
+) -> bool:
+    """Send notification to driver when manager declines their proposed time."""
+    settings = get_settings()
+    requests_url = f"{settings.app_url}/requests"
+
+    subject = f"❌ Time Proposal Declined - {location_name}"
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+            .content {{ background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; }}
+            .info-box {{ background: #fee2e2; border: 1px solid #fca5a5; border-radius: 8px; padding: 20px; margin: 15px 0; }}
+            .button {{ display: inline-block; background: #dc2626; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 20px 0; }}
+            .footer {{ text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1 style="margin: 0;">❌ Proposal Declined</h1>
+            </div>
+            <div class="content">
+                <h2>Hi {driver_name},</h2>
+                <p>The store manager has declined your proposed delivery time. The request is now available for other drivers.</p>
+
+                <div class="info-box">
+                    <p><strong>Location:</strong> {location_name}</p>
+                    <p><strong>Quantity:</strong> {quantity_bags} bags</p>
+                    {f"<p><strong>Manager's Note:</strong> {manager_notes}</p>" if manager_notes else ""}
+                </div>
+
+                <p style="text-align: center;">
+                    <a href="{requests_url}" class="button">View Requests</a>
+                </p>
+            </div>
+            <div class="footer">
+                <p>Potato Stock Tracking System</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    text_content = f"""Hi {driver_name},
+
+The store manager has declined your proposed delivery time. The request is now available for other drivers.
+
+Location: {location_name}
+Quantity: {quantity_bags} bags
+{f"Manager's Note: {manager_notes}" if manager_notes else ""}
+
+View requests: {requests_url}
+"""
 
     return send_email(to_email, subject, html_content, text_content)

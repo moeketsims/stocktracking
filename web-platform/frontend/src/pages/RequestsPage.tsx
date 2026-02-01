@@ -22,6 +22,7 @@ import {
   Send,
   ArrowLeftRight,
   MapPin,
+  Calendar,
 } from 'lucide-react';
 import { Button } from '../components/ui';
 import { stockRequestsApi, vehiclesApi, referenceApi, tripsApi, loansApi } from '../lib/api';
@@ -31,6 +32,8 @@ import { CancelRequestModal } from '../components/modals/CancelRequestModal';
 import { EditRequestModal } from '../components/modals/EditRequestModal';
 import AcceptDeliveryModal from '../components/modals/AcceptDeliveryModal';
 import AcceptLoanPickupModal from '../components/modals/AcceptLoanPickupModal';
+import ProposeTimeModal from '../components/modals/ProposeTimeModal';
+import ReviewProposalModal from '../components/modals/ReviewProposalModal';
 import { REQUEST_STATUS_CONFIG, getShortRequestId } from '../utils/statusConfig';
 import type { StockRequest, StockRequestStatus, Vehicle, Supplier } from '../types';
 
@@ -56,6 +59,8 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
   const [showFulfillRemainingModal, setShowFulfillRemainingModal] = useState(false);
   const [showAcceptDeliveryModal, setShowAcceptDeliveryModal] = useState(false);
   const [showAcceptLoanPickupModal, setShowAcceptLoanPickupModal] = useState(false);
+  const [showProposeTimeModal, setShowProposeTimeModal] = useState(false);
+  const [showReviewProposalModal, setShowReviewProposalModal] = useState(false);
   const [selectedLoanTrip, setSelectedLoanTrip] = useState<{
     id: string;
     loanId: string;
@@ -249,13 +254,14 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
 
   const isLoading = loadingAll || loadingMy;
 
-  const myAcceptedRequests = useMemo(() => {
+  // Count items needing driver attention: accepted (ready to start) + time_proposed (awaiting approval)
+  const myActionableRequests = useMemo(() => {
     return (myRequestsData?.accepted || []).filter(
-      (r: StockRequest) => r.status === 'accepted'
+      (r: StockRequest) => r.status === 'accepted' || r.status === 'time_proposed'
     );
   }, [myRequestsData]);
 
-  const pendingActionCount = myAcceptedRequests.length;
+  const pendingActionCount = myActionableRequests.length;
 
   const filterByDateRange = (requests: StockRequest[]) => {
     if (dateRange === 'all') return requests;
@@ -456,6 +462,14 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
 
   const hasActiveFilters = urgencyFilter !== 'all' || statusFilter !== 'all' || dateRange !== '7days';
 
+  // Check if there are any time_proposed requests that need review by the current user (manager)
+  // This is used to show the ACTION column in the header for managers
+  const hasProposalsToReview = isManager() && requests.some((r: StockRequest) =>
+    r.status === 'time_proposed' &&
+    (isMyRequest(r) || isManager()) &&
+    !(isDriver() && isMyRequest(r)) // Exclude if driver who proposed
+  );
+
   if (isLoading) {
     return (
       <div className="space-y-3">
@@ -472,15 +486,22 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
 
   return (
     <div className="space-y-4">
-      {/* Re-request Success/Error Toast */}
+      {/* Re-request Success Modal - centered popup like KM submission */}
       {reRequestSuccess && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center gap-3">
-          <div className="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center flex-shrink-0">
-            <Check className="w-4 h-4 text-emerald-600" />
+        <>
+          <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50" />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-8 text-center animate-in fade-in zoom-in duration-300">
+              <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Check className="w-8 h-8 text-emerald-600" />
+              </div>
+              <h2 className="text-xl font-bold text-gray-900 mb-2">Request Resent!</h2>
+              <p className="text-gray-600 text-sm">{reRequestSuccess}</p>
+            </div>
           </div>
-          <span className="text-sm text-emerald-800">{reRequestSuccess}</span>
-        </div>
+        </>
       )}
+      {/* Re-request Error Toast */}
       {reRequestError && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-3">
           <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
@@ -586,26 +607,6 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
         </div>
       )}
 
-      {/* Pending Actions Banner - for legacy accepted requests */}
-      {pendingActionCount > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center">
-              <Bell className="w-4 h-4 text-amber-600" />
-            </div>
-            <span className="text-sm text-amber-800">
-              <span className="font-semibold">{pendingActionCount}</span> accepted order{pendingActionCount > 1 ? 's' : ''} need{pendingActionCount === 1 ? 's' : ''} to be started
-            </span>
-          </div>
-          <Button
-            onClick={() => setActiveTab('my')}
-            size="sm"
-            className="bg-amber-500 hover:bg-amber-600 text-white h-8 text-xs"
-          >
-            Start Deliveries
-          </Button>
-        </div>
-      )}
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -775,7 +776,7 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
         <div className="text-center py-12 bg-gray-50 rounded-xl">
           <Package className="w-10 h-10 mx-auto mb-3 text-gray-300" />
           <h3 className="text-sm font-medium text-gray-600">No requests found</h3>
-          <p className="text-xs text-gray-400 mt-1">
+          <p className="text-xs text-gray-500 mt-1">
             {activeTab === 'available' ? 'No pending stock requests' : hasActiveFilters ? 'Try adjusting filters' : 'No requests to display'}
           </p>
         </div>
@@ -783,7 +784,7 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
         <div className="bg-white rounded-xl border border-gray-200 overflow-visible">
           {/* Table Header - Hidden on mobile */}
           <div className="hidden md:block bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
-            <div className={`grid ${(isDriver() || (activeTab === 'attention' && showAttentionTab)) ? 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px_120px]' : 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px]'} gap-2 px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider`}>
+            <div className={`grid ${(isDriver() || (activeTab === 'attention' && showAttentionTab) || hasProposalsToReview) ? 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px_120px]' : 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px]'} gap-2 px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider`}>
               <div>Req #</div>
               <div>Location</div>
               <div className="text-right pr-1">Qty</div>
@@ -791,7 +792,7 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
               <div>Requested By</div>
               <div className="text-center">Age</div>
               <div className="text-center">Status</div>
-              {(isDriver() || (activeTab === 'attention' && showAttentionTab)) && <div className="text-right">Action</div>}
+              {(isDriver() || (activeTab === 'attention' && showAttentionTab) || hasProposalsToReview) && <div className="text-right">Action</div>}
             </div>
           </div>
 
@@ -860,6 +861,14 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
                   }
                 }}
                 isAcceptingLoan={false}
+                onProposeTime={() => {
+                  setSelectedRequest(request);
+                  setShowProposeTimeModal(true);
+                }}
+                onReviewProposal={() => {
+                  setSelectedRequest(request);
+                  setShowReviewProposalModal(true);
+                }}
                 getRelativeTime={getRelativeTime}
               />
             ))}
@@ -932,6 +941,32 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
           setTimeout(() => setAcceptLoanSuccess(null), 3000);
         }}
       />
+
+      {/* Propose Time Modal - For drivers to propose different delivery time */}
+      {selectedRequest && (
+        <ProposeTimeModal
+          isOpen={showProposeTimeModal}
+          onClose={() => { setShowProposeTimeModal(false); setSelectedRequest(null); }}
+          onSuccess={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['stock-requests', 'all'] });
+            await queryClient.invalidateQueries({ queryKey: ['stock-requests', 'my'] });
+          }}
+          request={selectedRequest}
+        />
+      )}
+
+      {/* Review Proposal Modal - For managers to accept/decline driver's proposed time */}
+      {selectedRequest && (
+        <ReviewProposalModal
+          isOpen={showReviewProposalModal}
+          onClose={() => { setShowReviewProposalModal(false); setSelectedRequest(null); }}
+          onSuccess={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['stock-requests', 'all'] });
+            await queryClient.invalidateQueries({ queryKey: ['stock-requests', 'my'] });
+          }}
+          request={selectedRequest}
+        />
+      )}
     </div>
   );
 }
@@ -955,6 +990,8 @@ function RequestRow({
   isReRequesting,
   onAcceptLoanPickup,
   isAcceptingLoan,
+  onProposeTime,
+  onReviewProposal,
   getRelativeTime,
 }: {
   request: StockRequest;
@@ -974,6 +1011,8 @@ function RequestRow({
   isReRequesting?: boolean;
   onAcceptLoanPickup?: () => void;
   isAcceptingLoan?: boolean;
+  onProposeTime?: () => void;
+  onReviewProposal?: () => void;
   getRelativeTime: (date: string) => string;
 }) {
   const [showMenu, setShowMenu] = useState(false);
@@ -1033,6 +1072,16 @@ function RequestRow({
   const canFulfillRemaining = request.status === 'partially_fulfilled' && isManager;
   const isInDelivery = request.status === 'in_delivery' && isManager;
   const hasTrip = request.status === 'trip_created' || request.status === 'fulfilled';
+  // Driver can propose different time for pending requests (with delivery time set)
+  const canProposeTime = request.status === 'pending' && isDriver && request.requested_delivery_time;
+  // Manager/requester can review proposals when status is time_proposed
+  // But NOT the driver who proposed it (they should see "Awaiting Approval")
+  // If a driver is "owner" of a time_proposed request, they must be the one who proposed it
+  // (since drivers don't create requests, managers do - so driver "ownership" = accepted it)
+  const isDriverWhoProposed = request.status === 'time_proposed' && isOwner && isDriver;
+  const canReviewProposal = request.status === 'time_proposed' && (isManager || isOwner) && !isDriverWhoProposed;
+  // Driver who proposed can see their proposal is pending
+  const isPendingProposal = isDriverWhoProposed;
   // Only show secondary actions menu for drivers
   const hasSecondaryActions = isDriver && (canEdit || canCancel);
 
@@ -1085,6 +1134,28 @@ function RequestRow({
       );
     }
     if (canAccept) {
+      // Show both "Accept & Deliver" and "Propose Time" if delivery time is specified
+      if (canProposeTime) {
+        return (
+          <div className="flex items-center gap-1.5">
+            <Button
+              onClick={onAcceptAndDeliver}
+              size="sm"
+              className="bg-emerald-600 hover:bg-emerald-700 h-7 text-xs px-2.5 whitespace-nowrap"
+            >
+              Accept
+            </Button>
+            <Button
+              onClick={onProposeTime}
+              size="sm"
+              variant="secondary"
+              className="h-7 text-xs px-2 whitespace-nowrap border-amber-300 text-amber-700 hover:bg-amber-50"
+            >
+              <Clock className="w-3 h-3" />
+            </Button>
+          </div>
+        );
+      }
       return (
         <Button
           onClick={onAcceptAndDeliver}
@@ -1093,6 +1164,27 @@ function RequestRow({
         >
           Accept & Deliver
         </Button>
+      );
+    }
+    // For time_proposed status
+    if (canReviewProposal) {
+      return (
+        <Button
+          onClick={onReviewProposal}
+          size="sm"
+          className="bg-orange-500 hover:bg-orange-600 h-7 text-xs px-3 whitespace-nowrap gap-1"
+        >
+          <Clock className="w-3 h-3" />
+          Review Proposal
+        </Button>
+      );
+    }
+    if (isPendingProposal) {
+      return (
+        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-purple-600 px-2.5 py-1">
+          <Clock className="w-3 h-3" />
+          Awaiting Approval
+        </span>
       );
     }
     if (canCreateTrip) {
@@ -1246,7 +1338,7 @@ function RequestRow({
           <div className="flex items-center gap-2 text-sm mb-3 text-gray-600">
             <MapPin className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
             <span className="truncate">{loanFromLocation}</span>
-            <span className="text-gray-400">→</span>
+            <span className="text-gray-500">→</span>
             <span className="truncate">{loanToLocation}</span>
           </div>
         )}
@@ -1283,6 +1375,58 @@ function RequestRow({
           </div>
         </div>
 
+        {/* Requested Delivery Time */}
+        {request.requested_delivery_time && request.status !== 'time_proposed' && (
+          <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-blue-50 rounded-lg border border-blue-100">
+            <Calendar className="w-4 h-4 text-blue-600" />
+            <span className="text-sm text-blue-700">
+              <span className="font-medium">Deliver by:</span>{' '}
+              {new Date(request.requested_delivery_time).toLocaleDateString('en-ZA', {
+                weekday: 'short',
+                day: 'numeric',
+                month: 'short',
+              })}{' '}
+              at{' '}
+              {new Date(request.requested_delivery_time).toLocaleTimeString('en-ZA', {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </span>
+          </div>
+        )}
+
+        {/* Time Proposal Display - for time_proposed status */}
+        {request.status === 'time_proposed' && (
+          <div className="mb-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
+            <div className="flex items-center gap-2 mb-2">
+              <Clock className="w-4 h-4 text-purple-600" />
+              <span className="text-sm font-medium text-purple-700">Time Proposal Pending</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="bg-white/60 rounded p-2">
+                <p className="text-gray-500">Requested</p>
+                <p className="font-medium text-gray-700">
+                  {request.requested_delivery_time
+                    ? new Date(request.requested_delivery_time).toLocaleString('en-ZA', {
+                        day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+                      })
+                    : 'Not set'}
+                </p>
+              </div>
+              <div className="bg-white/60 rounded p-2">
+                <p className="text-purple-600">Proposed</p>
+                <p className="font-medium text-purple-700">
+                  {request.proposed_delivery_time
+                    ? new Date(request.proposed_delivery_time).toLocaleString('en-ZA', {
+                        day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+                      })
+                    : 'Not set'}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Assigned by (for loans) / Requested by (for regular) + Trip info */}
         <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
           <User className="w-3.5 h-3.5" />
@@ -1311,8 +1455,8 @@ function RequestRow({
           )}
         </div>
 
-        {/* Actions (for drivers or manager actions) */}
-        {(isDriver || showManagerActions) && (
+        {/* Actions (for drivers, manager actions, or proposal review) */}
+        {(isDriver || showManagerActions || canReviewProposal) && (
           <div className="flex items-center gap-2">
             <div className="flex-1">
               {showManagerActions ? renderManagerActions() : renderPrimaryAction()}
@@ -1355,7 +1499,7 @@ function RequestRow({
       </div>
 
       {/* Desktop Table Row */}
-      <div className={`hidden md:grid ${(isDriver || showManagerActions) ? 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px_120px]' : 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px]'} gap-2 px-4 ${rowPadding} items-center hover:bg-gray-50 transition-colors ${
+      <div className={`hidden md:grid ${(isDriver || showManagerActions || canReviewProposal) ? 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px_120px]' : 'grid-cols-[70px_1fr_65px_55px_120px_45px_90px]'} gap-2 px-4 ${rowPadding} items-center hover:bg-gray-50 transition-colors ${
         isLoanTrip ? 'bg-blue-50/30' : (isUrgent && request.status === 'pending' ? 'bg-red-50/50' : '')
       }`}>
         {/* Request # */}
@@ -1393,22 +1537,36 @@ function RequestRow({
               {isUrgent && request.status === 'pending' && !isLoanTrip && (
                 <AlertTriangle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
               )}
+              {/* Requested Delivery Time - inline badge */}
+              {!isLoanTrip && request.requested_delivery_time && (
+                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded bg-blue-50 text-blue-700 border border-blue-100 flex-shrink-0">
+                  <Calendar className="w-2.5 h-2.5" />
+                  {new Date(request.requested_delivery_time).toLocaleDateString('en-ZA', {
+                    day: 'numeric',
+                    month: 'short',
+                  })}{' '}
+                  {new Date(request.requested_delivery_time).toLocaleTimeString('en-ZA', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </span>
+              )}
             </div>
             {/* Route info for loans, Trip info for regular requests */}
             {isLoanTrip ? (
-              <span className="text-[10px] text-gray-400 flex items-center gap-1">
+              <span className="text-[10px] text-gray-500 flex items-center gap-1">
                 <MapPin className="w-2.5 h-2.5 text-blue-400" />
                 {loanFromLocation} → {loanToLocation}
               </span>
             ) : (
               <>
                 {request.trips && (
-                  <span className="text-[10px] text-gray-400">
+                  <span className="text-[10px] text-gray-500">
                     {request.trips.trip_number} • {request.trips.status}
                   </span>
                 )}
                 {request.acceptor && !request.trips && (
-                  <span className="text-[10px] text-gray-400">
+                  <span className="text-[10px] text-gray-500">
                     <Truck className="w-2.5 h-2.5 inline mr-0.5" />
                     {request.acceptor.full_name}
                   </span>
@@ -1458,7 +1616,7 @@ function RequestRow({
             <User className="w-3 h-3 text-gray-400 flex-shrink-0" />
             {isLoanTrip ? (
               <span className="truncate">
-                <span className="text-gray-400">Assigned by </span>
+                <span className="text-gray-500">Assigned by </span>
                 {loanAssignedBy}
               </span>
             ) : (
@@ -1482,8 +1640,8 @@ function RequestRow({
           </span>
         </div>
 
-        {/* Actions - right aligned (for drivers or manager actions) */}
-        {(isDriver || showManagerActions) && (
+        {/* Actions - right aligned (for drivers, manager actions, or proposal review) */}
+        {(isDriver || showManagerActions || canReviewProposal) && (
           <div className="flex items-center justify-end gap-1.5">
             {showManagerActions ? renderManagerActions() : renderPrimaryAction()}
 

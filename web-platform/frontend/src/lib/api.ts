@@ -296,6 +296,13 @@ export const stockRequestsApi = {
   getMyRequests: (status?: string, limit?: number) =>
     api.get('/api/stock-requests/my/requests', { params: { status, limit } }),
   reRequest: (id: string) => api.post(`/api/stock-requests/${id}/re-request`),
+  // Counter-proposal flow (Phase 3)
+  proposeTime: (id: string, data: { proposed_delivery_time: string; reason: string; notes?: string }) =>
+    api.post(`/api/stock-requests/${id}/propose-time`, data),
+  acceptProposal: (id: string) =>
+    api.post(`/api/stock-requests/${id}/accept-proposal`),
+  declineProposal: (id: string, data?: { notes?: string }) =>
+    api.post(`/api/stock-requests/${id}/decline-proposal`, data || {}),
 };
 
 // Pending Deliveries API
@@ -340,9 +347,9 @@ export const loansApi = {
   reject: (id: string, data: { reason: string }) =>
     api.post(`/api/loans/${id}/reject`, data),
   confirm: (id: string) => api.post(`/api/loans/${id}/confirm`),
-  assignPickup: (id: string, data: { driver_id?: string; vehicle_id: string; notes?: string }) =>
+  assignPickup: (id: string, data: { driver_id: string; vehicle_id?: string; notes?: string }) =>
     api.post(`/api/loans/${id}/assign-pickup`, data),
-  acceptPickup: (id: string, data: { odometer_start: number }) =>
+  acceptPickup: (id: string, data: { odometer_start: number; vehicle_id: string }) =>
     api.post(`/api/loans/${id}/accept-pickup`, data),
   // Lender confirms driver collected stock (deducts from lender)
   confirmCollection: (id: string, data?: { actual_quantity_bags?: number }) =>

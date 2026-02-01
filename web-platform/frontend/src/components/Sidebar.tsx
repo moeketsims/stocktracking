@@ -1,9 +1,9 @@
-import { LogOut, Settings } from 'lucide-react';
+import { LogOut, Settings, ChevronDown, ChevronRight } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useLogout } from '../hooks/useAuth';
 import { useAlerts, useDriverLoanTripsCount } from '../hooks/useData';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface Tab {
   id: string;
@@ -11,9 +11,15 @@ interface Tab {
   icon: LucideIcon;
 }
 
+export type TabGroup = {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  tabs: Tab[];
+};
+
 interface SidebarProps {
-  mainTabs: Tab[];
-  moreTabs: Tab[];
+  tabGroups: TabGroup[];
   activeTab: string;
   setActiveTab: (tab: string) => void;
   unreadCount: number;
@@ -22,8 +28,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({
-  mainTabs,
-  moreTabs,
+  tabGroups,
   activeTab,
   setActiveTab,
   unreadCount,
@@ -37,6 +42,58 @@ export default function Sidebar({
   // Get driver loan trips count for badge on Requests tab
   const { data: loanTripsCount = 0 } = useDriverLoanTripsCount();
 
+  // Find which group contains the active tab
+  const findActiveGroup = () => {
+    for (const group of tabGroups) {
+      if (group.tabs.some(tab => tab.id === activeTab)) {
+        return group.id;
+      }
+    }
+    return null;
+  };
+
+  // Track expanded groups - auto-expand the group containing active tab
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {};
+    tabGroups.forEach(group => {
+      // By default, expand Operations and Monitoring, collapse Admin
+      initial[group.id] = group.id !== 'admin';
+    });
+    return initial;
+  });
+
+  // Auto-expand group when active tab changes
+  useEffect(() => {
+    const activeGroup = findActiveGroup();
+    if (activeGroup && !expandedGroups[activeGroup]) {
+      setExpandedGroups(prev => ({ ...prev, [activeGroup]: true }));
+    }
+  }, [activeTab]);
+
+  // Sync expanded state when tabGroups change (e.g., role change)
+  useEffect(() => {
+    setExpandedGroups(prev => {
+      const updated: Record<string, boolean> = {};
+      tabGroups.forEach(group => {
+        // Preserve existing state or default based on group id
+        updated[group.id] = prev[group.id] ?? group.id !== 'admin';
+      });
+      return updated;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabGroups.map(g => g.id).join(',')]);
+
+  const toggleGroup = (groupId: string) => {
+    setExpandedGroups(prev => ({
+      ...prev,
+      [groupId]: !prev[groupId]
+    }));
+  };
+
+  // Check if we should show groups (only if total tabs > 5)
+  const totalTabs = tabGroups.reduce((sum, g) => sum + g.tabs.length, 0);
+  const showGroups = totalTabs > 5;
+
   const handleLogout = async () => {
     await logoutMutation.mutateAsync();
     setShowLogoutConfirm(false);
@@ -45,6 +102,35 @@ export default function Sidebar({
   const handleTabClick = (tabId: string) => {
     setActiveTab(tabId);
     onClose?.();
+  };
+
+  // Render badge for specific tabs
+  const renderBadge = (tabId: string) => {
+    if (tabId === 'alerts') {
+      return <AlertBadge />;
+    }
+    if (tabId === 'requests' && isDriver() && loanTripsCount > 0) {
+      return (
+        <span className="ml-auto px-1.5 py-0.5 bg-orange-600 text-white text-[10px] font-medium rounded-full min-w-[18px] text-center">
+          {loanTripsCount > 99 ? '99+' : loanTripsCount}
+        </span>
+      );
+    }
+    if (tabId === 'notifications' && unreadCount > 0) {
+      return (
+        <span className="ml-auto px-2 py-0.5 bg-red-500 text-white text-xs font-medium rounded-full">
+          {unreadCount}
+        </span>
+      );
+    }
+    if (tabId === 'deliveries' && pendingDeliveriesCount > 0) {
+      return (
+        <span className="ml-auto px-1.5 py-0.5 bg-orange-600 text-white text-[10px] font-medium rounded-full min-w-[18px] text-center">
+          {pendingDeliveriesCount > 99 ? '99+' : pendingDeliveriesCount}
+        </span>
+      );
+    }
+    return null;
   };
 
   return (
@@ -61,54 +147,59 @@ export default function Sidebar({
         </div>
       </div>
 
-      <nav className="flex-1 px-3 space-y-1 overflow-y-auto">
-        {/* Main Tabs */}
-        {mainTabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => handleTabClick(tab.id)}
-            className={`w-full flex items-center gap-3 px-4 py-3 md:py-2.5 text-sm font-medium rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 ${
-              activeTab === tab.id
-                ? 'bg-orange-500 text-white'
-                : 'text-indigo-200 hover:bg-indigo-900 hover:text-white'
-            }`}
-          >
-            <tab.icon className="w-5 h-5" />
-            {tab.label}
-            {tab.id === 'alerts' && <AlertBadge />}
-            {tab.id === 'requests' && isDriver() && loanTripsCount > 0 && (
-              <span className="ml-auto px-1.5 py-0.5 bg-orange-600 text-white text-[10px] font-medium rounded-full min-w-[18px] text-center">
-                {loanTripsCount > 99 ? '99+' : loanTripsCount}
-              </span>
-            )}
-          </button>
-        ))}
+      <nav className="flex-1 px-3 overflow-y-auto sidebar-scroll">
+        {showGroups ? (
+          /* Grouped Navigation */
+          <div className="space-y-1">
+            {tabGroups.map((group) => (
+              <div key={group.id} className="mb-1">
+                {/* Group Header */}
+                <button
+                  onClick={() => toggleGroup(group.id)}
+                  className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-indigo-400 uppercase tracking-wider hover:text-indigo-200 transition-colors rounded-lg"
+                >
+                  <div className="flex items-center gap-2">
+                    <group.icon className="w-3.5 h-3.5" />
+                    {group.label}
+                  </div>
+                  {expandedGroups[group.id] ? (
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  ) : (
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  )}
+                </button>
 
-        {/* More Tabs (excluding Settings which is pinned to bottom) */}
-        {moreTabs.filter(tab => tab.id !== 'settings').map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => handleTabClick(tab.id)}
-            className={`w-full flex items-center gap-3 px-4 py-3 md:py-2.5 text-sm font-medium rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 ${
-              activeTab === tab.id
-                ? 'bg-orange-500 text-white'
-                : 'text-indigo-200 hover:bg-indigo-900 hover:text-white'
-            }`}
-          >
-            <tab.icon className="w-5 h-5" />
-            {tab.label}
-            {tab.id === 'notifications' && unreadCount > 0 && (
-              <span className="ml-auto px-2 py-0.5 bg-red-500 text-white text-xs font-medium rounded-full">
-                {unreadCount}
-              </span>
-            )}
-            {tab.id === 'deliveries' && pendingDeliveriesCount > 0 && (
-              <span className="ml-auto px-1.5 py-0.5 bg-orange-600 text-white text-[10px] font-medium rounded-full min-w-[18px] text-center">
-                {pendingDeliveriesCount > 99 ? '99+' : pendingDeliveriesCount}
-              </span>
-            )}
-          </button>
-        ))}
+                {/* Collapsible Items */}
+                {expandedGroups[group.id] && (
+                  <div className="space-y-0.5 mt-0.5">
+                    {group.tabs.map((tab) => (
+                      <NavButton
+                        key={tab.id}
+                        tab={tab}
+                        isActive={activeTab === tab.id}
+                        onClick={() => handleTabClick(tab.id)}
+                        badge={renderBadge(tab.id)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          /* Flat Navigation (for roles with few items) */
+          <div className="space-y-1">
+            {tabGroups.flatMap(group => group.tabs).map((tab) => (
+              <NavButton
+                key={tab.id}
+                tab={tab}
+                isActive={activeTab === tab.id}
+                onClick={() => handleTabClick(tab.id)}
+                badge={renderBadge(tab.id)}
+              />
+            ))}
+          </div>
+        )}
       </nav>
 
       {/* Settings - Pinned above profile */}
@@ -202,5 +293,30 @@ function AlertBadge() {
     >
       {displayCount}
     </span>
+  );
+}
+
+// Reusable nav button component
+interface NavButtonProps {
+  tab: { id: string; label: string; icon: LucideIcon };
+  isActive: boolean;
+  onClick: () => void;
+  badge?: React.ReactNode;
+}
+
+function NavButton({ tab, isActive, onClick, badge }: NavButtonProps) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center gap-3 px-4 py-3 md:py-2.5 text-sm font-medium rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 ${
+        isActive
+          ? 'bg-orange-500 text-white'
+          : 'text-indigo-200 hover:bg-indigo-900 hover:text-white'
+      }`}
+    >
+      <tab.icon className="w-5 h-5" />
+      {tab.label}
+      {badge}
+    </button>
   );
 }

@@ -58,9 +58,12 @@ export interface StockBalanceItem {
   location_id: string;
   item_id: string;
   on_hand_qty: number;
+  on_hand_bags?: number;
   location_name: string;
   item_name: string;
   unit: string;
+  critical_threshold?: number;  // in bags
+  low_threshold?: number;  // in bags
 }
 
 export interface DashboardData {
@@ -735,7 +738,10 @@ export interface AcceptInviteForm {
 }
 
 // Stock Request Types (Replenishment Workflow)
-export type StockRequestStatus = 'pending' | 'accepted' | 'trip_created' | 'in_delivery' | 'fulfilled' | 'delivered' | 'cancelled' | 'partially_fulfilled' | 'expired';
+export type StockRequestStatus = 'pending' | 'accepted' | 'trip_created' | 'in_delivery' | 'fulfilled' | 'delivered' | 'cancelled' | 'partially_fulfilled' | 'expired' | 'time_proposed';
+
+// Proposal reason types for counter-proposal flow
+export type ProposalReason = 'vehicle_issue' | 'another_urgent_request' | 'route_conditions' | 'schedule_conflict' | 'other';
 export type StockRequestUrgency = 'urgent' | 'normal';
 
 export interface StockRequest {
@@ -753,6 +759,12 @@ export interface StockRequest {
   target_stock_kg: number | null;
   created_at: string;
   updated_at: string;
+  // Delivery time scheduling
+  requested_delivery_time: string | null;
+  proposed_delivery_time: string | null;
+  agreed_delivery_time: string | null;
+  proposal_reason: string | null;
+  time_confirmed_at: string | null;
   // Cancellation fields
   cancelled_at: string | null;
   cancelled_by: string | null;
@@ -786,6 +798,7 @@ export interface CreateStockRequestForm {
   location_id?: string;
   quantity_bags: number;
   urgency: StockRequestUrgency;
+  requested_delivery_time?: string; // ISO datetime string
   notes?: string;
 }
 

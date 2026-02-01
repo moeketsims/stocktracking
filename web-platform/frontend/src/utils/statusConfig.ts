@@ -17,6 +17,7 @@ interface StatusStyle {
 export const REQUEST_STATUS_CONFIG: Record<StockRequestStatus, StatusStyle> = {
   pending: { label: 'Pending', color: 'text-amber-700', bgColor: 'bg-amber-50', borderColor: 'border-amber-200' },
   accepted: { label: 'Accepted', color: 'text-blue-700', bgColor: 'bg-blue-50', borderColor: 'border-blue-200' },
+  time_proposed: { label: 'Time Proposed', color: 'text-purple-700', bgColor: 'bg-purple-50', borderColor: 'border-purple-200' },
   trip_created: { label: 'Trip Created', color: 'text-slate-700', bgColor: 'bg-slate-100', borderColor: 'border-slate-300' },
   in_delivery: { label: 'In Transit', color: 'text-indigo-700', bgColor: 'bg-indigo-50', borderColor: 'border-indigo-200' },
   fulfilled: { label: 'Fulfilled', color: 'text-emerald-700', bgColor: 'bg-emerald-50', borderColor: 'border-emerald-200' },

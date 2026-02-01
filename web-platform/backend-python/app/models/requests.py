@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, Literal, List
-from datetime import date
+from datetime import date, datetime
 
 
 # Auth Requests
@@ -220,6 +220,7 @@ class CreateStockRequestRequest(BaseModel):
     location_id: Optional[str] = None  # Optional if user has location_id in profile
     quantity_bags: int = Field(gt=0)
     urgency: Literal["urgent", "normal"] = "normal"
+    requested_delivery_time: Optional[datetime] = None  # When manager wants delivery
     notes: Optional[str] = None
 
 
@@ -230,7 +231,8 @@ class AcceptStockRequestRequest(BaseModel):
 class CreateTripFromRequestRequest(BaseModel):
     vehicle_id: str
     driver_id: Optional[str] = None
-    supplier_id: str
+    supplier_id: Optional[str] = None  # External supplier pickup
+    from_location_id: Optional[str] = None  # Warehouse/internal location pickup
     notes: Optional[str] = None
     auto_start: bool = True  # Auto-start the trip (skip "planned" status)
     estimated_arrival_time: Optional[str] = None  # ISO datetime string for ETA
@@ -293,3 +295,27 @@ class SubmitClosingKmRequest(BaseModel):
 class CorrectClosingKmRequest(BaseModel):
     new_closing_km: int = Field(ge=0, le=999999, description="Corrected closing km")
     reason: str = Field(min_length=5, max_length=500, description="Reason for correction")
+
+
+# Delivery Time Proposal (Phase 3)
+class ProposeTimeRequest(BaseModel):
+    """Driver proposes alternative delivery time when they cannot meet the requested time."""
+    proposed_delivery_time: datetime = Field(description="Alternative delivery time proposed by driver")
+    reason: Literal[
+        "vehicle_issue",
+        "another_urgent_request",
+        "route_conditions",
+        "schedule_conflict",
+        "other"
+    ] = Field(description="Reason for proposing different time")
+    notes: Optional[str] = Field(None, max_length=500, description="Additional details about the proposal")
+
+
+class AcceptProposalRequest(BaseModel):
+    """Manager accepts driver's proposed delivery time."""
+    pass  # No body needed
+
+
+class DeclineProposalRequest(BaseModel):
+    """Manager declines driver's proposed delivery time."""
+    notes: Optional[str] = Field(None, max_length=500, description="Reason for declining")
