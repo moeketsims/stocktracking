@@ -285,18 +285,22 @@ async def confirm_delivery(
 
         # Create stock batch
         # Note: Only include columns that exist in the stock_batches table
+        # And only include supplier_id if it's set (NOT NULL constraint)
         batch_data = {
             "id": str(uuid4()),
             "item_id": item_id,
             "location_id": delivery.data["location_id"],
-            "supplier_id": delivery.data.get("supplier_id"),
             "initial_qty": confirmed_kg,
             "remaining_qty": confirmed_kg,
             "received_at": datetime.now().isoformat(),
             "quality_score": 1,  # Default to good quality
-            "status": "available",
-            "last_edited_by": user.id  # Must use auth.users.id
+            "status": "available"
         }
+
+        # Only add supplier_id if it's set (database has NOT NULL constraint)
+        supplier_id = delivery.data.get("supplier_id")
+        if supplier_id:
+            batch_data["supplier_id"] = supplier_id
 
         logger.info(f"[CONFIRM] Creating batch with data: {batch_data}")
 
