@@ -294,15 +294,32 @@ async def update_user(
 
         result = supabase.table("profiles").update(update_data).eq("id", user_id).execute()
 
+        # Safely extract updated user data
+        updated_user = None
+        if result.data and len(result.data) > 0:
+            user_data_raw = result.data[0]
+            # Convert to serializable dict
+            updated_user = {
+                "id": user_data_raw.get("id"),
+                "role": user_data_raw.get("role"),
+                "full_name": user_data_raw.get("full_name"),
+                "phone": user_data_raw.get("phone"),
+                "zone_id": user_data_raw.get("zone_id"),
+                "location_id": user_data_raw.get("location_id"),
+                "is_active": user_data_raw.get("is_active", True),
+            }
+
         return {
             "success": True,
             "message": "User updated successfully",
-            "user": result.data[0] if result.data else None
+            "user": updated_user
         }
 
     except HTTPException:
         raise
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
