@@ -35,8 +35,9 @@ export default function ReviewProposalModal({
 
   const acceptMutation = useMutation({
     mutationFn: () => stockRequestsApi.acceptProposal(request.id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['stock-requests'] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['stock-requests', 'all'] });
+      await queryClient.invalidateQueries({ queryKey: ['stock-requests', 'my'] });
       setSuccessType('accepted');
       onSuccess();
       setTimeout(() => {
@@ -52,8 +53,9 @@ export default function ReviewProposalModal({
 
   const declineMutation = useMutation({
     mutationFn: (notes?: string) => stockRequestsApi.declineProposal(request.id, { notes }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['stock-requests'] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['stock-requests', 'all'] });
+      await queryClient.invalidateQueries({ queryKey: ['stock-requests', 'my'] });
       setSuccessType('declined');
       onSuccess();
       setTimeout(() => {

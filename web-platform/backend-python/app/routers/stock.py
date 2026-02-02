@@ -690,12 +690,12 @@ async def transfer_stock(request: TransferStockRequest, user_data: dict = Depend
             }
         }
 
-        transaction = supabase.table("stock_transactions").insert(transaction_data)
+        transaction = supabase.table("stock_transactions").insert(transaction_data).execute()
 
         return {
             "success": True,
             "message": f"Transferred {qty_kg:.2f} kg",
-            "transaction_id": transaction.data["id"] if transaction.data else None
+            "transaction_id": transaction.data[0]["id"] if transaction.data else None
         }
 
     except HTTPException:
@@ -750,12 +750,12 @@ async def record_waste(request: WasteStockRequest, user_data: dict = Depends(req
             }
         }
 
-        transaction = supabase.table("stock_transactions").insert(transaction_data)
+        transaction = supabase.table("stock_transactions").insert(transaction_data).execute()
 
         return {
             "success": True,
             "message": f"Recorded {qty_kg:.2f} kg waste",
-            "transaction_id": transaction.data["id"] if transaction.data else None
+            "transaction_id": transaction.data[0]["id"] if transaction.data else None
         }
 
     except HTTPException:
