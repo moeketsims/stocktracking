@@ -573,29 +573,47 @@ async def issue_stock(request: IssueStockRequest, user_data: dict = Depends(requ
                 detail=f"Insufficient stock. Current: {current_qty:.2f} kg, Requested: {qty_kg:.2f} kg"
             )
 
-        # Get OLDEST batch for this location/item to deduct from (FIFO - First In, First Out)
+        # Get ALL batches for this location/item ordered by FIFO (oldest first)
         # This ensures older stock is used first, preventing expiry of older batches
-        oldest_batch = supabase.table("stock_batches").select("id, remaining_qty").eq(
+        all_batches = supabase.table("stock_batches").select("id, remaining_qty").eq(
             "location_id", location_id
         ).eq("item_id", item_id).gt(
             "remaining_qty", 0
         ).order(
             "received_at", desc=False
-        ).limit(1).execute()
+        ).execute()
 
-        batch_id = None
-        if oldest_batch.data:
-            batch_id = oldest_batch.data[0]["id"]
-            # Subtract quantity from oldest batch (FIFO)
-            old_remaining = oldest_batch.data[0]["remaining_qty"]
-            new_remaining = old_remaining - qty_kg
-            logger.debug(f"[ISSUE] Batch {batch_id}: {old_remaining} - {qty_kg} = {new_remaining}")
-            update_result = supabase.table("stock_batches").update({
-                "remaining_qty": new_remaining
-            }).eq("id", batch_id).execute()
-            logger.debug(f"[ISSUE] Update result: {update_result.data}")
+        batch_ids = []
+        remaining_to_deduct = qty_kg
+
+        if all_batches.data:
+            for batch in all_batches.data:
+                if remaining_to_deduct <= 0:
+                    break
+
+                batch_id = batch["id"]
+                batch_remaining = batch["remaining_qty"]
+
+                # Deduct from this batch (never more than it has)
+                deduct_amount = min(batch_remaining, remaining_to_deduct)
+                new_remaining = batch_remaining - deduct_amount
+
+                logger.debug(f"[ISSUE] Batch {batch_id}: {batch_remaining} - {deduct_amount} = {new_remaining}")
+
+                supabase.table("stock_batches").update({
+                    "remaining_qty": new_remaining
+                }).eq("id", batch_id).execute()
+
+                batch_ids.append(batch_id)
+                remaining_to_deduct -= deduct_amount
+
+            if remaining_to_deduct > 0:
+                logger.warning(f"[ISSUE] Insufficient stock! Still need {remaining_to_deduct} kg after depleting all batches")
         else:
-            logger.warning("[ISSUE] No batch found to deduct from!")
+            logger.warning("[ISSUE] No batches found to deduct from!")
+
+        # Use first batch ID for transaction (primary batch)
+        batch_id = batch_ids[0] if batch_ids else None
 
         # Create transaction
         transaction_data = {
@@ -610,12 +628,13 @@ async def issue_stock(request: IssueStockRequest, user_data: dict = Depends(requ
             "notes": request.notes,
             "metadata": {
                 "original_unit": request.unit,
-                "original_qty": request.quantity
+                "original_qty": request.quantity,
+                "batch_ids": batch_ids
             }
         }
 
         transaction = supabase.table("stock_transactions").insert(transaction_data).execute()
-        logger.debug(f"[ISSUE] Created transaction: id={transaction.data['id'] if transaction.data else 'NONE'}, location_id_from={location_id}, type=issue")
+        logger.debug(f"[ISSUE] Created transaction: id={transaction.data['id'] if transaction.data else 'NONE'}, location_id_from={location_id}, type=issue, batches_affected={len(batch_ids)}")
 
         # Calculate new total for verification
         new_total_batches = get_batch_totals(supabase, location_id)
