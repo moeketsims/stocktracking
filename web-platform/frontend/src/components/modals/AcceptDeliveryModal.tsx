@@ -186,6 +186,12 @@ export default function AcceptDeliveryModal({
 
   if (!request) return null;
 
+  // Check if request is already accepted (e.g., after counter-proposal approval)
+  const isAlreadyAccepted = request.status === 'accepted';
+  const modalTitle = isAlreadyAccepted ? 'Start Delivery' : 'Accept & Start Delivery';
+  const buttonText = isAlreadyAccepted ? 'Start Delivery' : 'Accept & Start Delivery';
+  const successTitle = isAlreadyAccepted ? 'Delivery Started!' : 'Request Accepted!';
+
   // Success state - show briefly then close
   if (success) {
     return (
@@ -197,7 +203,7 @@ export default function AcceptDeliveryModal({
               <CheckCircle className="w-8 h-8 text-emerald-600" />
             </div>
             <h2 className="text-xl font-bold text-gray-900 mb-2">
-              Request Accepted!
+              {successTitle}
             </h2>
             <p className="text-gray-600 text-sm">
               Your delivery to {request.location?.name} has started. Drive safely!
@@ -209,7 +215,7 @@ export default function AcceptDeliveryModal({
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="Accept & Start Delivery" size="md">
+    <Modal isOpen={isOpen} onClose={handleClose} title={modalTitle} size="md">
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && (
           <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm flex items-center gap-2">
@@ -414,8 +420,11 @@ export default function AcceptDeliveryModal({
         {/* Info Banner */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
           <p className="text-sm text-blue-800">
-            This will <strong>accept the request</strong> and <strong>start your delivery</strong> immediately.
-            The store manager will be notified that you're on your way.
+            {isAlreadyAccepted ? (
+              <>This will <strong>start your delivery</strong> immediately. The store manager will be notified that you're on your way.</>
+            ) : (
+              <>This will <strong>accept the request</strong> and <strong>start your delivery</strong> immediately. The store manager will be notified that you're on your way.</>
+            )}
           </p>
         </div>
 
@@ -429,7 +438,7 @@ export default function AcceptDeliveryModal({
             isLoading={createTripMutation.isPending}
             disabled={vehicleOptions.length === 0 || fromOptions.length === 0 || !vehicleId || !fromLocation || !odometerStart}
           >
-            Accept & Start Delivery
+            {buttonText}
           </Button>
         </div>
       </form>

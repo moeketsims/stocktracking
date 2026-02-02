@@ -1188,10 +1188,10 @@ function RequestRow({
       );
     }
     if (canCreateTrip) {
-      // This is for requests that were accepted before the new flow
+      // Request was accepted (e.g., after counter-proposal) - driver can now start delivery
       return (
         <Button
-          onClick={onCreateTrip}
+          onClick={onAcceptAndDeliver}
           size="sm"
           className="bg-orange-500 hover:bg-orange-600 h-7 text-xs px-3 whitespace-nowrap"
         >
