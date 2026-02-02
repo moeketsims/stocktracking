@@ -283,24 +283,45 @@ async def confirm_delivery(
 
         delivery_cost_per_kg = round(total_trip_cost / confirmed_kg, 4) if confirmed_kg > 0 else 0
 
+        # Get or create supplier_id for internal transfers
+        # Database has NOT NULL constraint on supplier_id
+        supplier_id = delivery.data.get("supplier_id")
+        if not supplier_id:
+            # For internal transfers (no external supplier), use "Internal Transfer" supplier
+            internal_supplier = supabase.table("suppliers").select("id").eq(
+                "name", "Internal Transfer"
+            ).limit(1).execute()
+
+            if internal_supplier.data and len(internal_supplier.data) > 0:
+                supplier_id = internal_supplier.data[0]["id"]
+            else:
+                # Create the "Internal Transfer" supplier if it doesn't exist
+                new_supplier = {
+                    "id": str(uuid4()),
+                    "name": "Internal Transfer",
+                    "contact_name": "N/A",
+                    "contact_phone": "N/A"
+                }
+                supplier_result = supabase.table("suppliers").insert(new_supplier).execute()
+                if supplier_result.data:
+                    if isinstance(supplier_result.data, list) and len(supplier_result.data) > 0:
+                        supplier_id = supplier_result.data[0]["id"]
+                    elif isinstance(supplier_result.data, dict):
+                        supplier_id = supplier_result.data.get("id")
+                logger.info(f"[CONFIRM] Created 'Internal Transfer' supplier with id: {supplier_id}")
+
         # Create stock batch
-        # Note: Only include columns that exist in the stock_batches table
-        # And only include supplier_id if it's set (NOT NULL constraint)
         batch_data = {
             "id": str(uuid4()),
             "item_id": item_id,
             "location_id": delivery.data["location_id"],
+            "supplier_id": supplier_id,  # Required - use Internal Transfer supplier for internal deliveries
             "initial_qty": confirmed_kg,
             "remaining_qty": confirmed_kg,
             "received_at": datetime.now().isoformat(),
             "quality_score": 1,  # Default to good quality
             "status": "available"
         }
-
-        # Only add supplier_id if it's set (database has NOT NULL constraint)
-        supplier_id = delivery.data.get("supplier_id")
-        if supplier_id:
-            batch_data["supplier_id"] = supplier_id
 
         logger.info(f"[CONFIRM] Creating batch with data: {batch_data}")
 
