@@ -474,7 +474,7 @@ async def receive_stock(request: ReceiveStockRequest, user_data: dict = Depends(
             "photo_url": request.photo_url
         }
 
-        batch = supabase.table("stock_batches").insert(batch_data)
+        batch = supabase.table("stock_batches").insert(batch_data).execute()
 
         # Create transaction
         transaction_data = {

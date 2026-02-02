@@ -284,26 +284,31 @@ async def confirm_delivery(
         delivery_cost_per_kg = round(total_trip_cost / confirmed_kg, 4) if confirmed_kg > 0 else 0
 
         # Create stock batch
+        # Note: Only include columns that exist in the stock_batches table
         batch_data = {
             "id": str(uuid4()),
             "item_id": item_id,
             "location_id": delivery.data["location_id"],
             "supplier_id": delivery.data.get("supplier_id"),
-            "trip_id": delivery.data.get("trip_id"),
             "initial_qty": confirmed_kg,
             "remaining_qty": confirmed_kg,
             "received_at": datetime.now().isoformat(),
             "quality_score": 1,  # Default to good quality
             "status": "available",
-            "last_edited_by": user.id, # Must use auth.users.id
-            "delivery_cost_per_kg": delivery_cost_per_kg if total_trip_cost > 0 else None
+            "last_edited_by": user.id  # Must use auth.users.id
         }
 
-        batch_result = supabase.table("stock_batches").insert(batch_data).execute()
+        logger.info(f"[CONFIRM] Creating batch with data: {batch_data}")
+
+        try:
+            batch_result = supabase.table("stock_batches").insert(batch_data).execute()
+        except Exception as batch_err:
+            logger.error(f"[ERROR] Exception creating stock batch: {batch_err}")
+            raise HTTPException(status_code=500, detail=f"Failed to create stock batch: {str(batch_err)}")
 
         if not batch_result.data:
-            logger.error(f"[ERROR] Failed to create stock batch: {batch_result.error}")
-            raise HTTPException(status_code=500, detail="Failed to create stock batch")
+            logger.error(f"[ERROR] Failed to create stock batch - no data returned")
+            raise HTTPException(status_code=500, detail="Failed to create stock batch - database returned no data")
 
         # Handle both list and dict responses
         if isinstance(batch_result.data, list) and len(batch_result.data) > 0:
