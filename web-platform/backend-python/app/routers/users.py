@@ -296,8 +296,10 @@ async def update_user(
 
         # Safely extract updated user data
         updated_user = None
-        if result.data and len(result.data) > 0:
-            user_data_raw = result.data[0]
+        if result.data:
+            user_data_raw = result.data if isinstance(result.data, dict) else result.data[0] if isinstance(result.data, list) and result.data else None
+            if not user_data_raw:
+                user_data_raw = {}
             # Convert to serializable dict
             updated_user = {
                 "id": user_data_raw.get("id"),
