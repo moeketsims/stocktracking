@@ -491,8 +491,8 @@ export default function StockPage() {
         )}
       </div>
 
-      {/* Pending Deliveries Section */}
-      {pendingDeliveries.length > 0 && (
+      {/* Pending Deliveries Section - only for managers, not drivers */}
+      {!isDriver() && pendingDeliveries.length > 0 && (
         <div className="bg-orange-50 border border-orange-200 rounded-2xl p-5">
           <div className="flex items-center gap-2 mb-4">
             <Truck className="w-5 h-5 text-orange-600" />
