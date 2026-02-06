@@ -1,7 +1,8 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
-import { useZxing } from 'react-zxing';
-import { DecodeHintType, BarcodeFormat } from '@zxing/library';
-import { Camera, CameraOff, AlertCircle, Keyboard, FlipHorizontal } from 'lucide-react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { BarcodeScanner as Scanner, BarcodeFormat } from 'react-barcode-scanner';
+import 'react-barcode-scanner/polyfill';
+import type { DetectedBarcode } from 'react-barcode-scanner';
+import { Camera, CameraOff, AlertCircle, Keyboard } from 'lucide-react';
 import { Button } from '../ui';
 
 interface BarcodeScannerProps {
@@ -21,78 +22,63 @@ export default function BarcodeScanner({
   const [manualBarcode, setManualBarcode] = useState('');
   const [lastScanned, setLastScanned] = useState<string | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
+  const lastScannedRef = useRef<string | null>(null);
 
-  // Decode hints: try harder + common barcode formats
-  const hints = useMemo(() => {
-    const map = new Map();
-    map.set(DecodeHintType.TRY_HARDER, true);
-    map.set(DecodeHintType.POSSIBLE_FORMATS, [
-      BarcodeFormat.EAN_13,
-      BarcodeFormat.EAN_8,
-      BarcodeFormat.UPC_A,
-      BarcodeFormat.UPC_E,
-      BarcodeFormat.CODE_128,
-      BarcodeFormat.CODE_39,
-      BarcodeFormat.ITF,
-      BarcodeFormat.QR_CODE,
-    ]);
-    return map;
-  }, []);
+  const isPaused = !isActive || disabled || showManualEntry;
 
-  const { ref, torch } = useZxing({
-    onDecodeResult(result) {
-      const barcode = result.getText();
-      // Debounce to prevent multiple scans of the same barcode
-      if (barcode !== lastScanned) {
-        setLastScanned(barcode);
-        onScan(barcode);
-        // Reset after 2 seconds to allow re-scanning same barcode
-        setTimeout(() => setLastScanned(null), 2000);
-      }
-    },
-    onError(error) {
-      // Only handle actual camera errors, not decode failures (NotFoundException)
-      if (error.name === 'NotAllowedError') {
-        setCameraError('Camera access denied. Please allow camera access in your browser settings.');
-        onError?.(error.message || 'Camera access denied');
-      } else if (error.name === 'NotFoundError') {
-        setCameraError('No camera found on this device.');
-        onError?.(error.message || 'No camera found');
-      }
-    },
-    hints,
-    timeBetweenDecodingAttempts: 50,
-    paused: !isActive || disabled || showManualEntry,
-    constraints: {
-      video: {
-        facingMode: facingMode,
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
-        // @ts-expect-error — focusMode is valid but not in all TS typings
-        focusMode: { ideal: 'continuous' },
-      } as MediaTrackConstraints,
-    },
-  });
-
-  const handleManualSubmit = useCallback((e: React.FormEvent) => {
-    e.preventDefault();
-    if (manualBarcode.trim()) {
-      onScan(manualBarcode.trim());
-      setManualBarcode('');
-    }
-  }, [manualBarcode, onScan]);
-
-  const toggleCamera = useCallback(() => {
-    setFacingMode(prev => prev === 'environment' ? 'user' : 'environment');
-  }, []);
-
-  // Reset camera error when becoming active
+  // Pre-check camera access to detect errors (NotAllowedError, NotFoundError)
   useEffect(() => {
-    if (isActive) {
-      setCameraError(null);
-    }
-  }, [isActive]);
+    navigator.mediaDevices
+      .getUserMedia({ video: { facingMode: 'environment' } })
+      .then((stream) => {
+        // Camera access OK — stop the pre-check stream immediately
+        stream.getTracks().forEach((t) => t.stop());
+      })
+      .catch((err: Error) => {
+        const msg =
+          err.name === 'NotAllowedError'
+            ? 'Camera access denied. Please allow camera access in your browser settings.'
+            : err.name === 'NotFoundError'
+              ? 'No camera found on this device.'
+              : err.message;
+        setCameraError(msg);
+        onError?.(msg);
+      });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Handle detected barcodes via callback (no setState-in-effect)
+  const handleCapture = useCallback(
+    (barcodes: DetectedBarcode[]) => {
+      if (!barcodes.length) return;
+      const barcode = barcodes[0].rawValue;
+      if (!barcode) return;
+
+      // Debounce: skip if same as last scanned
+      if (barcode === lastScannedRef.current) return;
+
+      lastScannedRef.current = barcode;
+      setLastScanned(barcode);
+      onScan(barcode);
+
+      // Reset after 2 seconds to allow re-scanning same barcode
+      setTimeout(() => {
+        lastScannedRef.current = null;
+        setLastScanned(null);
+      }, 2000);
+    },
+    [onScan],
+  );
+
+  const handleManualSubmit = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      if (manualBarcode.trim()) {
+        onScan(manualBarcode.trim());
+        setManualBarcode('');
+      }
+    },
+    [manualBarcode, onScan],
+  );
 
   if (disabled) {
     return (
@@ -156,15 +142,33 @@ export default function BarcodeScanner({
               </div>
             ) : (
               <>
-                <video
-                  ref={ref}
-                  className="w-full h-full object-cover"
+                <Scanner
+                  onCapture={handleCapture}
+                  options={{
+                    formats: [
+                      BarcodeFormat.EAN_13,
+                      BarcodeFormat.EAN_8,
+                      BarcodeFormat.UPC_A,
+                      BarcodeFormat.UPC_E,
+                      BarcodeFormat.CODE_128,
+                      BarcodeFormat.CODE_39,
+                      BarcodeFormat.ITF,
+                      BarcodeFormat.QR_CODE,
+                    ],
+                    delay: 500,
+                  }}
+                  trackConstraints={{
+                    facingMode: 'environment',
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 },
+                  }}
+                  paused={isPaused}
                 />
                 {/* Scan overlay */}
                 <div className="absolute inset-0 pointer-events-none">
                   {/* Scanning guide box */}
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-3/4 h-1/3 border-2 border-green-400 rounded-lg shadow-lg">
+                    <div className="w-3/4 h-1/3 border-2 border-green-400 rounded-lg shadow-lg relative">
                       {/* Corner highlights */}
                       <div className="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-green-400 rounded-tl-lg" />
                       <div className="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-green-400 rounded-tr-lg" />
@@ -192,17 +196,6 @@ export default function BarcodeScanner({
                 )}
               </>
             )}
-          </div>
-
-          {/* Camera controls */}
-          <div className="absolute top-3 right-3 flex gap-2">
-            <button
-              onClick={toggleCamera}
-              className="p-2 bg-black/50 text-white rounded-lg hover:bg-black/70 transition-colors"
-              title="Switch camera"
-            >
-              <FlipHorizontal className="w-5 h-5" />
-            </button>
           </div>
         </div>
       )}
