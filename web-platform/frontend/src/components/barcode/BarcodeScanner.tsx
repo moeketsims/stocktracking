@@ -69,7 +69,7 @@ export default function BarcodeScanner({
         facingMode: facingMode,
         width: { ideal: 1920 },
         height: { ideal: 1080 },
-        // @ts-ignore — focusMode is valid but not in all TS typings
+        // @ts-expect-error — focusMode is valid but not in all TS typings
         focusMode: { ideal: 'continuous' },
       } as MediaTrackConstraints,
     },
