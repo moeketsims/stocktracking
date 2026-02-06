@@ -124,6 +124,11 @@ class TableQuery:
         self._filters.append(f"{column}=ilike.{pattern}")
         return self
 
+    def or_(self, filter_string: str) -> "TableQuery":
+        """OR filter: e.g., 'col1.eq.val1,col2.eq.val2'"""
+        self._filters.append(f"or=({filter_string})")
+        return self
+
     def order(self, column: str, desc: bool = False) -> "TableQuery":
         direction = "desc" if desc else "asc"
         self._order = f"{column}.{direction}"

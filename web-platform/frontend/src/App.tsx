@@ -18,6 +18,7 @@ import {
   Briefcase,
   BarChart3,
   Shield,
+  ClipboardCheck,
 } from 'lucide-react';
 import { useAuthStore } from './stores/authStore';
 import { useLogout } from './hooks/useAuth';
@@ -52,6 +53,7 @@ const DeliveriesPage = lazy(() => import('./pages/DeliveriesPage'));
 const LocationsPage = lazy(() => import('./pages/LocationsPage'));
 const FleetStatusPage = lazy(() => import('./pages/FleetStatusPage'));
 const LoansPage = lazy(() => import('./pages/LoansPage'));
+const StockTakePage = lazy(() => import('./pages/StockTakePage'));
 
 // Page loading skeleton for Suspense fallback
 function PageLoader() {
@@ -84,6 +86,7 @@ type TabId =
   | 'notifications'
   | 'kitchen'
   | 'fleet-status'
+  | 'stock-take'
   | 'settings';
 
 // Helper to parse URL params for initial state (avoids race condition)
@@ -315,6 +318,7 @@ function App() {
       { id: 'alerts' as const, label: 'Alerts', icon: AlertTriangle },
       { id: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard },
       { id: 'deliveries' as const, label: 'Verification', icon: PackageCheck },
+      { id: 'stock-take' as const, label: 'Stock Take', icon: ClipboardCheck },
     ];
 
     // Settings is pinned separately at the bottom of the sidebar
@@ -390,6 +394,8 @@ function App() {
         return <KitchenPage />;
       case 'fleet-status':
         return <FleetStatusPage />;
+      case 'stock-take':
+        return <StockTakePage />;
       default:
         return <DashboardPage />;
     }

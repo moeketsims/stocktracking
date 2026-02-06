@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { Boxes, Clock, Package, AlertTriangle } from 'lucide-react';
-import { Card, Badge } from '../components/ui';
+import { Boxes, Clock, Package, AlertTriangle, FileSpreadsheet } from 'lucide-react';
+import { Card, Badge, Button } from '../components/ui';
 import { useBatches } from '../hooks/useData';
+import { exportsApi, downloadBlob } from '../lib/api';
+import { toast } from '../components/ui/Toast';
 
 const filterOptions = [
   { value: 'all', label: 'All', icon: Boxes },
@@ -87,7 +89,7 @@ export default function BatchesPage() {
 
   return (
     <div className="space-y-6">
-      {/* Filter Buttons */}
+      {/* Filter + Export */}
       <div className="flex items-center gap-2 overflow-x-auto pb-2">
         {filterOptions.map((option) => {
           const Icon = option.icon;
@@ -117,6 +119,24 @@ export default function BatchesPage() {
             </button>
           );
         })}
+        <div className="ml-auto">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              try {
+                const response = await exportsApi.batchesExcel();
+                downloadBlob(new Blob([response.data]), 'batches.xlsx');
+                toast.success('Excel downloaded');
+              } catch {
+                toast.error('Failed to export Excel');
+              }
+            }}
+          >
+            <FileSpreadsheet className="w-4 h-4 mr-1" />
+            Export
+          </Button>
+        </div>
       </div>
 
       {/* Batch List */}

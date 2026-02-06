@@ -977,3 +977,45 @@ export interface AssignLoanDriverForm {
   vehicle_id: string;
   notes?: string;
 }
+
+// Stock Take Types
+export type StockTakeStatus = 'in_progress' | 'completed' | 'cancelled';
+
+export interface StockTake {
+  id: string;
+  location_id: string;
+  initiated_by: string;
+  initiated_by_name?: string;
+  status: StockTakeStatus;
+  started_at: string;
+  completed_at: string | null;
+  completed_by: string | null;
+  notes: string | null;
+  total_lines: number;
+  lines_counted: number;
+  variance_count: number;
+  locations?: { name: string };
+}
+
+export interface StockTakeLine {
+  id: string;
+  stock_take_id: string;
+  item_id: string;
+  expected_qty: number;
+  counted_qty: number | null;
+  variance: number | null;
+  variance_pct: number | null;
+  notes: string | null;
+  counted_at: string | null;
+  counted_by: string | null;
+  items?: { name: string; unit: string; sku: string; conversion_factor: number };
+}
+
+export interface StockTakeDetail {
+  stock_take: StockTake;
+  lines: StockTakeLine[];
+}
+
+export interface StockTakesData {
+  stock_takes: StockTake[];
+}

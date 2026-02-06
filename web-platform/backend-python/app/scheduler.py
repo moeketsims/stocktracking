@@ -31,6 +31,8 @@ def init_scheduler():
     from app.jobs.request_expiration import process_request_escalations
     from app.jobs.low_stock_alerts import process_low_stock_alerts
     from app.jobs.overdue_loans import process_overdue_loans
+    from app.jobs.expiry_alerts import process_expiry_alerts
+    from app.jobs.auto_reorder import process_auto_reorder
 
     # Request expiration/escalation job - runs every 5 minutes
     scheduler.add_job(
@@ -58,6 +60,26 @@ def init_scheduler():
         trigger=IntervalTrigger(hours=1),
         id='overdue_loans_job',
         name='Process Overdue Loan Reminders',
+        replace_existing=True,
+        max_instances=1
+    )
+
+    # Expiry alert digest - runs daily at 8 AM
+    scheduler.add_job(
+        process_expiry_alerts,
+        trigger=CronTrigger(hour=8, minute=0),
+        id='expiry_alert_job',
+        name='Process Expiry Alerts',
+        replace_existing=True,
+        max_instances=1
+    )
+
+    # Auto-reorder check - runs daily at 6 AM
+    scheduler.add_job(
+        process_auto_reorder,
+        trigger=CronTrigger(hour=6, minute=0),
+        id='auto_reorder_job',
+        name='Process Auto-Reorder',
         replace_existing=True,
         max_instances=1
     )
