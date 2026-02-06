@@ -1,20 +1,18 @@
 """Shared test fixtures for backend tests."""
 
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 # Set test environment variables BEFORE importing the app
 os.environ["SUPABASE_URL"] = "http://localhost:54321"
 os.environ["SUPABASE_ANON_KEY"] = "test-anon-key"
 os.environ["SUPABASE_SERVICE_KEY"] = "test-service-key"
+os.environ["KM_SUBMISSION_SECRET"] = "test-km-secret"
 os.environ["ENVIRONMENT"] = "test"
 
-import pytest  # noqa: E402
-
-# Patch the scheduler before importing the app so it doesn't start real jobs
-with patch("app.scheduler.start_scheduler"), patch("app.scheduler.shutdown_scheduler"):
-    from fastapi.testclient import TestClient  # noqa: E402
-    from main import app  # noqa: E402
+import pytest  # noqa: E402, I001
+from fastapi.testclient import TestClient  # noqa: E402
+from main import app  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

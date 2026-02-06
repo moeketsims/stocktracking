@@ -1,6 +1,6 @@
 """Tests for the health check endpoint."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 
 def test_health_check_connected(client):
