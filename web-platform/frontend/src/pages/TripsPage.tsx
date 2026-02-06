@@ -50,7 +50,7 @@ interface TripsPageProps {
 
 export default function TripsPage({ highlightTripId, pendingRequestId, onTripViewed, onRequestHandled }: TripsPageProps = {}) {
   const queryClient = useQueryClient();
-  const [showTripModal, setShowTripModal] = useState(false);
+  const [showTripModal, setShowTripModal] = useState(!!pendingRequestId);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [showStartModal, setShowStartModal] = useState(false);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
@@ -59,7 +59,7 @@ export default function TripsPage({ highlightTripId, pendingRequestId, onTripVie
   const [searchQuery, setSearchQuery] = useState('');
   const [preSelectedRequestId, setPreSelectedRequestId] = useState<string | null>(pendingRequestId ?? null);
 
-  // Auto-expand highlighted trip and scroll to it
+  // Auto-scroll to highlighted trip
   useEffect(() => {
     if (!highlightTripId) return;
     // Scroll to the trip after a short delay to allow rendering
@@ -72,12 +72,6 @@ export default function TripsPage({ highlightTripId, pendingRequestId, onTripVie
     // Clear the highlight after viewing
     onTripViewed?.();
   }, [highlightTripId, onTripViewed]);
-
-  // Auto-open TripModal when navigating from RequestsPage with a request to fulfill
-  useEffect(() => {
-    if (!pendingRequestId) return;
-    setShowTripModal(true);
-  }, [pendingRequestId]);
 
   // Collapsed sections - Completed collapsed by default
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
