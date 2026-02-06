@@ -1,5 +1,6 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useZxing } from 'react-zxing';
+import { DecodeHintType, BarcodeFormat } from '@zxing/library';
 import { Camera, CameraOff, AlertCircle, Keyboard, FlipHorizontal } from 'lucide-react';
 import { Button } from '../ui';
 
@@ -22,6 +23,23 @@ export default function BarcodeScanner({
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
 
+  // Decode hints: try harder + common barcode formats
+  const hints = useMemo(() => {
+    const map = new Map();
+    map.set(DecodeHintType.TRY_HARDER, true);
+    map.set(DecodeHintType.POSSIBLE_FORMATS, [
+      BarcodeFormat.EAN_13,
+      BarcodeFormat.EAN_8,
+      BarcodeFormat.UPC_A,
+      BarcodeFormat.UPC_E,
+      BarcodeFormat.CODE_128,
+      BarcodeFormat.CODE_39,
+      BarcodeFormat.ITF,
+      BarcodeFormat.QR_CODE,
+    ]);
+    return map;
+  }, []);
+
   const { ref, torch } = useZxing({
     onDecodeResult(result) {
       const barcode = result.getText();
@@ -34,22 +52,26 @@ export default function BarcodeScanner({
       }
     },
     onError(error) {
+      // Only handle actual camera errors, not decode failures (NotFoundException)
       if (error.name === 'NotAllowedError') {
         setCameraError('Camera access denied. Please allow camera access in your browser settings.');
+        onError?.(error.message || 'Camera access denied');
       } else if (error.name === 'NotFoundError') {
         setCameraError('No camera found on this device.');
-      } else if (error.message) {
-        setCameraError(error.message);
+        onError?.(error.message || 'No camera found');
       }
-      onError?.(error.message || 'Camera error');
     },
+    hints,
+    timeBetweenDecodingAttempts: 50,
     paused: !isActive || disabled || showManualEntry,
     constraints: {
       video: {
         facingMode: facingMode,
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-      },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        // @ts-ignore — focusMode is valid but not in all TS typings
+        focusMode: { ideal: 'continuous' },
+      } as MediaTrackConstraints,
     },
   });
 

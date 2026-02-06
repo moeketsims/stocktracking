@@ -27,6 +27,7 @@ import {
   User,
   Plus,
   FileSpreadsheet,
+  ScanLine,
 } from 'lucide-react';
 import { Button } from '../components/ui';
 import { useStockByLocation } from '../hooks/useData';
@@ -38,6 +39,7 @@ import TransferModal from '../components/modals/TransferModal';
 import WasteModal from '../components/modals/WasteModal';
 import StockRequestModal from '../components/modals/StockRequestModal';
 import ConfirmDeliveryModal from '../components/modals/ConfirmDeliveryModal';
+import ScanIssueModal from '../components/modals/ScanIssueModal';
 import type { LocationStockItem, RecentActivity, PendingDelivery } from '../types';
 
 // Stock status type
@@ -156,6 +158,7 @@ export default function StockPage() {
   const [showWasteModal, setShowWasteModal] = useState(false);
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [showConfirmDeliveryModal, setShowConfirmDeliveryModal] = useState(false);
+  const [showScanIssueModal, setShowScanIssueModal] = useState(false);
   const [selectedDelivery, setSelectedDelivery] = useState<PendingDelivery | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -298,7 +301,7 @@ export default function StockPage() {
     setTimeout(() => setSuccessMessage(null), 2000);
   };
 
-  const openModal = (modal: 'issue' | 'transfer' | 'waste') => {
+  const openModal = (modal: 'issue' | 'transfer' | 'waste' | 'scan-issue') => {
     switch (modal) {
       case 'issue':
         setShowIssueModal(true);
@@ -308,6 +311,9 @@ export default function StockPage() {
         break;
       case 'waste':
         setShowWasteModal(true);
+        break;
+      case 'scan-issue':
+        setShowScanIssueModal(true);
         break;
     }
   };
@@ -637,6 +643,11 @@ export default function StockPage() {
         onSuccess={handleDeliveryConfirmSuccess}
         delivery={selectedDelivery}
       />
+      <ScanIssueModal
+        isOpen={showScanIssueModal}
+        onClose={() => setShowScanIssueModal(false)}
+        onSuccess={handleSuccess}
+      />
     </div>
   );
 }
@@ -871,7 +882,7 @@ function DetailsDrawer({
 }: {
   location: LocationStockItem | null;
   onClose: () => void;
-  onAction: (action: 'issue' | 'transfer' | 'waste') => void;
+  onAction: (action: 'issue' | 'transfer' | 'waste' | 'scan-issue') => void;
   isManager: boolean;
   isDriver: boolean;
 }) {
@@ -1400,9 +1411,16 @@ function DetailsDrawer({
                   <h3 className="text-sm font-medium text-gray-700 mb-3">Quick Actions</h3>
                   <div className="grid grid-cols-2 gap-3">
                     <ActionButton
+                      icon={ScanLine}
+                      label="Scan Issue"
+                      description="Scan bag barcode"
+                      onClick={() => onAction('scan-issue')}
+                      color="emerald"
+                    />
+                    <ActionButton
                       icon={ArrowUpFromLine}
                       label="Issue Stock"
-                      description="Record usage"
+                      description="Manual entry"
                       onClick={() => onAction('issue')}
                       color="slate"
                     />
@@ -1537,9 +1555,16 @@ function DetailsDrawer({
                 <h3 className="text-sm font-medium text-gray-700 mb-3">Quick Actions</h3>
                 <div className="grid grid-cols-2 gap-3">
                   <ActionButton
+                    icon={ScanLine}
+                    label="Scan Issue"
+                    description="Scan bag barcode"
+                    onClick={() => onAction('scan-issue')}
+                    color="emerald"
+                  />
+                  <ActionButton
                     icon={ArrowUpFromLine}
                     label="Issue Stock"
-                    description="Record usage"
+                    description="Manual entry"
                     onClick={() => onAction('issue')}
                     color="slate"
                   />
