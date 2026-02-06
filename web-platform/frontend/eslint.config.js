@@ -24,6 +24,7 @@ export default defineConfig([
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       'react-hooks/set-state-in-effect': 'warn',
       'react-hooks/purity': 'warn',
+      'react-hooks/static-components': 'warn',
       'react-hooks/preserve-manual-memoization': 'warn',
       'react-refresh/only-export-components': 'warn',
     },
