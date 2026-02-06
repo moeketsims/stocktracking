@@ -440,6 +440,10 @@ export const bagsApi = {
     api.get(`/api/bags/lookup/${encodeURIComponent(barcode)}`),
   undoIssue: (bagId: string) =>
     api.post(`/api/bags/${bagId}/undo-issue`),
+  check: (barcode: string) =>
+    api.get<{ exists: boolean; status?: string; location_id?: string; received?: string }>(
+      `/api/bags/check/${encodeURIComponent(barcode)}`
+    ),
 };
 
 // Barcode Scanning API

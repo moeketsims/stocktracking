@@ -111,19 +111,17 @@ async def register_bag(
         item_id = batch.data["item_id"]
         location_id = batch.data["location_id"]
 
-        # Check for duplicate active barcode at this location
-        existing = supabase.table("bags").select("id").eq(
-            "barcode", request.barcode
-        ).eq(
-            "location_id", location_id
-        ).eq(
-            "status", "registered"
-        ).execute()
+        # Check for duplicate barcode across ALL statuses (global uniqueness)
+        existing = supabase.table("bags").select(
+            "id, status, created_at"
+        ).eq("barcode", request.barcode).execute()
 
         if existing.data:
+            bag = existing.data[0]
+            received = bag["created_at"][:10] if bag.get("created_at") else "unknown date"
             raise HTTPException(
                 status_code=409,
-                detail=f"Barcode '{request.barcode}' is already registered at this location"
+                detail=f"Barcode '{request.barcode}' already exists in system (status: {bag['status']}, received: {received})"
             )
 
         # Determine weight: use override or item's conversion_factor
@@ -196,21 +194,29 @@ async def register_bags_bulk(
             ).eq("id", item_id).single().execute()
             weight_kg = float(item.data["conversion_factor"]) if item.data else 10.0
 
-        # Check for existing active barcodes at this location
-        existing = supabase.table("bags").select("barcode").eq(
-            "location_id", location_id
-        ).eq(
-            "status", "registered"
+        # Check for existing barcodes across ALL statuses (global uniqueness)
+        existing = supabase.table("bags").select(
+            "barcode, status, created_at"
         ).in_("barcode", request.barcodes).execute()
 
-        existing_barcodes = {b["barcode"] for b in (existing.data or [])}
+        existing_barcodes = {}
+        for b in (existing.data or []):
+            received = b["created_at"][:10] if b.get("created_at") else "unknown"
+            existing_barcodes[b["barcode"]] = {
+                "status": b["status"],
+                "received": received,
+            }
 
         registered = []
         skipped = []
 
         for barcode in request.barcodes:
             if barcode in existing_barcodes:
-                skipped.append({"barcode": barcode, "reason": "Already registered"})
+                info = existing_barcodes[barcode]
+                skipped.append({
+                    "barcode": barcode,
+                    "reason": f"Already in system (status: {info['status']}, received: {info['received']})"
+                })
                 continue
 
             bag_data = {
@@ -416,6 +422,40 @@ async def lookup_bag(
     except HTTPException:
         raise
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================
+# CHECK BARCODE (Lightweight pre-check)
+# ============================================
+
+@router.get("/check/{barcode}")
+async def check_barcode_exists(
+    barcode: str,
+    user_data: dict = Depends(require_auth)
+):
+    """Quick check if a barcode already exists in the system.
+    Returns { exists: false } for new barcodes, or { exists: true, ... } with details."""
+    supabase = get_supabase_admin_client()
+
+    try:
+        result = supabase.table("bags").select(
+            "id, barcode, status, location_id, created_at"
+        ).eq("barcode", barcode).limit(1).execute()
+
+        if not result.data:
+            return {"exists": False}
+
+        bag = result.data[0]
+        return {
+            "exists": True,
+            "status": bag["status"],
+            "location_id": bag["location_id"],
+            "received": bag["created_at"],
+        }
+
+    except Exception as e:
+        logger.error(f"[BAG] Check barcode error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
