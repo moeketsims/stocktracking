@@ -19,6 +19,7 @@ import {
   invitationsApi,
   pendingDeliveriesApi,
   locationsApi,
+  stockTakesApi,
 } from '../lib/api';
 import type {
   DashboardData,
@@ -46,6 +47,8 @@ import type {
   InvitationsData,
   InviteUserForm,
   UpdateUserForm,
+  StockTakesData,
+  StockTakeDetail,
 } from '../types';
 
 // Dashboard
@@ -990,5 +993,97 @@ export function useDriverLoanTripsCount() {
     },
     refetchInterval: 30 * 1000,
     staleTime: 15 * 1000,
+  });
+}
+
+// ==================== Stock Takes ====================
+
+export function useStockTakes(params?: { status?: string; limit?: number }) {
+  return useQuery<StockTakesData>({
+    queryKey: ['stock-takes', params],
+    queryFn: async () => {
+      const response = await stockTakesApi.list(params);
+      return response.data;
+    },
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useStockTake(stockTakeId: string | null) {
+  return useQuery<StockTakeDetail>({
+    queryKey: ['stock-take', stockTakeId],
+    queryFn: async () => {
+      const response = await stockTakesApi.get(stockTakeId!);
+      return response.data;
+    },
+    enabled: !!stockTakeId,
+  });
+}
+
+export function useCreateStockTake() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { location_id?: string; notes?: string }) => {
+      const response = await stockTakesApi.create(data);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stock-takes'] });
+    },
+  });
+}
+
+export function useUpdateStockTakeLine() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      stockTakeId,
+      lineId,
+      data,
+    }: {
+      stockTakeId: string;
+      lineId: string;
+      data: { counted_qty: number; notes?: string };
+    }) => {
+      const response = await stockTakesApi.updateLine(stockTakeId, lineId, data);
+      return response.data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['stock-take', variables.stockTakeId] });
+      queryClient.invalidateQueries({ queryKey: ['stock-takes'] });
+    },
+  });
+}
+
+export function useCompleteStockTake() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ stockTakeId, data }: { stockTakeId: string; data?: { notes?: string } }) => {
+      const response = await stockTakesApi.complete(stockTakeId, data);
+      return response.data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['stock-take', variables.stockTakeId] });
+      queryClient.invalidateQueries({ queryKey: ['stock-takes'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-overview'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-by-location'] });
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['batches'] });
+    },
+  });
+}
+
+export function useCancelStockTake() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (stockTakeId: string) => {
+      const response = await stockTakesApi.cancel(stockTakeId);
+      return response.data;
+    },
+    onSuccess: (_, stockTakeId) => {
+      queryClient.invalidateQueries({ queryKey: ['stock-take', stockTakeId] });
+      queryClient.invalidateQueries({ queryKey: ['stock-takes'] });
+    },
   });
 }

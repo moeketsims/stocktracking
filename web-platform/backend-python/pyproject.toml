@@ -1,0 +1,23 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = [
+    "E501",   # line too long (handled by line-length)
+    "E402",   # module-level import not at top (existing pattern)
+    "E722",   # bare except (pre-existing, fix incrementally)
+    "E741",   # ambiguous variable name (pre-existing)
+    "F401",   # unused imports (pre-existing across codebase, fix incrementally)
+    "F403",   # star imports (used in models/__init__.py)
+    "F541",   # f-string without placeholders (pre-existing)
+    "F841",   # unused local variable (pre-existing, fix incrementally)
+    "W291",   # trailing whitespace
+    "W293",   # blank line with whitespace
+]

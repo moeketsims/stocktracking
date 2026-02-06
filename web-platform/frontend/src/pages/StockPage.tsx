@@ -26,11 +26,13 @@ import {
   Bell,
   User,
   Plus,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { Button } from '../components/ui';
 import { useStockByLocation } from '../hooks/useData';
 import { useAuthStore } from '../stores/authStore';
-import { pendingDeliveriesApi, tripsApi, stockRequestsApi, alertsApi, usersApi } from '../lib/api';
+import { pendingDeliveriesApi, tripsApi, stockRequestsApi, alertsApi, usersApi, exportsApi, downloadBlob } from '../lib/api';
+import { toast } from '../components/ui/Toast';
 import IssueModal from '../components/modals/IssueModal';
 import TransferModal from '../components/modals/TransferModal';
 import WasteModal from '../components/modals/WasteModal';
@@ -477,9 +479,26 @@ export default function StockPage() {
           )}
         </div>
 
-        {/* CTAs - Request Stock button only for zone/location managers (not admin, driver, or staff) */}
-        {(user?.role === 'zone_manager' || user?.role === 'location_manager') && (
-          <div className="flex items-center gap-2 shrink-0">
+        {/* CTAs */}
+        <div className="flex items-center gap-2 shrink-0">
+          {isManager() && (
+            <Button
+              variant="outline"
+              onClick={async () => {
+                try {
+                  const response = await exportsApi.stockExcel();
+                  downloadBlob(new Blob([response.data]), 'stock_balance.xlsx');
+                  toast.success('Excel downloaded');
+                } catch {
+                  toast.error('Failed to export Excel');
+                }
+              }}
+            >
+              <FileSpreadsheet className="w-4 h-4 mr-1" />
+              Export
+            </Button>
+          )}
+          {(user?.role === 'zone_manager' || user?.role === 'location_manager') && (
             <Button
               onClick={() => setShowRequestModal(true)}
               className="gap-2 bg-orange-500 hover:bg-orange-600 text-white"
@@ -487,8 +506,8 @@ export default function StockPage() {
               <ClipboardList className="w-4 h-4" />
               Request Stock
             </Button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Pending Deliveries Section - only for managers, not drivers */}

@@ -1,0 +1,50 @@
+# Dependencies (installed fresh inside container)
+node_modules/
+.venv/
+venv/
+__pycache__/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+
+# Environment files (secrets set via Heroku config vars)
+.env
+.env.*
+!.env.example
+
+# CI/CD
+.github/
+
+# Documentation
+*.md
+docs/
+FRONTEND_REVIEW_REPORT.md
+
+# Temporary
+tmpclaude-*
+*.tmp
+.cache/
+
+# Mobile app (not needed for web deploy)
+apps/
+
+# Supabase local configs
+supabase/
+infra/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude
+.claude/
+
+# Test files (not needed in production image)
+web-platform/frontend/src/**/*.test.*
+web-platform/backend-python/tests/
+coverage/

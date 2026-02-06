@@ -1,0 +1,33 @@
+{
+  "name": "Potato Stock Tracking",
+  "description": "Inventory management platform for potato franchise operations",
+  "stack": "container",
+  "env": {
+    "SUPABASE_URL": {
+      "description": "Supabase project URL",
+      "required": true
+    },
+    "SUPABASE_ANON_KEY": {
+      "description": "Supabase anonymous/public key",
+      "required": true
+    },
+    "SUPABASE_SERVICE_KEY": {
+      "description": "Supabase service role key (admin operations)",
+      "required": true
+    },
+    "ENVIRONMENT": {
+      "description": "Runtime environment (production, development, review)",
+      "value": "production"
+    },
+    "CORS_ORIGINS": {
+      "description": "Comma-separated list of allowed CORS origins",
+      "required": false
+    }
+  },
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "basic"
+    }
+  }
+}

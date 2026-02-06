@@ -1,6 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
+from pathlib import Path
 import uvicorn
 import logging
 import os
@@ -49,6 +52,8 @@ from app.routers.stock_requests import router as stock_requests_router
 from app.routers.pending_deliveries import router as pending_deliveries_router
 from app.routers.locations import router as locations_router
 from app.routers.loans import router as loans_router
+from app.routers.stock_takes import router as stock_takes_router
+from app.routers.exports import router as exports_router
 
 
 logger = logging.getLogger(__name__)
@@ -133,6 +138,22 @@ app.include_router(stock_requests_router, prefix="/api")
 app.include_router(pending_deliveries_router, prefix="/api")
 app.include_router(locations_router, prefix="/api")
 app.include_router(loans_router, prefix="/api")
+app.include_router(stock_takes_router, prefix="/api")
+app.include_router(exports_router, prefix="/api")
+
+
+# ── Serve Frontend Static Files (Docker/production only) ─────
+STATIC_DIR = Path(__file__).parent / "static"
+if STATIC_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        """Serve frontend SPA - returns index.html for client-side routing."""
+        file_path = STATIC_DIR / full_path
+        if file_path.is_file():
+            return FileResponse(file_path)
+        return FileResponse(STATIC_DIR / "index.html")
 
 
 if __name__ == "__main__":

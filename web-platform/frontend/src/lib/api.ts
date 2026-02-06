@@ -2,7 +2,7 @@ import type { AxiosInstance, AxiosError } from 'axios';
 import axios from 'axios';
 import { useAuthStore } from '../stores/authStore';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
 
 const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
@@ -369,6 +369,61 @@ export const loansApi = {
     api.post(`/api/loans/${id}/accept-return-assignment`, data),
   confirmReturn: (id: string, data?: { notes?: string }) =>
     api.post(`/api/loans/${id}/confirm-return`, data || {}),
+};
+
+// Stock Takes API
+export const stockTakesApi = {
+  list: (params?: { status?: string; limit?: number; view_location_id?: string }) =>
+    api.get('/api/stock-takes', { params }),
+  get: (id: string) => api.get(`/api/stock-takes/${id}`),
+  create: (data: { location_id?: string; notes?: string }) =>
+    api.post('/api/stock-takes', data),
+  updateLine: (stockTakeId: string, lineId: string, data: { counted_qty: number; notes?: string }) =>
+    api.patch(`/api/stock-takes/${stockTakeId}/lines/${lineId}`, data),
+  complete: (id: string, data?: { notes?: string }) =>
+    api.post(`/api/stock-takes/${id}/complete`, data || {}),
+  cancel: (id: string) =>
+    api.post(`/api/stock-takes/${id}/cancel`),
+};
+
+// Exports API (Excel/PDF downloads)
+export const exportsApi = {
+  stockExcel: (viewLocationId?: string) =>
+    api.get('/api/exports/stock/excel', {
+      params: viewLocationId ? { view_location_id: viewLocationId } : undefined,
+      responseType: 'blob',
+    }),
+  transactionsExcel: (days: number = 30, typeFilter?: string, viewLocationId?: string) =>
+    api.get('/api/exports/transactions/excel', {
+      params: { days, type_filter: typeFilter, view_location_id: viewLocationId },
+      responseType: 'blob',
+    }),
+  batchesExcel: (viewLocationId?: string) =>
+    api.get('/api/exports/batches/excel', {
+      params: viewLocationId ? { view_location_id: viewLocationId } : undefined,
+      responseType: 'blob',
+    }),
+  stockTakeExcel: (stockTakeId: string) =>
+    api.get(`/api/exports/stock-take/${stockTakeId}/excel`, { responseType: 'blob' }),
+  stockTakePdf: (stockTakeId: string) =>
+    api.get(`/api/exports/stock-take/${stockTakeId}/pdf`, { responseType: 'blob' }),
+  dailyReportPdf: (periodDays: number = 7, viewLocationId?: string) =>
+    api.get('/api/exports/daily-report/pdf', {
+      params: { period_days: periodDays, view_location_id: viewLocationId },
+      responseType: 'blob',
+    }),
+};
+
+// Helper for downloading blob responses
+export const downloadBlob = (blob: Blob, filename: string) => {
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
 };
 
 // Barcode Scanning API
