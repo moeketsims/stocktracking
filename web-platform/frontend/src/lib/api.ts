@@ -426,6 +426,22 @@ export const downloadBlob = (blob: Blob, filename: string) => {
   window.URL.revokeObjectURL(url);
 };
 
+// Bags API (Per-Bag Barcode Tracking)
+export const bagsApi = {
+  register: (data: { barcode: string; batch_id: string; weight_kg?: number }) =>
+    api.post('/api/bags/register', data),
+  registerBulk: (data: { barcodes: string[]; batch_id: string; weight_kg?: number }) =>
+    api.post('/api/bags/register-bulk', data),
+  issue: (data: { barcode: string }) =>
+    api.post('/api/bags/issue', data),
+  list: (params?: { status?: string; batch_id?: string; location_id?: string; limit?: number }) =>
+    api.get('/api/bags', { params }),
+  lookup: (barcode: string) =>
+    api.get(`/api/bags/lookup/${encodeURIComponent(barcode)}`),
+  undoIssue: (bagId: string) =>
+    api.post(`/api/bags/${bagId}/undo-issue`),
+};
+
 // Barcode Scanning API
 export const barcodeApi = {
   // Barcode lookup

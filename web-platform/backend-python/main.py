@@ -42,6 +42,7 @@ from app.routers.vehicles import router as vehicles_router
 from app.routers.trips import router as trips_router
 from app.routers.drivers import router as drivers_router
 from app.routers.barcode import router as barcode_router
+from app.routers.bags import router as bags_router
 from app.routers.users import router as users_router
 
 # Conditionally import demo router only in development
@@ -129,6 +130,7 @@ app.include_router(vehicles_router, prefix="/api")
 app.include_router(trips_router, prefix="/api")
 app.include_router(drivers_router, prefix="/api")
 app.include_router(barcode_router, prefix="/api")
+app.include_router(bags_router, prefix="/api")
 # Only include demo router in development environment
 if IS_DEVELOPMENT:
     app.include_router(demo_data_router, prefix="/api")

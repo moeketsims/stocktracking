@@ -50,38 +50,28 @@ interface TripsPageProps {
 
 export default function TripsPage({ highlightTripId, pendingRequestId, onTripViewed, onRequestHandled }: TripsPageProps = {}) {
   const queryClient = useQueryClient();
-  const [showTripModal, setShowTripModal] = useState(false);
+  const [showTripModal, setShowTripModal] = useState(!!pendingRequestId);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [showStartModal, setShowStartModal] = useState(false);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
-  const [expandedTripId, setExpandedTripId] = useState<string | null>(null);
+  const [expandedTripId, setExpandedTripId] = useState<string | null>(highlightTripId ?? null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [preSelectedRequestId, setPreSelectedRequestId] = useState<string | null>(null);
+  const [preSelectedRequestId, setPreSelectedRequestId] = useState<string | null>(pendingRequestId ?? null);
 
-  // Auto-expand highlighted trip when navigating from Requests page
+  // Auto-scroll to highlighted trip
   useEffect(() => {
-    if (highlightTripId) {
-      setExpandedTripId(highlightTripId);
-      // Scroll to the trip after a short delay to allow rendering
-      setTimeout(() => {
-        const tripElement = document.getElementById(`trip-${highlightTripId}`);
-        if (tripElement) {
-          tripElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-      }, 100);
-      // Clear the highlight after viewing
-      onTripViewed?.();
-    }
+    if (!highlightTripId) return;
+    // Scroll to the trip after a short delay to allow rendering
+    setTimeout(() => {
+      const tripElement = document.getElementById(`trip-${highlightTripId}`);
+      if (tripElement) {
+        tripElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 100);
+    // Clear the highlight after viewing
+    onTripViewed?.();
   }, [highlightTripId, onTripViewed]);
-
-  // Auto-open TripModal when navigating from RequestsPage with a request to fulfill
-  useEffect(() => {
-    if (pendingRequestId) {
-      setPreSelectedRequestId(pendingRequestId);
-      setShowTripModal(true);
-    }
-  }, [pendingRequestId]);
 
   // Collapsed sections - Completed collapsed by default
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({

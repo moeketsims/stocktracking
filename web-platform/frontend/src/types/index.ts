@@ -978,6 +978,57 @@ export interface AssignLoanDriverForm {
   notes?: string;
 }
 
+// Bag Types (Per-Bag Barcode Tracking)
+export type BagStatus = 'registered' | 'issued' | 'wasted' | 'returned';
+
+export interface Bag {
+  id: string;
+  barcode: string;
+  batch_id: string;
+  item_id: string;
+  location_id: string;
+  weight_kg: number;
+  status: BagStatus;
+  received_at: string;
+  received_by: string;
+  issued_at: string | null;
+  issued_by: string | null;
+  issue_transaction_id: string | null;
+  created_at: string;
+  stock_batches?: {
+    id: string;
+    received_at: string;
+    status: string;
+  };
+}
+
+export interface BagIssueResponse {
+  success: boolean;
+  message: string;
+  bag: {
+    id: string;
+    barcode: string;
+    weight_kg: number;
+    batch_id: string;
+    status: string;
+  };
+  transaction_id: string;
+  kg_deducted: number;
+  fifo_warning: {
+    is_oldest_batch: boolean;
+    bag_batch_id: string;
+    oldest_batch_id: string;
+    oldest_batch_received_at: string;
+    message: string;
+  } | null;
+}
+
+export interface BagRegisterResponse {
+  success: boolean;
+  message: string;
+  bag: Bag;
+}
+
 // Stock Take Types
 export type StockTakeStatus = 'in_progress' | 'completed' | 'cancelled';
 

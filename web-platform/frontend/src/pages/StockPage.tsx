@@ -27,6 +27,7 @@ import {
   User,
   Plus,
   FileSpreadsheet,
+  ScanLine,
 } from 'lucide-react';
 import { Button } from '../components/ui';
 import { useStockByLocation } from '../hooks/useData';
@@ -38,6 +39,7 @@ import TransferModal from '../components/modals/TransferModal';
 import WasteModal from '../components/modals/WasteModal';
 import StockRequestModal from '../components/modals/StockRequestModal';
 import ConfirmDeliveryModal from '../components/modals/ConfirmDeliveryModal';
+import ScanIssueModal from '../components/modals/ScanIssueModal';
 import type { LocationStockItem, RecentActivity, PendingDelivery } from '../types';
 
 // Stock status type
@@ -156,6 +158,7 @@ export default function StockPage() {
   const [showWasteModal, setShowWasteModal] = useState(false);
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [showConfirmDeliveryModal, setShowConfirmDeliveryModal] = useState(false);
+  const [showScanIssueModal, setShowScanIssueModal] = useState(false);
   const [selectedDelivery, setSelectedDelivery] = useState<PendingDelivery | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -298,7 +301,7 @@ export default function StockPage() {
     setTimeout(() => setSuccessMessage(null), 2000);
   };
 
-  const openModal = (modal: 'issue' | 'transfer' | 'waste') => {
+  const openModal = (modal: 'issue' | 'transfer' | 'waste' | 'scan-issue') => {
     switch (modal) {
       case 'issue':
         setShowIssueModal(true);
@@ -308,6 +311,9 @@ export default function StockPage() {
         break;
       case 'waste':
         setShowWasteModal(true);
+        break;
+      case 'scan-issue':
+        setShowScanIssueModal(true);
         break;
     }
   };
@@ -372,17 +378,23 @@ export default function StockPage() {
               summaryStats.totalStockStatus === 'low' ? 'warning' :
               undefined
             }
+            bgColor={
+              summaryStats.totalStockStatus === 'critical' ? 'bg-red-100' :
+              summaryStats.totalStockStatus === 'low' ? 'bg-amber-100' :
+              'bg-emerald-100'
+            }
             onClick={() => setStatusFilter('all')}
             isActive={statusFilter === 'all'}
           />
         )}
         <SummaryTile
           icon={MapPin}
-          iconBg="bg-gray-100"
-          iconColor="text-gray-600"
+          iconBg="bg-emerald-100"
+          iconColor="text-emerald-600"
           label="Healthy"
           value={summaryStats.healthyCount.toString()}
           subtitle={summaryStats.healthyCount === 1 ? 'location' : 'locations'}
+          bgColor="bg-emerald-100"
           onClick={() => setStatusFilter('healthy')}
           isActive={statusFilter === 'healthy'}
         />
@@ -394,6 +406,7 @@ export default function StockPage() {
           value={summaryStats.lowCount.toString()}
           subtitle={summaryStats.lowCount === 1 ? 'location' : 'locations'}
           highlight={summaryStats.lowCount > 0 ? 'warning' : undefined}
+          bgColor={summaryStats.lowCount > 0 ? 'bg-amber-100' : undefined}
           onClick={() => setStatusFilter('low')}
           isActive={statusFilter === 'low'}
         />
@@ -405,6 +418,7 @@ export default function StockPage() {
           value={summaryStats.criticalCount.toString()}
           subtitle={summaryStats.criticalCount === 1 ? 'location' : 'locations'}
           highlight={summaryStats.criticalCount > 0 ? 'error' : undefined}
+          bgColor={summaryStats.criticalCount > 0 ? 'bg-red-100' : undefined}
           onClick={() => setStatusFilter('critical')}
           isActive={statusFilter === 'critical'}
         />
@@ -629,6 +643,11 @@ export default function StockPage() {
         onSuccess={handleDeliveryConfirmSuccess}
         delivery={selectedDelivery}
       />
+      <ScanIssueModal
+        isOpen={showScanIssueModal}
+        onClose={() => setShowScanIssueModal(false)}
+        onSuccess={handleSuccess}
+      />
     </div>
   );
 }
@@ -643,6 +662,7 @@ function SummaryTile({
   unit,
   subtitle,
   highlight,
+  bgColor,
   onClick,
   isActive,
 }: {
@@ -654,6 +674,7 @@ function SummaryTile({
   unit?: string;
   subtitle?: string;
   highlight?: 'warning' | 'error';
+  bgColor?: string;
   onClick?: () => void;
   isActive?: boolean;
 }) {
@@ -673,7 +694,7 @@ function SummaryTile({
   return (
     <button
       onClick={onClick}
-      className={`group bg-white rounded-2xl border border-gray-100 transition-all text-left w-full overflow-hidden flex cursor-pointer hover:shadow-md hover:shadow-gray-100/80 hover:border-gray-200 ${
+      className={`group ${bgColor || 'bg-white'} rounded-2xl border border-gray-100 transition-all text-left w-full overflow-hidden flex cursor-pointer hover:shadow-md hover:shadow-gray-100/80 hover:border-gray-200 ${
         isActive ? `ring-2 ${ringColor} ring-offset-1` : ''
       }`}
     >
@@ -737,7 +758,7 @@ function LocationCard({
   return (
     <button
       onClick={onClick}
-      className="group bg-white rounded-2xl border border-gray-100 text-left hover:shadow-lg hover:shadow-gray-100/50 hover:border-gray-200 transition-all duration-200 w-full overflow-hidden flex"
+      className="group bg-white rounded-2xl border border-gray-100 text-left hover:shadow-lg hover:shadow-gray-100/50 hover:border-gray-200 transition-all duration-200 w-full overflow-hidden flex lg:min-h-[13rem]"
     >
       {/* Left accent bar - thinner (w-0.5 = 2px), purple for warehouse critical */}
       <div className={`w-0.5 shrink-0 ${
@@ -788,7 +809,7 @@ function LocationCard({
             <span className={`font-medium ${statusStyle.textColor}`}>{capacityPercent}% of target</span>
             <span className="text-gray-500">Target: {targetFormatted.value} {targetFormatted.unit}</span>
           </div>
-          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+          <div className="h-[6px] bg-gray-100 rounded-full overflow-hidden">
             <div
               className={`h-full rounded-full transition-all ${statusStyle.barColor}`}
               style={{ width: `${capacityPercent}%` }}
@@ -833,8 +854,10 @@ function LocationCard({
 
         {/* Footer - secondary metrics */}
         <div className="flex items-center justify-between pt-2 border-t border-gray-50">
-          <div className={`flex items-center gap-1.5 text-xs ${stale ? 'text-amber-500' : 'text-gray-500'}`}>
-            {stale ? <AlertCircle className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
+          <div className={`flex items-center gap-1.5 text-xs ${
+            !location.last_activity ? 'text-gray-400' : stale ? 'text-amber-500' : 'text-gray-500'
+          }`}>
+            {stale && location.last_activity ? <AlertCircle className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
             <span>{getRelativeTime(location.last_activity)}</span>
           </div>
           {location.recent_activity.length > 0 && (
@@ -859,7 +882,7 @@ function DetailsDrawer({
 }: {
   location: LocationStockItem | null;
   onClose: () => void;
-  onAction: (action: 'issue' | 'transfer' | 'waste') => void;
+  onAction: (action: 'issue' | 'transfer' | 'waste' | 'scan-issue') => void;
   isManager: boolean;
   isDriver: boolean;
 }) {
@@ -1388,9 +1411,16 @@ function DetailsDrawer({
                   <h3 className="text-sm font-medium text-gray-700 mb-3">Quick Actions</h3>
                   <div className="grid grid-cols-2 gap-3">
                     <ActionButton
+                      icon={ScanLine}
+                      label="Scan Issue"
+                      description="Scan bag barcode"
+                      onClick={() => onAction('scan-issue')}
+                      color="emerald"
+                    />
+                    <ActionButton
                       icon={ArrowUpFromLine}
                       label="Issue Stock"
-                      description="Record usage"
+                      description="Manual entry"
                       onClick={() => onAction('issue')}
                       color="slate"
                     />
@@ -1525,9 +1555,16 @@ function DetailsDrawer({
                 <h3 className="text-sm font-medium text-gray-700 mb-3">Quick Actions</h3>
                 <div className="grid grid-cols-2 gap-3">
                   <ActionButton
+                    icon={ScanLine}
+                    label="Scan Issue"
+                    description="Scan bag barcode"
+                    onClick={() => onAction('scan-issue')}
+                    color="emerald"
+                  />
+                  <ActionButton
                     icon={ArrowUpFromLine}
                     label="Issue Stock"
-                    description="Record usage"
+                    description="Manual entry"
                     onClick={() => onAction('issue')}
                     color="slate"
                   />
