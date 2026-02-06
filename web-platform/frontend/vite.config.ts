@@ -17,7 +17,7 @@ export default defineConfig({
           'query-vendor': ['@tanstack/react-query'],
           'charts': ['recharts'],
           'icons': ['lucide-react'],
-          'barcode': ['react-zxing'],
+          'barcode': ['react-barcode-scanner'],
         },
       },
     },
