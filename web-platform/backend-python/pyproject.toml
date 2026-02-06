@@ -18,5 +18,6 @@ ignore = [
     "F403",   # star imports (used in models/__init__.py)
     "F541",   # f-string without placeholders (pre-existing)
     "F841",   # unused local variable (pre-existing, fix incrementally)
+    "W291",   # trailing whitespace
     "W293",   # blank line with whitespace
 ]

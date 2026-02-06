@@ -1097,7 +1097,7 @@ async def complete_trip(
             
             # Use data from existing if still no request_id (unlikely with above checks)
             if not request_id:
-                # We already checked request_id doesn't exist on trips table, 
+                # We already checked request_id doesn't exist on trips table,
                 # so we can't use existing.data.get("request_id")
                 pass
 
