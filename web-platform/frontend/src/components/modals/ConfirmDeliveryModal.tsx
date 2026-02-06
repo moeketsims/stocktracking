@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { X, Truck, AlertTriangle, CheckCircle, XCircle, Mail, Package, Trash2, Keyboard } from 'lucide-react';
 import { Button } from '../ui';
+import { toast } from '../ui/Toast';
 import { pendingDeliveriesApi, bagsApi } from '../../lib/api';
 import type { PendingDelivery } from '../../types';
 import BarcodeScanner from '../barcode/BarcodeScanner';
@@ -39,6 +40,11 @@ export default function ConfirmDeliveryModal({
   const [rejectReason, setRejectReason] = useState('');
   const [kmEmailWarning, setKmEmailWarning] = useState<string | null>(null);
   const [isConfirming, setIsConfirming] = useState(false);
+  const [isCheckingBarcode, setIsCheckingBarcode] = useState(false);
+  const [bulkRegisterResult, setBulkRegisterResult] = useState<{
+    registered: { barcode: string }[];
+    skipped: { barcode: string; reason: string }[];
+  } | null>(null);
   const autoCloseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Cleanup timeout on unmount
@@ -63,6 +69,8 @@ export default function ConfirmDeliveryModal({
       setRejectReason('');
       setKmEmailWarning(null);
       setIsConfirming(false);
+      setIsCheckingBarcode(false);
+      setBulkRegisterResult(null);
     }
   }, [isOpen, delivery]);
 
@@ -82,12 +90,37 @@ export default function ConfirmDeliveryModal({
 
   // --- Scan handlers ---
 
-  const handleScan = useCallback((barcode: string) => {
+  const handleScan = useCallback(async (barcode: string) => {
     setLastScanError(null);
+
+    // Check 1: Already in current scan session
     if (scannedBarcodes.includes(barcode)) {
-      setLastScanError(`"${barcode}" already scanned`);
+      setLastScanError(`"${barcode}" already scanned in this session`);
       return;
     }
+
+    // Check 2: Already exists in database
+    setIsCheckingBarcode(true);
+    try {
+      const response = await bagsApi.check(barcode);
+      const data = response.data;
+
+      if (data.exists) {
+        const receivedDate = data.received
+          ? new Date(data.received).toLocaleDateString()
+          : 'unknown date';
+        setLastScanError(
+          `Barcode "${barcode}" already in system (status: ${data.status}, received: ${receivedDate})`
+        );
+        toast.warning(`Duplicate: ${barcode} is already ${data.status}`);
+        return;
+      }
+    } catch {
+      // If check fails (network error), allow the scan — backend registerBulk is second defense
+    } finally {
+      setIsCheckingBarcode(false);
+    }
+
     setScannedBarcodes(prev => [...prev, barcode]);
   }, [scannedBarcodes]);
 
@@ -137,10 +170,17 @@ export default function ConfirmDeliveryModal({
       const batchId = response.data?.batch_id;
       if (batchId && scannedBarcodes.length > 0) {
         try {
-          await bagsApi.registerBulk({ barcodes: scannedBarcodes, batch_id: batchId });
+          const bulkResponse = await bagsApi.registerBulk({ barcodes: scannedBarcodes, batch_id: batchId });
+          const result = bulkResponse.data;
+          setBulkRegisterResult(result);
+
+          if (result?.skipped?.length > 0) {
+            toast.warning(`${result.skipped.length} barcode(s) skipped: already in system`);
+          }
         } catch (regErr: any) {
           // Delivery confirmed but bag registration failed — not a fatal error
           console.error('Bag registration failed:', regErr);
+          toast.error('Bag registration failed. Delivery was still confirmed.');
         }
       }
 
@@ -240,6 +280,15 @@ export default function ConfirmDeliveryModal({
                   onScan={handleScan}
                   isActive={isOpen && !isConfirming}
                 />
+
+                {/* Barcode check in progress */}
+                {isCheckingBarcode && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
+                    <span className="animate-pulse text-blue-600 text-sm font-medium">
+                      Checking barcode...
+                    </span>
+                  </div>
+                )}
 
                 {/* Scan error */}
                 {lastScanError && (
@@ -592,11 +641,38 @@ export default function ConfirmDeliveryModal({
                   </div>
                   <h3 className="text-lg font-semibold text-gray-900">Delivery Confirmed!</h3>
                   <p className="text-sm text-gray-500 mt-1">
-                    {scannedBarcodes.length > 0
-                      ? `${scannedBarcodes.length} bags (${scannedKg} kg) received and registered`
-                      : 'Stock has been added to inventory'}
+                    {bulkRegisterResult
+                      ? `${bulkRegisterResult.registered.length} bags registered${
+                          bulkRegisterResult.skipped.length > 0
+                            ? `, ${bulkRegisterResult.skipped.length} skipped`
+                            : ''
+                        }`
+                      : scannedBarcodes.length > 0
+                        ? `${scannedBarcodes.length} bags (${scannedKg} kg) received and registered`
+                        : 'Stock has been added to inventory'}
                   </p>
                 </div>
+
+                {/* Skipped barcodes warning */}
+                {bulkRegisterResult && bulkRegisterResult.skipped.length > 0 && (
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="font-medium text-amber-800">
+                          {bulkRegisterResult.skipped.length} barcode(s) already in system
+                        </p>
+                        <div className="mt-2 space-y-1">
+                          {bulkRegisterResult.skipped.map((s) => (
+                            <p key={s.barcode} className="text-sm text-amber-700">
+                              <span className="font-mono">{s.barcode}</span> — {s.reason}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {kmEmailWarning && (
                   <>
