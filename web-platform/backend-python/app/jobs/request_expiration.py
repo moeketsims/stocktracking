@@ -1,54 +1,36 @@
-"""Request Expiration and Escalation Job.
+"""Request Escalation Job.
 
-Handles automatic reminders, escalations, and expiration of stock requests.
+Handles automatic escalation of pending stock requests to zone managers.
 
-Timing Thresholds:
-- Urgent: Reminder at 2h, Escalate at 4h, Expire at 8h
-- Normal: Reminder at 4h, Escalate at 8h, Expire at 24h
-
-Escalation Levels:
-- Level 0: Request created, no escalation yet
-- Level 1: Reminder sent to ALL drivers
-- Level 2: Escalation sent to ZONE MANAGER
-- Level 3: Request EXPIRED, requester notified
+Logic:
+- No emails for the first 48 hours after a request is created
+- After 48 hours: escalate to the zone manager with one email
+- Then one reminder email per day to the zone manager until the request is resolved
 """
 
 from datetime import datetime, timedelta
 import logging
 from ..config import get_supabase_admin_client
-from ..email import (
-    send_request_reminder_notification,
-    send_request_escalation_notification,
-    send_request_expired_notification
-)
+from ..email import send_request_escalation_notification
 
 logger = logging.getLogger(__name__)
 
-# Timing thresholds in hours
-ESCALATION_THRESHOLDS = {
-    'urgent': {
-        'reminder': 2,
-        'escalate': 4,
-        'expire': 8
-    },
-    'normal': {
-        'reminder': 4,
-        'escalate': 8,
-        'expire': 24
-    }
-}
+# Wait 48 hours before first escalation
+QUIET_PERIOD_HOURS = 48
+
+# Minimum 24 hours between reminder emails for the same request
+REMINDER_INTERVAL_HOURS = 24
 
 
 async def process_request_escalations():
-    """Process pending stock requests and handle escalations."""
+    """Process pending stock requests and escalate to zone managers after 48h."""
     logger.info("[ESCALATION JOB] Starting request escalation processing...")
 
     try:
         supabase = get_supabase_admin_client()
-        now = datetime.now()
+        now = datetime.utcnow()
 
-        # Get all pending requests that need escalation tracking
-        # Note: Only pending requests are tracked. Once accepted/cancelled, tracking is removed.
+        # Get all pending requests
         pending_requests = supabase.table("stock_requests").select(
             "*, location:locations(id, name, zone_id), "
             "requester:profiles!stock_requests_requested_by_fkey(id, full_name)"
@@ -58,139 +40,107 @@ async def process_request_escalations():
             logger.info("[ESCALATION JOB] No pending requests to process")
             return
 
-        for request in pending_requests.data:
-            await process_single_request(supabase, request, now)
+        sent_count = 0
+        skipped_count = 0
 
-        logger.info(f"[ESCALATION JOB] Processed {len(pending_requests.data)} requests")
+        for request in pending_requests.data:
+            result = await process_single_request(supabase, request, now)
+            if result == "sent":
+                sent_count += 1
+            else:
+                skipped_count += 1
+
+        logger.info(f"[ESCALATION JOB] Done. Sent {sent_count} zone manager emails, skipped {skipped_count}")
 
     except Exception as e:
         logger.error(f"[ESCALATION JOB] Error: {str(e)}")
 
 
-async def process_single_request(supabase, request: dict, now: datetime):
-    """Process a single request for escalation."""
+async def process_single_request(supabase, request: dict, now: datetime) -> str:
+    """Process a single request. Returns 'sent' or 'skipped'."""
     request_id = request["id"]
-    urgency = request.get("urgency", "normal")
-    thresholds = ESCALATION_THRESHOLDS.get(urgency, ESCALATION_THRESHOLDS["normal"])
 
-    # Get or create escalation state
+    # Check how old the request is
+    created_at = datetime.fromisoformat(request["created_at"].replace("Z", "+00:00"))
+    hours_since_created = (now - created_at.replace(tzinfo=None)).total_seconds() / 3600
+
+    # Still in quiet period — no emails yet
+    if hours_since_created < QUIET_PERIOD_HOURS:
+        return "skipped"
+
+    # Get escalation state to check when we last sent an email
     escalation = supabase.table("request_escalation_state").select("*").eq(
         "request_id", request_id
     ).execute()
 
-    created_at = datetime.fromisoformat(request["created_at"].replace("Z", "+00:00"))
-    hours_since_created = (now - created_at.replace(tzinfo=None)).total_seconds() / 3600
-
     if not escalation.data:
-        # Create escalation tracking
-        next_escalation = created_at + timedelta(hours=thresholds["reminder"])
-
+        # First time past 48h — create tracking and send first escalation
         supabase.table("request_escalation_state").insert({
             "request_id": request_id,
-            "escalation_level": 0,
-            "next_escalation_at": next_escalation.isoformat(),
-            "reminder_threshold_hours": thresholds["reminder"],
-            "escalate_threshold_hours": thresholds["escalate"],
-            "expire_threshold_hours": thresholds["expire"]
+            "escalation_level": 1,
+            "last_escalation_at": now.isoformat(),
+            "next_escalation_at": (now + timedelta(hours=REMINDER_INTERVAL_HOURS)).isoformat(),
+            "reminder_threshold_hours": QUIET_PERIOD_HOURS,
+            "escalate_threshold_hours": REMINDER_INTERVAL_HOURS,
+            "expire_threshold_hours": 0
         }).execute()
 
-        logger.info(f"[ESCALATION] Created tracking for request {request_id}")
-        return
+        await notify_zone_manager(supabase, request)
+        logger.info(f"[ESCALATION] First zone manager notification for request {request_id}")
+        return "sent"
 
     state = escalation.data[0]
-    current_level = state["escalation_level"]
+    last_sent_str = state.get("last_escalation_at")
 
-    # Check if we need to escalate
-    if current_level == 0 and hours_since_created >= thresholds["reminder"]:
-        # Level 1: Send reminder to all drivers
-        await send_driver_reminders(supabase, request)
-        update_escalation_level(supabase, request_id, 1, now, created_at, thresholds["escalate"])
-        logger.info(f"[ESCALATION] Request {request_id} escalated to level 1 (driver reminder)")
+    if last_sent_str:
+        last_sent = datetime.fromisoformat(last_sent_str.replace("Z", "+00:00"))
+        hours_since_last = (now - last_sent.replace(tzinfo=None)).total_seconds() / 3600
 
-    elif current_level == 1 and hours_since_created >= thresholds["escalate"]:
-        # Level 2: Escalate to zone manager
-        await send_zone_manager_escalation(supabase, request)
-        update_escalation_level(supabase, request_id, 2, now, created_at, thresholds["expire"])
-        logger.info(f"[ESCALATION] Request {request_id} escalated to level 2 (zone manager)")
+        # Not yet 24 hours since last email — skip
+        if hours_since_last < REMINDER_INTERVAL_HOURS:
+            return "skipped"
 
-    elif current_level == 2 and hours_since_created >= thresholds["expire"]:
-        # Level 3: Mark as expired and notify requester
-        await expire_request(supabase, request)
-        update_escalation_level(supabase, request_id, 3, now, None, None)
-        logger.info(f"[ESCALATION] Request {request_id} expired")
+    # 24+ hours since last email — send daily reminder to zone manager
+    day_number = state.get("escalation_level", 0) + 1
+    supabase.table("request_escalation_state").update({
+        "last_escalation_at": now.isoformat(),
+        "next_escalation_at": (now + timedelta(hours=REMINDER_INTERVAL_HOURS)).isoformat(),
+        "escalation_level": day_number,
+    }).eq("request_id", request_id).execute()
 
-
-def update_escalation_level(supabase, request_id: str, level: int, now: datetime,
-                           created_at: datetime = None, next_hours: int = None):
-    """Update the escalation level for a request."""
-    update_data = {
-        "escalation_level": level,
-        "last_escalation_at": now.isoformat()
-    }
-
-    if next_hours is not None and created_at is not None:
-        next_time = created_at + timedelta(hours=next_hours)
-        update_data["next_escalation_at"] = next_time.isoformat()
-    else:
-        update_data["next_escalation_at"] = None
-
-    supabase.table("request_escalation_state").eq(
-        "request_id", request_id
-    ).update(update_data)
+    await notify_zone_manager(supabase, request)
+    logger.info(f"[ESCALATION] Daily reminder #{day_number} to zone manager for request {request_id}")
+    return "sent"
 
 
-async def send_driver_reminders(supabase, request: dict):
-    """Send reminder notifications to all active drivers."""
-    try:
-        # Get all active drivers
-        drivers = supabase.table("profiles_with_email").select(
-            "email, full_name"
-        ).eq("role", "driver").eq("is_active", True).execute()
-
-        location = request.get("location", {})
-        requester = request.get("requester", {})
-
-        for driver in (drivers.data or []):
-            if driver.get("email"):
-                try:
-                    send_request_reminder_notification(
-                        to_email=driver["email"],
-                        recipient_name=driver.get("full_name", "Driver"),
-                        location_name=location.get("name", "Unknown"),
-                        quantity_bags=request.get("quantity_bags", 0),
-                        urgency=request.get("urgency", "normal"),
-                        hours_pending=calculate_hours_pending(request["created_at"]),
-                        request_id=request["id"]
-                    )
-                except Exception as e:
-                    logger.error(f"[ESCALATION] Failed to send reminder to {driver['email']}: {e}")
-
-    except Exception as e:
-        logger.error(f"[ESCALATION] Failed to send driver reminders: {e}")
-
-
-async def send_zone_manager_escalation(supabase, request: dict):
-    """Send escalation notification to zone manager."""
+async def notify_zone_manager(supabase, request: dict):
+    """Send escalation email to the zone manager for the request's location."""
     try:
         location = request.get("location", {})
         zone_id = location.get("zone_id")
 
         if not zone_id:
-            logger.warning(f"[ESCALATION] No zone_id for location {location.get('id')}")
+            logger.warning(f"[ESCALATION] No zone_id for location {location.get('name', 'Unknown')}, skipping")
             return
 
-        # Get zone managers
+        # Get zone managers for this zone
         managers = supabase.table("profiles_with_email").select(
             "email, full_name"
         ).eq("role", "zone_manager").eq("zone_id", zone_id).eq("is_active", True).execute()
 
-        # If no zone managers, try admin
+        # Fallback to admins if no zone managers found
         if not managers.data:
             managers = supabase.table("profiles_with_email").select(
                 "email, full_name"
             ).eq("role", "admin").eq("is_active", True).execute()
 
-        for manager in (managers.data or []):
+        if not managers.data:
+            logger.warning(f"[ESCALATION] No zone manager or admin found for zone {zone_id}")
+            return
+
+        hours_pending = calculate_hours_pending(request["created_at"])
+
+        for manager in managers.data:
             if manager.get("email"):
                 try:
                     send_request_escalation_notification(
@@ -199,53 +149,14 @@ async def send_zone_manager_escalation(supabase, request: dict):
                         location_name=location.get("name", "Unknown"),
                         quantity_bags=request.get("quantity_bags", 0),
                         urgency=request.get("urgency", "normal"),
-                        hours_pending=calculate_hours_pending(request["created_at"]),
+                        hours_pending=hours_pending,
                         request_id=request["id"]
                     )
                 except Exception as e:
-                    logger.error(f"[ESCALATION] Failed to send escalation to {manager['email']}: {e}")
+                    logger.error(f"[ESCALATION] Failed to send to {manager['email']}: {e}")
 
     except Exception as e:
-        logger.error(f"[ESCALATION] Failed to send zone manager escalation: {e}")
-
-
-async def expire_request(supabase, request: dict):
-    """Mark a request as expired and notify the requester."""
-    try:
-        # Update request status to expired
-        supabase.table("stock_requests").update({
-            "status": "expired"
-        }).eq("id", request["id"]).execute()
-
-        # Remove escalation tracking
-        supabase.table("request_escalation_state").delete().eq(
-            "request_id", request["id"]
-        ).execute()
-
-        # Notify requester
-        requester = request.get("requester", {})
-        requester_id = request.get("requested_by")
-
-        if requester_id:
-            requester_data = supabase.table("profiles_with_email").select(
-                "email, full_name"
-            ).eq("id", requester_id).execute()
-
-            if requester_data.data:
-                requester_info = requester_data.data[0]
-                if requester_info.get("email"):
-                    location = request.get("location", {})
-                    send_request_expired_notification(
-                        to_email=requester_info["email"],
-                        requester_name=requester_info.get("full_name", "User"),
-                        location_name=location.get("name", "Unknown"),
-                        quantity_bags=request.get("quantity_bags", 0),
-                        hours_pending=calculate_hours_pending(request["created_at"]),
-                        request_id=request["id"]
-                    )
-
-    except Exception as e:
-        logger.error(f"[ESCALATION] Failed to expire request: {e}")
+        logger.error(f"[ESCALATION] Failed to notify zone manager: {e}")
 
 
 def calculate_hours_pending(created_at_str: str) -> int:
@@ -265,7 +176,7 @@ def remove_escalation_tracking(request_id: str):
         supabase = get_supabase_admin_client()
         supabase.table("request_escalation_state").delete().eq(
             "request_id", request_id
-        )
+        ).execute()
         logger.info(f"[ESCALATION] Removed tracking for request {request_id}")
     except Exception as e:
         logger.error(f"[ESCALATION] Failed to remove tracking for {request_id}: {e}")
