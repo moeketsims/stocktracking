@@ -34,10 +34,10 @@ def init_scheduler():
     from app.jobs.expiry_alerts import process_expiry_alerts
     from app.jobs.auto_reorder import process_auto_reorder
 
-    # Request expiration/escalation job - runs every 5 minutes
+    # Request expiration/escalation job - runs every hour
     scheduler.add_job(
         process_request_escalations,
-        trigger=IntervalTrigger(minutes=5),
+        trigger=IntervalTrigger(hours=1),
         id='request_escalation_job',
         name='Process Request Escalations',
         replace_existing=True,

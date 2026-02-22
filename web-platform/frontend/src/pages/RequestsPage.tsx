@@ -90,7 +90,7 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
   const [showFilters, setShowFilters] = useState(false);
   const [urgencyFilter, setUrgencyFilter] = useState<'all' | 'urgent' | 'normal'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | StockRequestStatus>('all');
-  const [dateRange, setDateRange] = useState<'7days' | '30days' | 'all'>('7days');
+  const [dateRange, setDateRange] = useState<'7days' | '30days' | 'all'>('all');
 
   const currentUserId = user?.id;
 
@@ -409,21 +409,26 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
 
   const requests = getRequests();
 
-  const pendingRequestsCount = (allRequestsData?.requests || []).filter(
-    (r: StockRequest) => r.status === 'pending'
+  const pendingRequestsCount = filterByDateRange(
+    (allRequestsData?.requests || []).filter((r: StockRequest) => r.status === 'pending')
   ).length;
   // Include only "planned" loan trips in available count for drivers (not yet accepted)
   const plannedLoanTripsCount = isDriver() ? loanTrips.filter((t: any) => t.status === 'planned').length : 0;
   const availableCount = pendingRequestsCount + plannedLoanTripsCount;
 
-  const myCount = (myRequestsData?.created?.length || 0) + (myRequestsData?.accepted?.length || 0);
+  const myCount = filterByDateRange([
+    ...(myRequestsData?.created || []),
+    ...(myRequestsData?.accepted || []),
+  ]).length;
   const attentionCount = needsAttentionRequests.length;
   // For drivers, only count their own requests and loan trips
   const allCount = isDriver()
-    ? ((allRequestsData?.requests || []).filter(
-        (r: StockRequest) => r.requested_by === currentUserId || r.accepted_by === currentUserId
+    ? (filterByDateRange(
+        (allRequestsData?.requests || []).filter(
+          (r: StockRequest) => r.requested_by === currentUserId || r.accepted_by === currentUserId
+        )
       ).length + loanTrips.length)
-    : (allRequestsData?.requests?.length || 0);
+    : filterByDateRange(allRequestsData?.requests || []).length;
 
   // Only managers (admin, zone_manager, location_manager) see the Needs Attention tab
   const showAttentionTab = isManager() || isLocationManager();
@@ -457,10 +462,10 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
   const clearFilters = () => {
     setUrgencyFilter('all');
     setStatusFilter('all');
-    setDateRange('7days');
+    setDateRange('all');
   };
 
-  const hasActiveFilters = urgencyFilter !== 'all' || statusFilter !== 'all' || dateRange !== '7days';
+  const hasActiveFilters = urgencyFilter !== 'all' || statusFilter !== 'all' || dateRange !== 'all';
 
   // Check if there are any time_proposed requests that need review by the current user (manager)
   // This is used to show the ACTION column in the header for managers
