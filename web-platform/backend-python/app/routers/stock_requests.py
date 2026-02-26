@@ -720,6 +720,13 @@ async def create_trip_from_request(
             "accepted_at": existing.data.get("accepted_at") or datetime.now().isoformat()
         }).eq("id", request_id).execute()
 
+        # Remove escalation tracking (request is no longer pending)
+        try:
+            from ..jobs.request_expiration import remove_escalation_tracking
+            remove_escalation_tracking(request_id)
+        except Exception as e:
+            print(f"[ESCALATION] Error removing tracking on trip creation: {e}")
+
         # Notify the requester - fetch email from profiles_with_email view
         try:
             requester_id = existing.data.get("requested_by")
@@ -1009,6 +1016,13 @@ async def create_trip_from_multiple_requests(
                 "accepted_by": profile_id if not req_data.get("accepted_by") else req_data["accepted_by"],
                 "accepted_at": req_data.get("accepted_at") or datetime.now().isoformat()
             }).eq("id", req_data["id"]).execute()
+
+            # Remove escalation tracking (request is no longer pending)
+            try:
+                from ..jobs.request_expiration import remove_escalation_tracking
+                remove_escalation_tracking(req_data["id"])
+            except Exception as e:
+                print(f"[ESCALATION] Error removing tracking on multi-trip creation: {e}")
 
             # Notify each requester - fetch email from profiles_with_email view
             try:
@@ -1536,6 +1550,13 @@ async def fulfill_remaining_request(
                 "status": "fulfilled"
             }).eq("id", request_id).execute()
 
+            # Remove escalation tracking (request is fulfilled)
+            try:
+                from ..jobs.request_expiration import remove_escalation_tracking
+                remove_escalation_tracking(request_id)
+            except Exception as e:
+                print(f"[ESCALATION] Error removing tracking on fulfill: {e}")
+
             return {
                 "success": True,
                 "message": "Request is fully fulfilled (no remaining quantity)",
@@ -1762,6 +1783,13 @@ async def propose_delivery_time(
 
         if not result.data:
             raise HTTPException(status_code=500, detail="Failed to update request")
+
+        # Remove escalation tracking (request is no longer pending)
+        try:
+            from ..jobs.request_expiration import remove_escalation_tracking
+            remove_escalation_tracking(request_id)
+        except Exception as e:
+            print(f"[ESCALATION] Error removing tracking on time proposal: {e}")
 
         # Notify the manager (requester)
         try:
