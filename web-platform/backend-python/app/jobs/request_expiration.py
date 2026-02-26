@@ -75,7 +75,7 @@ async def process_single_request(supabase, request: dict, now: datetime) -> str:
 
     if not escalation.data:
         # First time past 48h — create tracking and send first escalation
-        supabase.table("request_escalation_state").insert({
+        insert_result = supabase.table("request_escalation_state").insert({
             "request_id": request_id,
             "escalation_level": 1,
             "last_escalation_at": now.isoformat(),
@@ -84,6 +84,10 @@ async def process_single_request(supabase, request: dict, now: datetime) -> str:
             "escalate_threshold_hours": REMINDER_INTERVAL_HOURS,
             "expire_threshold_hours": 0
         }).execute()
+
+        if not insert_result.data:
+            logger.error(f"[ESCALATION] Failed to insert tracking for {request_id}, skipping email")
+            return "skipped"
 
         await notify_zone_manager(supabase, request)
         logger.info(f"[ESCALATION] First zone manager notification for request {request_id}")
@@ -101,12 +105,18 @@ async def process_single_request(supabase, request: dict, now: datetime) -> str:
             return "skipped"
 
     # 24+ hours since last email — send daily reminder to zone manager
-    day_number = state.get("escalation_level", 0) + 1
-    supabase.table("request_escalation_state").update({
+    # Cap at 3 to avoid violating DB CHECK constraint (max escalation_level = 3)
+    day_number = min(state.get("escalation_level", 0) + 1, 3)
+
+    update_result = supabase.table("request_escalation_state").update({
         "last_escalation_at": now.isoformat(),
         "next_escalation_at": (now + timedelta(hours=REMINDER_INTERVAL_HOURS)).isoformat(),
         "escalation_level": day_number,
     }).eq("request_id", request_id).execute()
+
+    if not update_result.data:
+        logger.error(f"[ESCALATION] Failed to update tracking for {request_id}, skipping email")
+        return "skipped"
 
     await notify_zone_manager(supabase, request)
     logger.info(f"[ESCALATION] Daily reminder #{day_number} to zone manager for request {request_id}")

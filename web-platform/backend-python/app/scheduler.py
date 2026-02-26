@@ -4,6 +4,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,12 @@ def init_scheduler():
         return scheduler
 
     scheduler = AsyncIOScheduler()
+
+    # Disable scheduler in staging/review to prevent duplicate emails
+    env = os.environ.get("ENVIRONMENT", "production").lower()
+    if env in ("staging", "review"):
+        logger.info(f"Scheduler disabled in {env} environment")
+        return scheduler
 
     # Import jobs here to avoid circular imports
     from app.jobs.request_expiration import process_request_escalations
