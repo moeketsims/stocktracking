@@ -5,7 +5,8 @@ Handles automatic escalation of pending stock requests to zone managers.
 Logic:
 - No emails for the first 48 hours after a request is created
 - After 48 hours: escalate to the zone manager with one email
-- Then one reminder email per day to the zone manager until the request is resolved
+- Then one reminder email per day, up to MAX_REMINDERS total
+- After MAX_REMINDERS, stop emailing (escalation exhausted)
 """
 
 from datetime import datetime, timedelta
@@ -21,6 +22,9 @@ QUIET_PERIOD_HOURS = 48
 # Minimum 24 hours between reminder emails for the same request
 REMINDER_INTERVAL_HOURS = 24
 
+# Stop after this many total emails (1 initial + 2 reminders = 3 total)
+MAX_REMINDERS = 3
+
 
 async def process_request_escalations():
     """Process pending stock requests and escalate to zone managers after 48h."""
@@ -29,6 +33,15 @@ async def process_request_escalations():
     try:
         supabase = get_supabase_admin_client()
         now = datetime.utcnow()
+
+        # Preflight: verify escalation table is accessible
+        table_check = supabase.table("request_escalation_state").select("request_id").limit(1).execute()
+        if table_check.error:
+            logger.error(
+                f"[ESCALATION JOB] request_escalation_state table not accessible: {table_check.error[:200]}. "
+                "Skipping entire job."
+            )
+            return
 
         # Get all pending requests
         pending_requests = supabase.table("stock_requests").select(
@@ -73,6 +86,10 @@ async def process_single_request(supabase, request: dict, now: datetime) -> str:
         "request_id", request_id
     ).execute()
 
+    if escalation.error:
+        logger.error(f"[ESCALATION] Failed to read state for {request_id}: {escalation.error[:200]}")
+        return "skipped"
+
     if not escalation.data:
         # First time past 48h — create tracking and send first escalation
         insert_result = supabase.table("request_escalation_state").insert({
@@ -94,6 +111,12 @@ async def process_single_request(supabase, request: dict, now: datetime) -> str:
         return "sent"
 
     state = escalation.data[0]
+    current_level = state.get("escalation_level", 0)
+
+    # Already sent MAX_REMINDERS — stop emailing
+    if current_level >= MAX_REMINDERS:
+        return "skipped"
+
     last_sent_str = state.get("last_escalation_at")
 
     if last_sent_str:
@@ -105,8 +128,7 @@ async def process_single_request(supabase, request: dict, now: datetime) -> str:
             return "skipped"
 
     # 24+ hours since last email — send daily reminder to zone manager
-    # Cap at 3 to avoid violating DB CHECK constraint (max escalation_level = 3)
-    day_number = min(state.get("escalation_level", 0) + 1, 3)
+    day_number = current_level + 1
 
     update_result = supabase.table("request_escalation_state").update({
         "last_escalation_at": now.isoformat(),
@@ -119,7 +141,7 @@ async def process_single_request(supabase, request: dict, now: datetime) -> str:
         return "skipped"
 
     await notify_zone_manager(supabase, request)
-    logger.info(f"[ESCALATION] Daily reminder #{day_number} to zone manager for request {request_id}")
+    logger.info(f"[ESCALATION] Reminder {day_number}/{MAX_REMINDERS} to zone manager for request {request_id}")
     return "sent"
 
 
