@@ -83,6 +83,82 @@ def _get_fifo_warning(supabase, bag: dict) -> Optional[dict]:
     }
 
 
+def _resolve_bag_weight(supabase, item_id: str, weight_kg: Optional[float]) -> float:
+    """Resolve bag weight from explicit input or the item's conversion factor."""
+    if weight_kg:
+        return weight_kg
+
+    item = supabase.table("items").select(
+        "conversion_factor"
+    ).eq("id", item_id).single().execute()
+    return float(item.data["conversion_factor"]) if item.data else 10.0
+
+
+def bulk_register_barcodes_for_batch(
+    supabase,
+    *,
+    batch_id: str,
+    item_id: str,
+    location_id: str,
+    barcodes: List[str],
+    received_by_user_id: str,
+    weight_kg: Optional[float] = None,
+) -> dict:
+    """Register multiple barcodes against an existing batch.
+
+    Returns the registered rows and any skipped barcodes caused by duplicates.
+    """
+    resolved_weight = _resolve_bag_weight(supabase, item_id, weight_kg)
+
+    # Preserve scan order while removing duplicates from the incoming payload.
+    deduped_barcodes = list(dict.fromkeys(barcodes))
+
+    existing = supabase.table("bags").select(
+        "barcode, status, created_at"
+    ).in_("barcode", deduped_barcodes).execute()
+
+    existing_barcodes = {}
+    for bag in (existing.data or []):
+        received = bag["created_at"][:10] if bag.get("created_at") else "unknown"
+        existing_barcodes[bag["barcode"]] = {
+            "status": bag["status"],
+            "received": received,
+        }
+
+    registered = []
+    skipped = []
+
+    for barcode in deduped_barcodes:
+        if barcode in existing_barcodes:
+            info = existing_barcodes[barcode]
+            skipped.append({
+                "barcode": barcode,
+                "reason": f"Already in system (status: {info['status']}, received: {info['received']})"
+            })
+            continue
+
+        bag_data = {
+            "id": str(uuid4()),
+            "barcode": barcode,
+            "batch_id": batch_id,
+            "item_id": item_id,
+            "location_id": location_id,
+            "weight_kg": resolved_weight,
+            "status": "registered",
+            "received_by": received_by_user_id,
+        }
+
+        result = supabase.table("bags").insert(bag_data).execute()
+        registered.append(result.data[0] if result.data else bag_data)
+
+    logger.info(f"[BAG] Bulk registered {len(registered)} bags, skipped {len(skipped)}")
+    return {
+        "registered": registered,
+        "skipped": skipped,
+        "weight_kg": resolved_weight,
+    }
+
+
 # ============================================
 # REGISTER BAG (Scan on Receive)
 # ============================================
@@ -186,60 +262,21 @@ async def register_bags_bulk(
         item_id = batch.data["item_id"]
         location_id = batch.data["location_id"]
 
-        # Determine weight
-        weight_kg = request.weight_kg
-        if not weight_kg:
-            item = supabase.table("items").select(
-                "conversion_factor"
-            ).eq("id", item_id).single().execute()
-            weight_kg = float(item.data["conversion_factor"]) if item.data else 10.0
-
-        # Check for existing barcodes across ALL statuses (global uniqueness)
-        existing = supabase.table("bags").select(
-            "barcode, status, created_at"
-        ).in_("barcode", request.barcodes).execute()
-
-        existing_barcodes = {}
-        for b in (existing.data or []):
-            received = b["created_at"][:10] if b.get("created_at") else "unknown"
-            existing_barcodes[b["barcode"]] = {
-                "status": b["status"],
-                "received": received,
-            }
-
-        registered = []
-        skipped = []
-
-        for barcode in request.barcodes:
-            if barcode in existing_barcodes:
-                info = existing_barcodes[barcode]
-                skipped.append({
-                    "barcode": barcode,
-                    "reason": f"Already in system (status: {info['status']}, received: {info['received']})"
-                })
-                continue
-
-            bag_data = {
-                "id": str(uuid4()),
-                "barcode": barcode,
-                "batch_id": request.batch_id,
-                "item_id": item_id,
-                "location_id": location_id,
-                "weight_kg": weight_kg,
-                "status": "registered",
-                "received_by": user.id,
-            }
-
-            result = supabase.table("bags").insert(bag_data)
-            registered.append(result.data[0] if result.data else bag_data)
-
-        logger.info(f"[BAG] Bulk registered {len(registered)} bags, skipped {len(skipped)}")
+        registration = bulk_register_barcodes_for_batch(
+            supabase,
+            batch_id=request.batch_id,
+            item_id=item_id,
+            location_id=location_id,
+            barcodes=request.barcodes,
+            received_by_user_id=user.id,
+            weight_kg=request.weight_kg,
+        )
 
         return {
             "success": True,
-            "message": f"{len(registered)} bags registered, {len(skipped)} skipped",
-            "registered": registered,
-            "skipped": skipped,
+            "message": f"{len(registration['registered'])} bags registered, {len(registration['skipped'])} skipped",
+            "registered": registration["registered"],
+            "skipped": registration["skipped"],
         }
 
     except HTTPException:
