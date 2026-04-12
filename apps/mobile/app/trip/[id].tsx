@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Alert, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,8 +16,8 @@ import { colors, spacing, fontSize, fontWeight } from '../../src/constants/theme
 import { useSubmitKm } from '../../src/hooks/useTrips';
 
 /* ── Design tokens (matching dashboard) ── */
-const BRAND    = '#1e1b4b';
-const WARM_BG  = '#faf9f7';
+const BRAND    = '#0f172a';
+const WARM_BG  = '#f8fafc';
 const CARD_R   = 16;
 import type { TripStop } from '../../src/types';
 
@@ -39,14 +39,17 @@ export default function TripDetailScreen() {
   }
 
   const stops = stopsData?.stops ?? [];
+  const isDriver = user?.role === 'driver';
   const isCancelled = trip.status === 'cancelled';
   const isPlanned = trip.status === 'planned';
   const isInProgress = trip.status === 'in_progress';
   const isCompleted = trip.status === 'completed';
-  const canCancel = isManager && (isPlanned || isInProgress);
   const nextStop = stops.find((s) => !s.is_completed);
   const allStopsComplete = stops.length > 0 && stops.every((s) => s.is_completed);
+  const anyStopsComplete = stops.some((s) => s.is_completed);
   const needsKm = isCompleted && (trip as any).odometer_start != null && (trip as any).odometer_end == null;
+  // Can only cancel before any stops are completed
+  const canCancel = isManager && isPlanned && !anyStopsComplete;
 
   const handleStartTrip = () => {
     Alert.alert('Start Trip', 'Begin this trip now?', [
@@ -103,6 +106,7 @@ export default function TripDetailScreen() {
           headerStyle: { backgroundColor: BRAND },
           headerTintColor: colors.white,
           headerTitleStyle: { fontWeight: '600', fontSize: 16 },
+          headerShadowVisible: false,
         }}
       />
       <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -193,7 +197,7 @@ export default function TripDetailScreen() {
                         Actual: {(stop.actual_qty_kg / 10).toFixed(0)} bags
                       </Text>
                     )}
-                    {!stop.is_completed && isInProgress && stop === nextStop && (
+                    {!stop.is_completed && isInProgress && stop === nextStop && isDriver && (
                       <Button
                         title={stop.stop_type === 'dropoff' ? 'Scan & Complete' : 'Complete Stop'}
                         size="sm"
@@ -201,6 +205,17 @@ export default function TripDetailScreen() {
                         loading={completeStop.isPending}
                         style={{ marginTop: spacing.sm }}
                       />
+                    )}
+                    {stop.is_completed && stop.stop_type === 'dropoff' && isManager && (
+                      <TouchableOpacity
+                        style={{ marginTop: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                        onPress={() => router.push('/alerts')}
+                      >
+                        <Ionicons name="checkmark-circle-outline" size={16} color={colors.primary[500]} />
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: colors.primary[500] }}>
+                          Confirm Delivery
+                        </Text>
+                      </TouchableOpacity>
                     )}
                   </View>
                 </View>
