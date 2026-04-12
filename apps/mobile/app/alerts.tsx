@@ -36,24 +36,8 @@ export default function AlertsScreen() {
   };
 
   const handleConfirmDelivery = (deliveryId: string, claimedBags: number) => {
-    Alert.prompt?.(
-      'Confirm Delivery',
-      `Enter actual bags received (claimed: ${claimedBags})`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Confirm',
-          onPress: (value: string | undefined) => {
-            const bags = parseInt(value ?? '', 10);
-            if (!isNaN(bags) && bags >= 0) {
-              confirmMutation.mutate({ id: deliveryId, data: { confirmed_bags: bags } });
-            }
-          },
-        },
-      ],
-      'plain-text',
-      String(claimedBags),
-    ) ?? Alert.alert('Confirm', `Confirm ${claimedBags} bags?`, [
+    if (confirmMutation.isPending) return;
+    Alert.alert('Confirm Delivery', `Confirm ${claimedBags} bags received?`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Confirm', onPress: () => confirmMutation.mutate({ id: deliveryId, data: { confirmed_bags: claimedBags } }) },
     ]);

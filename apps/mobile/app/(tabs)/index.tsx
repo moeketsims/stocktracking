@@ -18,7 +18,10 @@ export default function DashboardScreen() {
   const user = useAuthStore((s) => s.user);
   const role = user?.role;
 
-  const dashboard = useDashboard(user?.location_id ?? undefined);
+  // Managers see all locations (like web), staff/drivers see only their own
+  const isManagerRole = ['admin', 'zone_manager', 'location_manager'].includes(role ?? '');
+  const dashboardLocationId = isManagerRole ? undefined : (user?.location_id ?? undefined);
+  const dashboard = useDashboard(dashboardLocationId);
   const available = useAvailableRequests();
   const pending = usePendingDeliveries();
 

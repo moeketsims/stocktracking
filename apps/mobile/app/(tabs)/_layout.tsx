@@ -33,7 +33,7 @@ const TAB_CONFIG: TabConfig[] = [
   },
   {
     name: 'stock',
-    title: 'Stock',
+    title: 'Stocks',
     icon: 'cube',
     roles: ['admin', 'zone_manager', 'location_manager', 'staff'],
   },
@@ -45,12 +45,32 @@ const TAB_CONFIG: TabConfig[] = [
   },
 ];
 
+// Default tab per role (matches web app behavior)
+function getInitialTab(role: UserRole): string {
+  switch (role) {
+    case 'admin':
+    case 'zone_manager':
+    case 'location_manager':
+      return 'stock'; // Web lands on Stocks page
+    case 'driver':
+      return 'requests'; // Web lands on Requests page
+    case 'vehicle_manager':
+      return 'trips'; // Web lands on Vehicles, closest is Trips
+    case 'staff':
+      return 'stock'; // Web lands on Kitchen, closest is Stock
+    default:
+      return 'index';
+  }
+}
+
 export default function TabLayout() {
   const user = useAuthStore((s) => s.user);
   const role = user?.role ?? 'staff';
+  const initialTab = getInitialTab(role);
 
   return (
     <Tabs
+      initialRouteName={initialTab}
       screenOptions={{
         headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
         headerTintColor: colors.white,
