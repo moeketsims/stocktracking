@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/authStore';
 import { useTransactions } from '../../src/hooks/useReports';
@@ -84,6 +85,7 @@ export default function TransactionsScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
+      <Stack.Screen options={{ title: 'Transactions', headerStyle: { backgroundColor: '#1e1b4b' }, headerTintColor: '#fff' }} />
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={

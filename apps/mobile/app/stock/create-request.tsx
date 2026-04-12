@@ -65,7 +65,7 @@ export default function CreateRequestScreen() {
       <Stack.Screen
         options={{
           title: 'Create Stock Request',
-          headerStyle: { backgroundColor: colors.info },
+          headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
           headerTintColor: colors.white,
         }}
       />

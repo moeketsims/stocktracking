@@ -96,7 +96,7 @@ export default function AdjustmentScreen() {
       <Stack.Screen
         options={{
           title: 'Stock Adjustment',
-          headerStyle: { backgroundColor: AMBER },
+          headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
           headerTintColor: colors.white,
         }}
       />

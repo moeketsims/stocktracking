@@ -75,7 +75,7 @@ export default function WasteScreen() {
       <Stack.Screen
         options={{
           title: 'Log Waste',
-          headerStyle: { backgroundColor: colors.error },
+          headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
           headerTintColor: colors.white,
         }}
       />

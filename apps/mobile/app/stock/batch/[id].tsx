@@ -119,7 +119,7 @@ export default function BatchDetailScreen() {
       <Stack.Screen
         options={{
           title: `Batch #${batch.batch_id_display}`,
-          headerStyle: { backgroundColor: colors.primary[500] },
+          headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
           headerTintColor: colors.white,
         }}
       />

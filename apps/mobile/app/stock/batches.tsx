@@ -47,7 +47,7 @@ export default function BatchesScreen() {
       <Stack.Screen
         options={{
           title: 'Batches',
-          headerStyle: { backgroundColor: colors.primary[500] },
+          headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
           headerTintColor: colors.white,
         }}
       />

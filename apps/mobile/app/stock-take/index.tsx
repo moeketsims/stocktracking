@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -68,9 +68,11 @@ export default function StockTakeScreen() {
   const historyTakes = stockTakes.filter((st) => st.status !== 'in_progress');
 
   // Auto-select in-progress stock take
-  if (inProgressTake && !activeStockTakeId) {
-    setActiveStockTakeId(inProgressTake.id);
-  }
+  useEffect(() => {
+    if (inProgressTake && !activeStockTakeId) {
+      setActiveStockTakeId(inProgressTake.id);
+    }
+  }, [inProgressTake, activeStockTakeId]);
 
   const handleStartNew = () => {
     if (inProgressTake) {
