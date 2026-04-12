@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useTrip, useTripStops, useStartTrip, useCompleteStop, useCompleteTrip } from '../../src/hooks/useTrips';
+import { useTrip, useTripStops, useStartTrip, useCancelTrip, useCompleteStop, useCompleteTrip } from '../../src/hooks/useTrips';
 import { useAuthStore } from '../../src/stores/authStore';
 import { StatusBadge } from '../../src/components/StatusBadge';
 import { Badge } from '../../src/components/ui/Badge';
@@ -22,7 +22,9 @@ export default function TripDetailScreen() {
   const user = useAuthStore((s) => s.user);
   const { data: trip, isLoading: tripLoading } = useTrip(id);
   const { data: stopsData, isLoading: stopsLoading } = useTripStops(id);
+  const isManager = ['admin', 'zone_manager', 'location_manager', 'vehicle_manager'].includes(user?.role ?? '');
   const startTrip = useStartTrip();
+  const cancelTrip = useCancelTrip();
   const completeStop = useCompleteStop();
   const completeTrip = useCompleteTrip();
   const submitKm = useSubmitKm();
@@ -32,9 +34,11 @@ export default function TripDetailScreen() {
   }
 
   const stops = stopsData?.stops ?? [];
+  const isCancelled = trip.status === 'cancelled';
   const isPlanned = trip.status === 'planned';
   const isInProgress = trip.status === 'in_progress';
   const isCompleted = trip.status === 'completed';
+  const canCancel = isManager && (isPlanned || isInProgress);
   const nextStop = stops.find((s) => !s.is_completed);
   const allStopsComplete = stops.length > 0 && stops.every((s) => s.is_completed);
   const needsKm = isCompleted && (trip as any).odometer_start != null && (trip as any).odometer_end == null;
@@ -60,6 +64,20 @@ export default function TripDetailScreen() {
         },
       ]);
     }
+  };
+
+  const handleCancelTrip = () => {
+    Alert.alert('Cancel Trip', `Are you sure you want to cancel trip ${trip.trip_number}?`, [
+      { text: 'No', style: 'cancel' },
+      {
+        text: 'Cancel Trip',
+        style: 'destructive',
+        onPress: () =>
+          cancelTrip.mutate(trip.id, {
+            onSuccess: () => router.back(),
+          }),
+      },
+    ]);
   };
 
   const handleCompleteTrip = () => {
@@ -220,6 +238,15 @@ export default function TripDetailScreen() {
                 title="Complete Trip"
                 onPress={handleCompleteTrip}
                 loading={completeTrip.isPending}
+                size="lg"
+              />
+            )}
+            {canCancel && (
+              <Button
+                title="Cancel Trip"
+                variant="danger"
+                onPress={handleCancelTrip}
+                loading={cancelTrip.isPending}
                 size="lg"
               />
             )}

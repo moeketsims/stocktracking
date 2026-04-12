@@ -2,7 +2,9 @@ import React, { useState, useMemo } from 'react';
 import { View, Text, FlatList, StyleSheet, RefreshControl, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useTrips } from '../../src/hooks/useTrips';
+import { useAuthStore } from '../../src/stores/authStore';
 import { TripCard } from '../../src/components/TripCard';
 import { Loading } from '../../src/components/ui/Loading';
 import { colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
@@ -18,6 +20,8 @@ const FILTER_MAP: Record<Filter, TripStatus[] | null> = {
 
 export default function TripsScreen() {
   const router = useRouter();
+  const user = useAuthStore((s) => s.user);
+  const isManager = ['admin', 'zone_manager', 'location_manager', 'vehicle_manager'].includes(user?.role ?? '');
   const [filter, setFilter] = useState<Filter>('active');
   const trips = useTrips();
   const allTrips = trips.data?.trips ?? [];
@@ -73,6 +77,16 @@ export default function TripsScreen() {
           }
         />
       )}
+
+      {isManager && (
+        <TouchableOpacity
+          style={styles.fab}
+          activeOpacity={0.8}
+          onPress={() => router.push('/trip/create')}
+        >
+          <Ionicons name="add" size={28} color={colors.white} />
+        </TouchableOpacity>
+      )}
     </SafeAreaView>
   );
 }
@@ -120,5 +134,21 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     color: colors.gray[500],
     textAlign: 'center',
+  },
+  fab: {
+    position: 'absolute',
+    right: spacing.lg,
+    bottom: spacing.lg,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.primary[500],
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 6,
   },
 });

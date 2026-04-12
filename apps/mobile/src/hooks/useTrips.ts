@@ -3,6 +3,7 @@ import { Alert } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import {
   tripsApi,
+  type CreateTripPayload,
   type CompleteStopPayload,
   type CompleteTripPayload,
 } from '../api/trips';
@@ -29,6 +30,42 @@ export function useTripStops(tripId: string) {
     queryKey: ['trips', tripId, 'stops'],
     queryFn: () => tripsApi.getStops(tripId).then((r) => r.data),
     enabled: !!tripId,
+  });
+}
+
+export function useCreateTrip() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: CreateTripPayload) =>
+      tripsApi.create(data).then((r) => r.data),
+    onSuccess: (data) => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      qc.invalidateQueries({ queryKey: ['trips'] });
+      qc.invalidateQueries({ queryKey: ['requests'] });
+      Alert.alert('Trip Created', data.message ?? `Trip ${data.trip_number} created`);
+    },
+    onError: (error: any) => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Error', error.response?.data?.detail ?? 'Failed to create trip');
+    },
+  });
+}
+
+export function useCancelTrip() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      tripsApi.cancel(id).then((r) => r.data),
+    onSuccess: () => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      qc.invalidateQueries({ queryKey: ['trips'] });
+      qc.invalidateQueries({ queryKey: ['requests'] });
+      Alert.alert('Trip Cancelled', 'The trip has been cancelled.');
+    },
+    onError: (error: any) => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Error', error.response?.data?.detail ?? 'Failed to cancel trip');
+    },
   });
 }
 
