@@ -44,6 +44,7 @@ export default function MoreScreen() {
   const alerts = useAlerts(user?.location_id ?? undefined);
   const deliveries = usePendingDeliveries();
 
+  const isAdmin = user?.role === 'admin';
   const isManager = ['admin', 'zone_manager', 'location_manager'].includes(user?.role ?? '');
   const alertCount = alerts.data?.active_alerts?.length ?? 0;
   const deliveryCount = deliveries.data?.total ?? 0;
@@ -93,6 +94,13 @@ export default function MoreScreen() {
               icon="swap-horizontal"
               label="Loans"
               onPress={() => router.push('/loans')}
+            />
+          )}
+          {isAdmin && (
+            <MenuItem
+              icon="people"
+              label="User Management"
+              onPress={() => router.push('/users')}
             />
           )}
           <MenuItem
