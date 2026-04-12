@@ -1532,18 +1532,26 @@ async def complete_stop(
                             "status": "in_delivery"
                         }).eq("id", trip["request_id"]).execute()
 
-        # Check if trip was auto-completed
+        # Check if all stops are now completed — auto-complete the trip
+        trip_completed = False
         if stop_result.data:
             trip_id = stop_result.data["trip_id"]
-            trip_result = supabase.table("trips").select("status").eq(
-                "id", trip_id
-            ).single().execute()
+            all_stops = supabase.table("trip_stops").select("id, is_completed").eq(
+                "trip_id", trip_id
+            ).execute()
+
+            if all_stops.data and all(s.get("is_completed") for s in all_stops.data):
+                supabase.table("trips").update({
+                    "status": "completed",
+                    "completed_at": datetime.now().isoformat(),
+                }).eq("id", trip_id).eq("status", "in_progress").execute()
+                trip_completed = True
 
             return {
                 "success": True,
                 "message": "Stop completed",
                 "stop": stop_result.data,
-                "trip_completed": trip_result.data.get("status") == "completed" if trip_result.data else False,
+                "trip_completed": trip_completed,
                 "pending_delivery_id": pending_delivery_id
             }
 
