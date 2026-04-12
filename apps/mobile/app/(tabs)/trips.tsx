@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, FlatList, StyleSheet, RefreshControl, TouchableOpacity } from 'react-native';
+import { View, Text, FlatList, StyleSheet, RefreshControl, TouchableOpacity, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,6 +9,11 @@ import { TripCard } from '../../src/components/TripCard';
 import { Loading } from '../../src/components/ui/Loading';
 import { colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
 import type { Trip, TripStatus } from '../../src/types';
+
+/* ── Design tokens (match dashboard) ── */
+const BRAND    = '#1e1b4b';
+const WARM_BG  = '#faf9f7';
+const CARD_R   = 16;
 
 type Filter = 'all' | 'active' | 'completed';
 
@@ -37,19 +42,24 @@ export default function TripsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <View style={styles.filterRow}>
-        {(['active', 'all', 'completed'] as Filter[]).map((f) => (
-          <TouchableOpacity
-            key={f}
-            style={[styles.filterBtn, filter === f && styles.filterBtnActive]}
-            onPress={() => setFilter(f)}
-          >
-            <Text style={[styles.filterText, filter === f && styles.filterTextActive]}>
-              {f.charAt(0).toUpperCase() + f.slice(1)}
-            </Text>
-          </TouchableOpacity>
-        ))}
+    <SafeAreaView style={st.safe} edges={['bottom']}>
+      {/* ── Filter chips ── */}
+      <View style={st.chipRow}>
+        <Text style={st.chipLabel}>FILTER</Text>
+        <View style={st.chipGroup}>
+          {(['active', 'all', 'completed'] as Filter[]).map((f) => (
+            <TouchableOpacity
+              key={f}
+              style={[st.chip, filter === f && st.chipActive]}
+              onPress={() => setFilter(f)}
+              activeOpacity={0.7}
+            >
+              <Text style={[st.chipText, filter === f && st.chipTextActive]}>
+                {f.charAt(0).toUpperCase() + f.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
 
       {trips.isLoading ? (
@@ -58,7 +68,7 @@ export default function TripsScreen() {
         <FlatList
           data={filtered}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={st.list}
           refreshControl={
             <RefreshControl refreshing={trips.isRefetching} onRefresh={() => trips.refetch()} />
           }
@@ -66,12 +76,17 @@ export default function TripsScreen() {
             <TripCard trip={item} onPress={() => handlePress(item)} />
           )}
           ListEmptyComponent={
-            <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>No trips</Text>
-              <Text style={styles.emptyBody}>
+            <View style={st.empty}>
+              <View style={st.emptyIconBox}>
+                <Ionicons name="navigate-outline" size={28} color={colors.gray[300]} />
+              </View>
+              <Text style={st.emptyTitle}>
+                {filter === 'active' ? 'No active trips' : 'No trips found'}
+              </Text>
+              <Text style={st.emptyBody}>
                 {filter === 'active'
-                  ? 'No active trips. Accept a request to create one.'
-                  : 'No trips found.'}
+                  ? 'Accept a request to start a trip.'
+                  : 'Try a different filter.'}
               </Text>
             </View>
           }
@@ -80,75 +95,110 @@ export default function TripsScreen() {
 
       {isManager && (
         <TouchableOpacity
-          style={styles.fab}
+          style={st.fab}
           activeOpacity={0.8}
           onPress={() => router.push('/trip/create')}
         >
-          <Ionicons name="add" size={28} color={colors.white} />
+          <Ionicons name="add" size={26} color="#fff" />
         </TouchableOpacity>
       )}
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#faf9f7' },
-  filterRow: {
+/* ══════════════════════════════════════
+   STYLES
+══════════════════════════════════════ */
+const st = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: WARM_BG },
+
+  /* ── Filter chips ── */
+  chipRow: {
     flexDirection: 'row',
-    padding: spacing.md,
-    gap: spacing.sm,
-    backgroundColor: colors.white,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.gray[200],
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 10,
+    backgroundColor: WARM_BG,
+    gap: 10,
   },
-  filterBtn: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: 20,
-    backgroundColor: colors.gray[100],
+  chipLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.gray[400],
+    letterSpacing: 0.8,
   },
-  filterBtnActive: {
-    backgroundColor: colors.primary[500],
+  chipGroup: {
+    flexDirection: 'row',
+    gap: 8,
   },
-  filterText: {
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.medium,
-    color: colors.gray[600],
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: '#f0eeeb',
   },
-  filterTextActive: {
-    color: colors.white,
+  chipActive: {
+    backgroundColor: BRAND,
   },
-  list: { padding: spacing.lg, gap: spacing.md },
+  chipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.gray[500],
+    letterSpacing: 0.2,
+  },
+  chipTextActive: {
+    color: '#fff',
+  },
+
+  /* ── List ── */
+  list: { padding: 16, gap: 12, paddingBottom: 88 },
+
+  /* ── Empty state ── */
   empty: {
     alignItems: 'center',
-    paddingVertical: spacing['5xl'],
-    paddingHorizontal: spacing['2xl'],
+    paddingVertical: 64,
+    paddingHorizontal: 32,
   },
-  emptyTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[700],
-    marginBottom: spacing.xs,
-  },
-  emptyBody: {
-    fontSize: fontSize.sm,
-    color: colors.gray[500],
-    textAlign: 'center',
-  },
-  fab: {
-    position: 'absolute',
-    right: spacing.lg,
-    bottom: spacing.lg,
+  emptyIconBox: {
     width: 56,
     height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.primary[500],
+    borderRadius: 16,
+    backgroundColor: '#f0eeeb',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 6,
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.gray[600],
+    letterSpacing: -0.1,
+    marginBottom: 4,
+  },
+  emptyBody: {
+    fontSize: 13,
+    fontWeight: '400',
+    color: colors.gray[400],
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+
+  /* ── FAB ── */
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 24,
+    width: 54,
+    height: 54,
+    borderRadius: 16,
+    backgroundColor: BRAND,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({
+      ios: { shadowColor: BRAND, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 },
+      android: { elevation: 6 },
+      default: { shadowColor: BRAND, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 },
+    }),
   },
 });

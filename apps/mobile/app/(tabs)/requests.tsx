@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, FlatList, StyleSheet, RefreshControl, TouchableOpacity } from 'react-native';
+import { View, Text, FlatList, StyleSheet, RefreshControl, TouchableOpacity, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,8 +7,13 @@ import { useAuthStore } from '../../src/stores/authStore';
 import { useAvailableRequests, useMyRequests } from '../../src/hooks/useRequests';
 import { RequestCard } from '../../src/components/RequestCard';
 import { Loading } from '../../src/components/ui/Loading';
-import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
+import { colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
 import type { StockRequest } from '../../src/types';
+
+/* ── Design tokens (match dashboard) ── */
+const BRAND    = '#1e1b4b';
+const WARM_BG  = '#faf9f7';
+const CARD_R   = 16;
 
 type Tab = 'available' | 'mine';
 
@@ -30,29 +35,36 @@ export default function RequestsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <View style={styles.tabs}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'available' && styles.activeTab]}
-          onPress={() => setActiveTab('available')}
-        >
-          <Text style={[styles.tabText, activeTab === 'available' && styles.activeTabText]}>
-            Available
-          </Text>
-          {available.data && (
-            <View style={styles.tabCount}>
-              <Text style={styles.tabCountText}>{available.data.total}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'mine' && styles.activeTab]}
-          onPress={() => setActiveTab('mine')}
-        >
-          <Text style={[styles.tabText, activeTab === 'mine' && styles.activeTabText]}>
-            My Requests
-          </Text>
-        </TouchableOpacity>
+    <SafeAreaView style={st.safe} edges={['bottom']}>
+      {/* ── Pill toggle ── */}
+      <View style={st.toggleWrap}>
+        <View style={st.toggleTrack}>
+          <TouchableOpacity
+            style={[st.toggleBtn, activeTab === 'available' && st.toggleBtnActive]}
+            onPress={() => setActiveTab('available')}
+            activeOpacity={0.7}
+          >
+            <Text style={[st.toggleText, activeTab === 'available' && st.toggleTextActive]}>
+              Available
+            </Text>
+            {available.data && available.data.total > 0 && (
+              <View style={[st.toggleCount, activeTab === 'available' ? st.toggleCountActive : st.toggleCountIdle]}>
+                <Text style={[st.toggleCountText, activeTab === 'available' && st.toggleCountTextActive]}>
+                  {available.data.total}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[st.toggleBtn, activeTab === 'mine' && st.toggleBtnActive]}
+            onPress={() => setActiveTab('mine')}
+            activeOpacity={0.7}
+          >
+            <Text style={[st.toggleText, activeTab === 'mine' && st.toggleTextActive]}>
+              My Requests
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {data.isLoading ? (
@@ -61,7 +73,7 @@ export default function RequestsScreen() {
         <FlatList
           data={requests}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={st.list}
           refreshControl={
             <RefreshControl
               refreshing={data.isRefetching}
@@ -72,12 +84,21 @@ export default function RequestsScreen() {
             <RequestCard request={item} onPress={() => handlePress(item)} />
           )}
           ListEmptyComponent={
-            <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>No requests</Text>
-              <Text style={styles.emptyBody}>
+            <View style={st.empty}>
+              <View style={st.emptyIconBox}>
+                <Ionicons
+                  name={activeTab === 'available' ? 'document-text-outline' : 'folder-open-outline'}
+                  size={28}
+                  color={colors.gray[300]}
+                />
+              </View>
+              <Text style={st.emptyTitle}>
+                {activeTab === 'available' ? 'No pending requests' : 'No requests yet'}
+              </Text>
+              <Text style={st.emptyBody}>
                 {activeTab === 'available'
-                  ? 'No pending stock requests right now. Pull down to refresh.'
-                  : 'You haven\'t accepted any requests yet.'}
+                  ? 'All caught up. Pull down to refresh.'
+                  : 'Requests you accept will appear here.'}
               </Text>
             </View>
           }
@@ -87,94 +108,133 @@ export default function RequestsScreen() {
       {/* Create Request FAB for managers */}
       {isManager && (
         <TouchableOpacity
-          style={styles.fab}
+          style={st.fab}
           activeOpacity={0.8}
           onPress={() => router.push('/stock/create-request')}
         >
-          <Ionicons name="add" size={28} color={colors.white} />
+          <Ionicons name="add" size={26} color="#fff" />
         </TouchableOpacity>
       )}
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#faf9f7' },
-  tabs: {
-    flexDirection: 'row',
-    backgroundColor: '#faf9f7',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.gray[200],
-    paddingHorizontal: spacing.sm,
-    paddingTop: spacing.sm,
+/* ══════════════════════════════════════
+   STYLES
+══════════════════════════════════════ */
+const st = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: WARM_BG },
+
+  /* ── Pill toggle ── */
+  toggleWrap: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 6,
+    backgroundColor: WARM_BG,
   },
-  tab: {
+  toggleTrack: {
+    flexDirection: 'row',
+    backgroundColor: '#f0eeeb',
+    borderRadius: 12,
+    padding: 3,
+  },
+  toggleBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing.md,
-    gap: spacing.xs,
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-  },
-  activeTab: {
-    borderBottomColor: colors.primary[500],
-    backgroundColor: '#fff8f3',
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
-  },
-  tabText: {
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.medium,
-    color: colors.gray[500],
-  },
-  activeTabText: {
-    color: colors.primary[500],
-    fontWeight: fontWeight.semibold,
-  },
-  tabCount: {
-    backgroundColor: colors.primary[100],
-    paddingHorizontal: 6,
-    paddingVertical: 1,
+    paddingVertical: 9,
     borderRadius: 10,
+    gap: 6,
   },
-  tabCountText: {
-    fontSize: 11,
-    fontWeight: fontWeight.semibold,
-    color: colors.primary[700],
+  toggleBtnActive: {
+    backgroundColor: '#fff',
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4 },
+      android: { elevation: 2 },
+      default: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4 },
+    }),
   },
-  list: { padding: spacing.lg, gap: spacing.md, paddingBottom: 80 },
-  fab: {
-    position: 'absolute',
-    bottom: spacing.xl,
-    right: spacing.xl,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.info,
+  toggleText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.gray[400],
+    letterSpacing: 0.1,
+  },
+  toggleTextActive: {
+    color: BRAND,
+  },
+  toggleCount: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
+    paddingHorizontal: 5,
   },
+  toggleCountIdle: {
+    backgroundColor: colors.gray[200],
+  },
+  toggleCountActive: {
+    backgroundColor: '#ede9fe',
+  },
+  toggleCountText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.gray[500],
+  },
+  toggleCountTextActive: {
+    color: BRAND,
+  },
+
+  /* ── List ── */
+  list: { padding: 16, gap: 12, paddingBottom: 88 },
+
+  /* ── FAB ── */
+  fab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 20,
+    width: 54,
+    height: 54,
+    borderRadius: 16,
+    backgroundColor: BRAND,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({
+      ios: { shadowColor: BRAND, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 },
+      android: { elevation: 6 },
+      default: { shadowColor: BRAND, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 },
+    }),
+  },
+
+  /* ── Empty state ── */
   empty: {
     alignItems: 'center',
-    paddingVertical: spacing['5xl'],
-    paddingHorizontal: spacing['2xl'],
+    paddingVertical: 64,
+    paddingHorizontal: 32,
+  },
+  emptyIconBox: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: '#f0eeeb',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
   },
   emptyTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[700],
-    marginBottom: spacing.xs,
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.gray[600],
+    letterSpacing: -0.1,
+    marginBottom: 4,
   },
   emptyBody: {
-    fontSize: fontSize.sm,
-    color: colors.gray[500],
+    fontSize: 13,
+    fontWeight: '400',
+    color: colors.gray[400],
     textAlign: 'center',
+    lineHeight: 18,
   },
 });
