@@ -25,6 +25,24 @@ export function useMyRequests(status?: string) {
     queryKey: ['requests', 'mine', status],
     queryFn: () => requestsApi.list({ status }).then((r) => r.data),
     staleTime: STALE_TIME,
+    refetchInterval: REFETCH_INTERVAL,
+  });
+}
+
+export function useActiveRequests() {
+  return useQuery({
+    queryKey: ['requests', 'active'],
+    queryFn: () => requestsApi.listActive().then((r) => r.data),
+    staleTime: STALE_TIME,
+    refetchInterval: REFETCH_INTERVAL,
+  });
+}
+
+export function useRequestHistory(offset: number = 0, limit: number = 20) {
+  return useQuery({
+    queryKey: ['requests', 'history', offset, limit],
+    queryFn: () => requestsApi.listHistory({ limit, offset }).then((r) => r.data),
+    staleTime: STALE_TIME,
   });
 }
 

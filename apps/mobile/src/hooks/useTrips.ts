@@ -7,13 +7,14 @@ import {
   type CompleteStopPayload,
   type CompleteTripPayload,
 } from '../api/trips';
-import { STALE_TIME } from '../constants/config';
+import { STALE_TIME, REFETCH_INTERVAL } from '../constants/config';
 
 export function useTrips(params?: { status?: string }) {
   return useQuery({
     queryKey: ['trips', params],
     queryFn: () => tripsApi.list(params).then((r) => r.data),
     staleTime: STALE_TIME,
+    refetchInterval: REFETCH_INTERVAL,
   });
 }
 
