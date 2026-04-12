@@ -1,16 +1,24 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Badge } from './ui/Badge';
 import { StatusBadge } from './StatusBadge';
+import { Badge } from './ui/Badge';
 import { timeAgo } from '../utils/dates';
 import { getUrgencyVariant } from '../utils/status';
-import { colors } from '../constants/theme';
 import type { StockRequest } from '../types';
 
-/* ── Design tokens (match dashboard) ── */
-const BRAND  = '#1e1b4b';
-const CARD_R = 16;
+const mono = Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' });
+
+const STATUS_ACCENT: Record<string, string> = {
+  pending: '#f59e0b',
+  accepted: '#3b82f6',
+  trip_created: '#3b82f6',
+  in_delivery: '#8b5cf6',
+  fulfilled: '#22c55e',
+  delivered: '#22c55e',
+  cancelled: '#94a3b8',
+  expired: '#ef4444',
+};
 
 interface RequestCardProps {
   request: StockRequest;
@@ -18,178 +26,98 @@ interface RequestCardProps {
   showActions?: boolean;
 }
 
-export function RequestCard({ request, onPress, showActions }: RequestCardProps) {
+export function RequestCard({ request, onPress }: RequestCardProps) {
+  const accent = STATUS_ACCENT[request.status] ?? '#94a3b8';
+
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.6}>
       <View style={st.card}>
-        {/* ── Header: badges + time ── */}
-        <View style={st.header}>
-          <View style={st.badges}>
-            <StatusBadge status={request.status} type="request" />
-            {request.urgency === 'urgent' && (
-              <Badge label="Urgent" variant={getUrgencyVariant(request.urgency)} />
-            )}
-          </View>
-          <Text style={st.time}>{timeAgo(request.created_at)}</Text>
-        </View>
-
-        {/* ── Body ── */}
-        <View style={st.body}>
-          {/* Location — primary info */}
-          <View style={st.locationRow}>
-            <View style={st.locationIcon}>
-              <Ionicons name="location" size={14} color={BRAND} />
+        <View style={[st.accent, { backgroundColor: accent }]} />
+        <View style={st.inner}>
+          <View style={st.top}>
+            <View style={st.badges}>
+              <StatusBadge status={request.status} type="request" />
+              {request.urgency === 'urgent' && (
+                <Badge label="Urgent" variant={getUrgencyVariant(request.urgency)} />
+              )}
             </View>
-            <Text style={st.locationName} numberOfLines={1}>
-              {request.location?.name ?? 'Unknown location'}
-            </Text>
+            <Text style={st.time}>{timeAgo(request.created_at)}</Text>
           </View>
 
-          {/* Quantity — prominent */}
-          <View style={st.qtyRow}>
-            <Text style={st.qtyValue}>{request.quantity_bags}</Text>
-            <Text style={st.qtyUnit}>bags</Text>
+          <View style={st.main}>
+            <View style={st.leftCol}>
+              <Text style={st.location} numberOfLines={1}>{request.location?.name ?? 'Unknown'}</Text>
+              {request.requester?.full_name && (
+                <Text style={st.requester}>by {request.requester.full_name}</Text>
+              )}
+            </View>
+            <View style={st.rightCol}>
+              <Text style={st.qty}>{request.quantity_bags}</Text>
+              <Text style={st.qtyUnit}>bags</Text>
+            </View>
           </View>
 
-          {/* Metadata */}
-          <View style={st.metaGroup}>
-            {request.requester?.full_name && (
-              <View style={st.metaRow}>
-                <Ionicons name="person-outline" size={13} color={colors.gray[400]} />
-                <Text style={st.metaText}>{request.requester.full_name}</Text>
-              </View>
-            )}
-            {request.requested_delivery_time && (
-              <View style={st.metaRow}>
-                <Ionicons name="time-outline" size={13} color={colors.gray[400]} />
-                <Text style={st.metaText}>
-                  {new Date(request.requested_delivery_time).toLocaleString()}
-                </Text>
-              </View>
-            )}
-          </View>
+          {(request.requested_delivery_time || (request.notes && request.notes.trim())) && (
+            <View style={st.footer}>
+              {request.requested_delivery_time && (
+                <View style={st.metaRow}>
+                  <Ionicons name="time-outline" size={12} color="#94a3b8" />
+                  <Text style={st.metaText}>
+                    {new Date(request.requested_delivery_time).toLocaleDateString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  </Text>
+                </View>
+              )}
+              {request.notes && request.notes.trim().length > 0 && (
+                <View style={st.metaRow}>
+                  <Ionicons name="chatbubble-outline" size={11} color="#94a3b8" />
+                  <Text style={st.noteText} numberOfLines={1}>{request.notes}</Text>
+                </View>
+              )}
+            </View>
+          )}
         </View>
-
-        {/* ── Notes ── */}
-        {request.notes && (
-          <View style={st.notesWrap}>
-            <Text style={st.notes} numberOfLines={2}>{request.notes}</Text>
-          </View>
-        )}
       </View>
     </TouchableOpacity>
   );
 }
 
-/* ══════════════════════════════════════
-   STYLES
-══════════════════════════════════════ */
+const elev = (n: number) => Platform.select({
+  ios: { shadowColor: '#0f172a', shadowOffset: { width: 0, height: n * 2 }, shadowOpacity: 0.04 + n * 0.03, shadowRadius: n * 4 },
+  android: { elevation: n * 2 },
+  default: { shadowColor: '#0f172a', shadowOffset: { width: 0, height: n * 2 }, shadowOpacity: 0.04 + n * 0.03, shadowRadius: n * 4 },
+}) as any;
+
 const st = StyleSheet.create({
   card: {
+    flexDirection: 'row',
     backgroundColor: '#fff',
-    borderRadius: CARD_R,
-    padding: 16,
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 6 },
-      android: { elevation: 1 },
-      default: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 6 },
-    }),
+    borderRadius: 20,
+    overflow: 'hidden',
+    ...elev(2),
   },
+  accent: { width: 4 },
+  inner: { flex: 1, padding: 16, gap: 10 },
 
-  /* Header */
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 14,
-  },
-  badges: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  time: {
-    fontSize: 11,
-    fontWeight: '400',
-    color: colors.gray[400],
-    letterSpacing: 0.1,
-  },
+  top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  badges: { flexDirection: 'row', gap: 6 },
+  time: { fontSize: 11, color: '#94a3b8', fontWeight: '500' },
 
-  /* Body */
-  body: {
-    gap: 10,
-  },
+  main: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
+  leftCol: { flex: 1 },
+  location: { fontSize: 16, fontWeight: '700', color: '#0f172a', letterSpacing: -0.2 },
+  requester: { fontSize: 12, color: '#64748b', marginTop: 2 },
 
-  /* Location */
-  locationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  locationIcon: {
-    width: 26,
-    height: 26,
-    borderRadius: 8,
-    backgroundColor: '#ede9fe',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  locationName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.gray[900],
-    letterSpacing: -0.1,
-    flex: 1,
-  },
+  rightCol: { alignItems: 'flex-end' },
+  qty: { fontSize: 28, fontWeight: '800', color: '#0f172a', fontFamily: mono, letterSpacing: -1.5 },
+  qtyUnit: { fontSize: 11, color: '#94a3b8', fontWeight: '600', marginTop: 1 },
 
-  /* Quantity */
-  qtyRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 4,
-    marginLeft: 34, // align with text after icon
-  },
-  qtyValue: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: BRAND,
-    letterSpacing: -0.8,
-  },
-  qtyUnit: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: colors.gray[400],
-    letterSpacing: 0.2,
-  },
-
-  /* Metadata */
-  metaGroup: {
-    gap: 4,
-    marginLeft: 34,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  metaText: {
-    fontSize: 12,
-    fontWeight: '400',
-    color: colors.gray[500],
-    letterSpacing: 0.1,
-  },
-
-  /* Notes */
-  notesWrap: {
-    marginTop: 10,
+  footer: {
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: colors.gray[100],
+    borderTopColor: '#f1f5f9',
+    gap: 4,
   },
-  notes: {
-    fontSize: 12,
-    fontWeight: '400',
-    color: colors.gray[400],
-    fontStyle: 'italic',
-    lineHeight: 17,
-  },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  metaText: { fontSize: 12, color: '#64748b' },
+  noteText: { fontSize: 12, color: '#94a3b8', flex: 1 },
 });

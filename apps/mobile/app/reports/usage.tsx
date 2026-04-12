@@ -93,7 +93,7 @@ export default function UsageScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <Stack.Screen options={{ title: 'Usage Trends', headerStyle: { backgroundColor: '#1e1b4b' }, headerTintColor: '#fff' }} />
+      <Stack.Screen options={{ title: 'Usage Trends', headerStyle: { backgroundColor: '#0f172a' }, headerTintColor: '#fff', headerShadowVisible: false }} />
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={
