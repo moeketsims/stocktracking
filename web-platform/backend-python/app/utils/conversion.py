@@ -6,6 +6,18 @@ Fixed conversion rate: 1 bag = 10 kg for all potato products.
 KG_PER_BAG = 10.0
 
 
+def whole_bags_from_kg(kg_value: float, field_name: str = "quantity") -> int:
+    """Convert kilograms to a whole bag count, rejecting partial bags."""
+    if kg_value is None:
+        return 0
+
+    bag_value = kg_value / KG_PER_BAG
+    rounded_bags = round(bag_value)
+    if abs(bag_value - rounded_bags) > 0.001:
+        raise ValueError(f"{field_name} must represent a whole number of bags")
+    return int(rounded_bags)
+
+
 def kg_to_bags(kg_value: float) -> float:
     """Convert kilograms to bags (1 bag = 10 kg).
 

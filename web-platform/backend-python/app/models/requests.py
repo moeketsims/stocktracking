@@ -1,8 +1,13 @@
-from pydantic import BaseModel, EmailStr, Field
-from typing import Optional, Literal, List
+from pydantic import BaseModel, EmailStr, Field, StringConstraints, model_validator
+from typing import Optional, Literal, List, Annotated
 from datetime import date, datetime
+from ..utils.conversion import whole_bags_from_kg
 
 
+BarcodeValue = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=200)
+]
 # Auth Requests
 class LoginRequest(BaseModel):
     email: EmailStr
@@ -211,8 +216,23 @@ class CreateMultiStopTripRequest(BaseModel):
 
 
 class CompleteStopRequest(BaseModel):
+    actual_bags: Optional[int] = Field(None, ge=0)
     actual_qty_kg: Optional[float] = Field(None, ge=0)
     notes: Optional[str] = None
+    scanned_barcodes: Optional[List[BarcodeValue]] = Field(
+        None,
+        max_length=500,
+    )
+
+    @model_validator(mode="after")
+    def validate_delivery_quantity(self):
+        if self.actual_bags is None and self.actual_qty_kg is not None:
+            self.actual_bags = whole_bags_from_kg(self.actual_qty_kg, "actual_qty_kg")
+        elif self.actual_bags is not None and self.actual_qty_kg is not None:
+            derived_bags = whole_bags_from_kg(self.actual_qty_kg, "actual_qty_kg")
+            if derived_bags != self.actual_bags:
+                raise ValueError("actual_bags does not match actual_qty_kg")
+        return self
 
 
 # Stock Request Requests (Replenishment Workflow)
@@ -252,8 +272,23 @@ class CreateTripFromMultipleRequestsRequest(BaseModel):
 
 # Pending Delivery Requests
 class ConfirmDeliveryRequest(BaseModel):
-    confirmed_qty_kg: float = Field(ge=0)
+    confirmed_bags: Optional[int] = Field(None, ge=0)
+    confirmed_qty_kg: Optional[float] = Field(None, ge=0)
     notes: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_confirmed_quantity(self):
+        if self.confirmed_bags is None and self.confirmed_qty_kg is None:
+            raise ValueError("confirmed_bags is required")
+
+        if self.confirmed_bags is None and self.confirmed_qty_kg is not None:
+            self.confirmed_bags = whole_bags_from_kg(self.confirmed_qty_kg, "confirmed_qty_kg")
+        elif self.confirmed_bags is not None and self.confirmed_qty_kg is not None:
+            derived_bags = whole_bags_from_kg(self.confirmed_qty_kg, "confirmed_qty_kg")
+            if derived_bags != self.confirmed_bags:
+                raise ValueError("confirmed_bags does not match confirmed_qty_kg")
+
+        return self
 
 
 class RejectDeliveryRequest(BaseModel):

@@ -175,9 +175,13 @@ async def get_dashboard(
 
         stats = DashboardStats(
             total_stock_kg=total_stock,
+            total_stock_bags=round(total_stock / 10, 1),
             received_today_kg=received_today,
+            received_today_bags=round(received_today / 10, 1),
             issued_today_kg=issued_today,
+            issued_today_bags=round(issued_today / 10, 1),
             wasted_today_kg=wasted_today,
+            wasted_today_bags=round(wasted_today / 10, 1),
             active_batches=active_batches,
             low_stock_alerts=low_stock_count,
             reorder_alerts=reorder_count,
@@ -225,12 +229,16 @@ async def get_dashboard(
 
         forecast = ForecastData(
             avg_daily_usage=round(avg_daily_usage, 2),
+            avg_daily_usage_bags=round(avg_daily_usage / 10, 2),
             days_of_cover=round(min(days_of_cover, 999), 1),
             stock_out_date=stock_out_date,
             reorder_by_date=reorder_by_date,
             safety_stock_qty=safety_stock,
+            safety_stock_qty_bags=round(safety_stock / 10, 1),
             reorder_point_qty=reorder_point,
-            suggested_order_qty=round(suggested_order, 2)
+            reorder_point_qty_bags=round(reorder_point / 10, 1),
+            suggested_order_qty=round(suggested_order, 2),
+            suggested_order_qty_bags=round(suggested_order / 10, 1)
         )
 
         # Format stock balance for response
