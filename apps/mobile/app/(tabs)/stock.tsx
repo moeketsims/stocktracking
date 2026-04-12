@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, FlatList, StyleSheet, RefreshControl } from 'react-native';
+import { View, Text, FlatList, StyleSheet, RefreshControl, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/authStore';
 import { useStockBalance, useTodayTransactions, useIssueStock, useReturnStock } from '../../src/hooks/useStock';
@@ -11,7 +12,7 @@ import { Loading } from '../../src/components/ui/Loading';
 import { KitchenFAB } from '../../src/components/KitchenFAB';
 import { UndoToast } from '../../src/components/UndoToast';
 import { timeAgo } from '../../src/utils/dates';
-import { colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
+import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
 
 interface UndoState {
   message: string;
@@ -19,8 +20,10 @@ interface UndoState {
 }
 
 export default function StockScreen() {
+  const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const isStaff = user?.role === 'staff';
+  const isManager = user?.role === 'location_manager' || user?.role === 'zone_manager' || user?.role === 'admin';
 
   const balance = useStockBalance(user?.location_id ?? undefined);
   const today = useTodayTransactions(user?.location_id ?? undefined);
@@ -132,6 +135,43 @@ export default function StockScreen() {
                   loading={returnMutation.isPending}
                   icon={<Ionicons name="add" size={16} color={colors.primary[500]} />}
                 />
+              </View>
+            )}
+
+            {/* Manager actions */}
+            {isManager && (
+              <View style={styles.managerActions}>
+                <Text style={styles.managerTitle}>Actions</Text>
+                <View style={styles.actionGrid}>
+                  <TouchableOpacity
+                    style={[styles.actionBtn, { borderColor: colors.info }]}
+                    onPress={() => router.push('/stock/create-request')}
+                  >
+                    <Ionicons name="cart-outline" size={22} color={colors.info} />
+                    <Text style={[styles.actionLabel, { color: colors.info }]}>Create Request</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionBtn, { borderColor: colors.error }]}
+                    onPress={() => router.push('/stock/waste')}
+                  >
+                    <Ionicons name="trash-outline" size={22} color={colors.error} />
+                    <Text style={[styles.actionLabel, { color: colors.error }]}>Log Waste</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionBtn, { borderColor: '#f59e0b' }]}
+                    onPress={() => router.push('/stock/adjustment')}
+                  >
+                    <Ionicons name="swap-horizontal-outline" size={22} color="#f59e0b" />
+                    <Text style={[styles.actionLabel, { color: '#f59e0b' }]}>Adjustment</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionBtn, { borderColor: colors.primary[500] }]}
+                    onPress={() => router.push('/stock/batches')}
+                  >
+                    <Ionicons name="layers-outline" size={22} color={colors.primary[500]} />
+                    <Text style={[styles.actionLabel, { color: colors.primary[500] }]}>View Batches</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             )}
 
@@ -248,6 +288,34 @@ const styles = StyleSheet.create({
   quickActions: {
     flexDirection: 'row',
     gap: spacing.md,
+  },
+  managerActions: {
+    marginTop: spacing.md,
+  },
+  managerTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.semibold,
+    color: colors.gray[900],
+    marginBottom: spacing.sm,
+  },
+  actionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  actionBtn: {
+    width: '48%' as any,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    backgroundColor: colors.white,
+  },
+  actionLabel: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
   },
   activityHeader: {
     flexDirection: 'row',
