@@ -12,6 +12,7 @@ import { useDashboard } from '../../src/hooks/useDashboard';
 import { useAvailableRequests } from '../../src/hooks/useRequests';
 import { usePendingDeliveries } from '../../src/hooks/useDeliveries';
 import { Loading } from '../../src/components/ui/Loading';
+import { QueryErrorState } from '../../src/components/ui/QueryErrorState';
 import { brand } from '../../src/constants/theme';
 
 const mono = Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' });
@@ -35,6 +36,7 @@ export default function DashboardScreen() {
   const delCount = pending.data?.total ?? 0;
 
   if (dashboard.isLoading) return <Loading fullScreen message="" />;
+  if (dashboard.isError) return <QueryErrorState error={dashboard.error} onRetry={() => dashboard.refetch()} />;
 
   const bags = stats?.total_stock_bags ?? 0;
   const received = stats?.received_today_bags ?? 0;

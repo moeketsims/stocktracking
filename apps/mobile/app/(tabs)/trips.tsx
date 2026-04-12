@@ -10,6 +10,7 @@ import { useTrips } from '../../src/hooks/useTrips';
 import { useAuthStore } from '../../src/stores/authStore';
 import { TripCard } from '../../src/components/TripCard';
 import { Loading } from '../../src/components/ui/Loading';
+import { QueryErrorState } from '../../src/components/ui/QueryErrorState';
 import type { Trip } from '../../src/types';
 
 /*
@@ -146,6 +147,8 @@ export default function TripsScreen() {
       {/* ── List ── */}
       {trips.isLoading ? (
         <Loading fullScreen message="" />
+      ) : trips.isError ? (
+        <QueryErrorState error={trips.error} onRetry={() => trips.refetch()} />
       ) : (
         <SectionList
           sections={sections}

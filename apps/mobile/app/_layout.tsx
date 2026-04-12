@@ -5,7 +5,9 @@ import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { useAuthStore } from '../src/stores/authStore';
 import { Loading } from '../src/components/ui/Loading';
+import ErrorBoundary from '../src/components/ErrorBoundary';
 import { STALE_TIME } from '../src/constants/config';
+import { brand } from '../src/constants/theme';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -55,20 +57,23 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthGuard>
-        <StatusBar style="light" />
-        <Stack
-          screenOptions={{
-            headerStyle: { backgroundColor: '#1e1b4b' },
-            headerTintColor: '#ffffff',
-            headerTitleStyle: { fontWeight: '600' },
-            headerBackTitleVisible: false,
-          }}
-        >
-          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        </Stack>
-      </AuthGuard>
+      <ErrorBoundary>
+        <AuthGuard>
+          <StatusBar style="light" />
+          <Stack
+            screenOptions={{
+              headerStyle: { backgroundColor: brand.gradientStart },
+              headerTintColor: '#ffffff',
+              headerTitleStyle: { fontWeight: '700', fontSize: 17 },
+              headerBackTitleVisible: false,
+              headerShadowVisible: false,
+            }}
+          >
+            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          </Stack>
+        </AuthGuard>
+      </ErrorBoundary>
     </QueryClientProvider>
   );
 }

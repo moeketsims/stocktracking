@@ -30,6 +30,7 @@ import { Button } from '../../src/components/ui/Button';
 import { Card } from '../../src/components/ui/Card';
 import { Input } from '../../src/components/ui/Input';
 import { Loading } from '../../src/components/ui/Loading';
+import { QueryErrorState } from '../../src/components/ui/QueryErrorState';
 import { useAuthStore } from '../../src/stores/authStore';
 import { formatDateTime, timeAgo } from '../../src/utils/dates';
 import { getUrgencyVariant } from '../../src/utils/status';
@@ -56,7 +57,7 @@ export default function RequestDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
-  const { data: request, isLoading } = useRequest(id);
+  const { data: request, isLoading, isError, error, refetch } = useRequest(id);
 
   // Mutations
   const acceptMutation = useAcceptRequest();
@@ -127,6 +128,9 @@ export default function RequestDetailScreen() {
 
   if (isLoading || !request) {
     return <Loading fullScreen message="Loading request..." />;
+  }
+  if (isError) {
+    return <QueryErrorState error={error} onRetry={() => refetch()} />;
   }
 
   const isDriver = user?.role === 'driver';

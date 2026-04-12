@@ -11,13 +11,12 @@ import { DeliveryCard } from '../src/components/DeliveryCard';
 import { Button } from '../src/components/ui/Button';
 import { Input } from '../src/components/ui/Input';
 import { Loading } from '../src/components/ui/Loading';
+import { QueryErrorState } from '../src/components/ui/QueryErrorState';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '../src/constants/theme';
 import type { PendingDelivery } from '../src/types';
 
-/* ── Design tokens (matching dashboard) ── */
-const BRAND    = '#1e1b4b';
-const WARM_BG  = '#faf9f7';
-const CARD_R   = 16;
+const WARM_BG  = '#f9fafb';
+const CARD_R   = 12;
 
 type Tab = 'alerts' | 'deliveries' | 'confirmed';
 
@@ -117,8 +116,10 @@ export default function AlertsScreen() {
       <Stack.Screen
         options={{
           title: 'Alerts & Deliveries',
-          headerStyle: { backgroundColor: BRAND },
-          headerTintColor: colors.white,
+          headerStyle: { backgroundColor: '#fff' },
+          headerTintColor: '#111827',
+          headerTitleStyle: { fontWeight: '700', fontSize: 17, color: '#111827' },
+          headerShadowVisible: false,
         }}
       />
       <SafeAreaView style={st.safe} edges={['bottom']}>
@@ -151,6 +152,8 @@ export default function AlertsScreen() {
         {tab === 'alerts' ? (
           alerts.isLoading ? (
             <Loading fullScreen message="Loading alerts..." />
+          ) : alerts.isError ? (
+            <QueryErrorState error={alerts.error} onRetry={() => alerts.refetch()} />
           ) : (
             <FlatList
               data={activeAlerts}
@@ -179,6 +182,8 @@ export default function AlertsScreen() {
         ) : tab === 'deliveries' ? (
           deliveries.isLoading ? (
             <Loading fullScreen message="Loading deliveries..." />
+          ) : deliveries.isError ? (
+            <QueryErrorState error={deliveries.error} onRetry={() => deliveries.refetch()} />
           ) : (
             <FlatList
               data={pendingDeliveries}
@@ -250,7 +255,7 @@ export default function AlertsScreen() {
                       size="sm"
                       onPress={() => handleResendKmEmail(item.id)}
                       loading={resendKmEmail.isPending}
-                      icon={<Ionicons name="mail" size={14} color={BRAND} />}
+                      icon={<Ionicons name="mail" size={14} color="#111827" />}
                     />
                     <Button
                       title="Correct KM"
@@ -350,41 +355,41 @@ const st = StyleSheet.create({
   tabBar: {
     flexDirection: 'row',
     backgroundColor: '#fff',
-    paddingHorizontal: 16, paddingTop: 6, paddingBottom: 0,
+    paddingHorizontal: 16, paddingTop: 8, paddingBottom: 0,
     gap: 4,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.gray[100],
+    borderBottomColor: '#e5e7eb',
   },
   tab: {
     flex: 1, alignItems: 'center', justifyContent: 'center',
     flexDirection: 'row', gap: 6,
-    paddingVertical: 11,
+    paddingVertical: 12,
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',
   },
-  tabActive: { borderBottomColor: BRAND },
+  tabActive: { borderBottomColor: '#111827' },
   tabText: {
-    fontSize: 13, fontWeight: '500', color: colors.gray[400],
+    fontSize: 14, fontWeight: '500', color: '#9ca3af',
     letterSpacing: 0.1,
   },
-  tabTextActive: { color: BRAND, fontWeight: '600' },
+  tabTextActive: { color: '#111827', fontWeight: '700' },
   tabCount: {
-    backgroundColor: colors.gray[100],
+    backgroundColor: '#f3f4f6',
     paddingHorizontal: 6, paddingVertical: 1, borderRadius: 8,
     minWidth: 20, alignItems: 'center',
   },
-  tabCountActive: { backgroundColor: '#ede9fe' },
-  tabCountText: { fontSize: 11, fontWeight: '600', color: colors.gray[400] },
-  tabCountTextActive: { color: BRAND },
+  tabCountActive: { backgroundColor: '#111827' },
+  tabCountText: { fontSize: 11, fontWeight: '600', color: '#9ca3af' },
+  tabCountTextActive: { color: '#fff' },
 
   /* ── List ── */
-  list: { padding: 16, gap: 12 },
+  list: { padding: 16, gap: 14 },
 
   /* ── Empty ── */
-  empty: { alignItems: 'center', paddingVertical: 56 },
-  emptyIcon: { marginBottom: 12 },
-  emptyTitle: { fontSize: 16, fontWeight: '600', color: colors.gray[700], letterSpacing: -0.1 },
-  emptyBody: { fontSize: 13, fontWeight: '400', color: colors.gray[400], marginTop: 4 },
+  empty: { alignItems: 'center', paddingVertical: 80 },
+  emptyIcon: { marginBottom: 14 },
+  emptyTitle: { fontSize: 17, fontWeight: '700', color: '#111827', letterSpacing: -0.2 },
+  emptyBody: { fontSize: 14, fontWeight: '400', color: '#9ca3af', marginTop: 6 },
 
   /* ── Confirmed deliveries ── */
   confirmedCard: {
@@ -400,10 +405,10 @@ const st = StyleSheet.create({
     marginBottom: 12,
   },
   confirmedLocation: {
-    fontSize: 15, fontWeight: '600', color: colors.gray[900], letterSpacing: -0.1,
+    fontSize: 15, fontWeight: '700', color: '#111827', letterSpacing: -0.2,
   },
   confirmedTrip: {
-    fontSize: 13, fontWeight: '400', color: colors.gray[400], marginTop: 2,
+    fontSize: 13, fontWeight: '400', color: '#9ca3af', marginTop: 2,
   },
   confirmedBagsPill: {
     backgroundColor: '#f0fdf4',
@@ -413,8 +418,8 @@ const st = StyleSheet.create({
     fontSize: 13, fontWeight: '600', color: '#059669',
   },
   kmActions: {
-    flexDirection: 'row', gap: 8,
-    paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.gray[100],
+    flexDirection: 'row', gap: 10,
+    paddingTop: 14, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#f3f4f6',
   },
 
   /* ── Modal ── */
@@ -431,11 +436,11 @@ const st = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
   },
   modalTitle: {
-    fontSize: 17, fontWeight: '700', color: colors.gray[900], letterSpacing: -0.2,
+    fontSize: 17, fontWeight: '700', color: '#111827', letterSpacing: -0.2,
   },
   modalHintRow: { marginBottom: 4 },
   modalHint: {
-    fontSize: 13, fontWeight: '400', color: colors.gray[400],
+    fontSize: 13, fontWeight: '400', color: '#9ca3af',
   },
   modalActions: {
     flexDirection: 'row', justifyContent: 'flex-end',
