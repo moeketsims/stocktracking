@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/authStore';
 import { useStockBalance, useStockByLocation, useTodayTransactions, useIssueStock, useReturnStock } from '../../src/hooks/useStock';
 import { usePendingDeliveries } from '../../src/hooks/useDeliveries';
+import { useExportStock } from '../../src/hooks/useExports';
 import { Card } from '../../src/components/ui/Card';
 import { Badge } from '../../src/components/ui/Badge';
 import { Button } from '../../src/components/ui/Button';
@@ -40,6 +41,7 @@ export default function StockScreen() {
 
   const issueMutation = useIssueStock();
   const returnMutation = useReturnStock();
+  const { exportStock, loading: exportLoading } = useExportStock();
   const [undoState, setUndoState] = useState<UndoState | null>(null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterMode>('all');
@@ -157,6 +159,37 @@ export default function StockScreen() {
                     <Text style={[styles.chipText, { color: filter === c.key ? c.color : colors.gray[500] }]}>{c.label}</Text>
                   </TouchableOpacity>
                 ))}
+              </View>
+
+              {/* Export button */}
+              {isManager && (
+                <TouchableOpacity
+                  style={styles.exportBar}
+                  onPress={() => exportStock()}
+                  activeOpacity={0.7}
+                  disabled={exportLoading}
+                >
+                  <Ionicons name="download-outline" size={fontSize.md} color={colors.sidebar.DEFAULT} />
+                  <Text style={styles.exportBarText}>
+                    {exportLoading ? 'Opening export...' : 'Export Stock Balance'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Manager actions */}
+              <View style={styles.actionBar}>
+                <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/stock/issue')} activeOpacity={0.7}>
+                  <Ionicons name="arrow-down-circle-outline" size={18} color={colors.primary[600]} />
+                  <Text style={styles.actionBtnText}>Issue</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/stock/transfer')} activeOpacity={0.7}>
+                  <Ionicons name="swap-horizontal-outline" size={18} color={colors.primary[600]} />
+                  <Text style={styles.actionBtnText}>Transfer</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/stock/create-request')} activeOpacity={0.7}>
+                  <Ionicons name="add-circle-outline" size={18} color={colors.primary[600]} />
+                  <Text style={styles.actionBtnText}>Request</Text>
+                </TouchableOpacity>
               </View>
 
               {/* Pending deliveries */}
@@ -338,6 +371,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   chipText: { fontSize: 13, fontWeight: fontWeight.semibold },
+
+  // Action bar
+  actionBar: {
+    flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm,
+  },
+  actionBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs,
+    backgroundColor: colors.white, borderWidth: 1, borderColor: colors.primary[200],
+    borderRadius: 10, paddingVertical: spacing.sm + 2,
+  },
+  actionBtnText: { fontSize: 13, fontWeight: fontWeight.semibold, color: colors.primary[600] },
+
+  // Export bar
+  exportBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: colors.gray[100], borderWidth: 1, borderColor: colors.gray[200],
+    borderRadius: 10, paddingHorizontal: fontSize.sm, paddingVertical: spacing.md, marginBottom: spacing.sm,
+  },
+  exportBarText: { flex: 1, fontSize: 13, fontWeight: fontWeight.medium, color: colors.sidebar.DEFAULT },
 
   // Delivery bar
   deliveryBar: {

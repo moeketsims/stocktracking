@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useBatches } from '../../src/hooks/useStock';
+import { useExportBatches } from '../../src/hooks/useExports';
 import { Badge } from '../../src/components/ui/Badge';
 import { Card } from '../../src/components/ui/Card';
 import { Loading } from '../../src/components/ui/Loading';
@@ -34,6 +35,7 @@ export default function BatchesScreen() {
   const router = useRouter();
   const [filter, setFilter] = useState<FilterType>('all');
   const query = useBatches(filter);
+  const { exportBatches, loading: exportLoading } = useExportBatches();
 
   const batches = query.data?.batches ?? [];
   const counts = query.data?.counts ?? { all: 0, expiring_soon: 0 };
@@ -49,6 +51,19 @@ export default function BatchesScreen() {
           title: 'Batches',
           headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
           headerTintColor: colors.white,
+          headerRight: () => (
+            <TouchableOpacity
+              onPress={() => exportBatches()}
+              disabled={exportLoading}
+              style={styles.headerExportBtn}
+            >
+              <Ionicons
+                name="download-outline"
+                size={22}
+                color={exportLoading ? colors.gray[400] : colors.white}
+              />
+            </TouchableOpacity>
+          ),
         }}
       />
       <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -153,6 +168,7 @@ export default function BatchesScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.gray[50] },
+  headerExportBtn: { marginRight: spacing.sm, padding: spacing.xs },
   tabs: {
     flexDirection: 'row',
     backgroundColor: colors.white,
