@@ -2,13 +2,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Alert } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { deliveriesApi, type ConfirmDeliveryPayload, type CorrectKmPayload } from '../api/deliveries';
-import { STALE_TIME } from '../constants/config';
+import { STALE_TIME, REFETCH_INTERVAL } from '../constants/config';
 
 export function usePendingDeliveries(params?: { status?: string; location_id?: string }) {
   return useQuery({
     queryKey: ['deliveries', 'pending', params],
     queryFn: () => deliveriesApi.list({ ...params, status: params?.status ?? 'pending' }).then((r) => r.data),
     staleTime: STALE_TIME,
+    refetchInterval: REFETCH_INTERVAL,
   });
 }
 
