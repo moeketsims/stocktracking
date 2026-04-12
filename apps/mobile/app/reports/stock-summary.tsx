@@ -36,7 +36,7 @@ export default function StockSummaryScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <Stack.Screen options={{ title: 'Stock Summary', headerStyle: { backgroundColor: '#1e1b4b' }, headerTintColor: '#fff' }} />
+      <Stack.Screen options={{ title: 'Stock Summary', headerStyle: { backgroundColor: '#0f172a' }, headerTintColor: '#fff', headerShadowVisible: false }} />
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={

@@ -75,7 +75,7 @@ export default function ReportsHubScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <Stack.Screen options={{ title: 'Reports', headerStyle: { backgroundColor: '#1e1b4b' }, headerTintColor: '#fff' }} />
+      <Stack.Screen options={{ title: 'Reports', headerStyle: { backgroundColor: '#0f172a' }, headerTintColor: '#fff', headerShadowVisible: false }} />
       <ScrollView contentContainerStyle={styles.content}>
         {/* Period Selector */}
         <View style={styles.periodRow}>

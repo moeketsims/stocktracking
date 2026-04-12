@@ -11,6 +11,7 @@ import { useExportStock } from '../../src/hooks/useExports';
 import { Badge } from '../../src/components/ui/Badge';
 import { Button } from '../../src/components/ui/Button';
 import { Loading } from '../../src/components/ui/Loading';
+import { QueryErrorState } from '../../src/components/ui/QueryErrorState';
 import { KitchenFAB } from '../../src/components/KitchenFAB';
 import { UndoToast } from '../../src/components/UndoToast';
 import { timeAgo } from '../../src/utils/dates';
@@ -104,6 +105,12 @@ export default function StockScreen() {
   }, [balance, today, byLocation, pendingDeliveries, isManager]);
 
   if (isManager ? byLocation.isLoading : balance.isLoading) return <Loading fullScreen message="" />;
+  if (isManager ? byLocation.isError : balance.isError) return (
+    <QueryErrorState
+      error={isManager ? byLocation.error : balance.error}
+      onRetry={() => { if (isManager) byLocation.refetch(); else balance.refetch(); }}
+    />
+  );
 
   // ═══════════════════════════════════
   //  MANAGER VIEW

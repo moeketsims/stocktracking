@@ -10,6 +10,7 @@ import { Badge } from '../../src/components/ui/Badge';
 import { Button } from '../../src/components/ui/Button';
 import { Card } from '../../src/components/ui/Card';
 import { Loading } from '../../src/components/ui/Loading';
+import { QueryErrorState } from '../../src/components/ui/QueryErrorState';
 import { KmInput } from '../../src/components/KmInput';
 import { formatDateTime } from '../../src/utils/dates';
 import { colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
@@ -25,7 +26,7 @@ export default function TripDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
-  const { data: trip, isLoading: tripLoading } = useTrip(id);
+  const { data: trip, isLoading: tripLoading, isError: tripError, error: tripErrorObj, refetch: tripRefetch } = useTrip(id);
   const { data: stopsData, isLoading: stopsLoading } = useTripStops(id);
   const isManager = ['admin', 'zone_manager', 'location_manager', 'vehicle_manager'].includes(user?.role ?? '');
   const startTrip = useStartTrip();
@@ -36,6 +37,9 @@ export default function TripDetailScreen() {
 
   if (tripLoading || !trip) {
     return <Loading fullScreen message="Loading trip..." />;
+  }
+  if (tripError) {
+    return <QueryErrorState error={tripErrorObj} onRetry={() => tripRefetch()} />;
   }
 
   const stops = stopsData?.stops ?? [];
