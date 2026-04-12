@@ -325,3 +325,89 @@ export interface Supplier {
   contact_name: string | null;
   contact_phone: string | null;
 }
+
+// Driver Types
+export type InvitationStatus = 'active' | 'pending' | 'expired' | 'no_invitation';
+
+export interface Driver {
+  id: string;
+  user_id: string | null;
+  full_name: string;
+  email?: string | null;
+  phone?: string | null;
+  license_number?: string | null;
+  license_expiry?: string | null;
+  notes?: string | null;
+  is_active: boolean;
+  invitation_status: InvitationStatus;
+  source?: 'profile' | 'drivers_table';
+  drivers_table_id?: string;
+  invitation_id?: string | null;
+  created_at?: string;
+}
+
+export interface DriversResponse {
+  drivers: Driver[];
+  total: number;
+}
+
+export interface CreateDriverPayload {
+  email: string;
+  full_name: string;
+  phone?: string;
+  license_number?: string;
+  license_expiry?: string;
+  notes?: string;
+}
+
+export interface UpdateDriverPayload {
+  full_name?: string;
+  phone?: string;
+  license_number?: string;
+  license_expiry?: string;
+  notes?: string;
+  is_active?: boolean;
+}
+
+// Stock Take Types
+export type StockTakeStatus = 'in_progress' | 'completed' | 'cancelled';
+
+export interface StockTake {
+  id: string;
+  location_id: string;
+  initiated_by: string;
+  initiated_by_name?: string;
+  status: StockTakeStatus;
+  total_lines: number;
+  lines_counted: number;
+  variance_count: number;
+  notes: string | null;
+  started_at: string;
+  completed_at: string | null;
+  completed_by: string | null;
+  locations?: { name: string };
+}
+
+export interface StockTakeLine {
+  id: string;
+  stock_take_id: string;
+  item_id: string;
+  expected_qty: number;
+  counted_qty: number | null;
+  variance: number | null;
+  variance_pct: number | null;
+  notes: string | null;
+  counted_at: string | null;
+  counted_by: string | null;
+  items?: {
+    name: string;
+    unit: string;
+    sku: string;
+    conversion_factor: number;
+  };
+}
+
+export interface StockTakeDetail {
+  stock_take: StockTake;
+  lines: StockTakeLine[];
+}
