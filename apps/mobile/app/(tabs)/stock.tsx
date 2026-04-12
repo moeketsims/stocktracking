@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, SectionList, StyleSheet, RefreshControl, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, SectionList, StyleSheet, RefreshControl, TouchableOpacity, TextInput, ScrollView, Platform, LayoutAnimation, UIManager } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,19 +8,23 @@ import { useAuthStore } from '../../src/stores/authStore';
 import { useStockBalance, useStockByLocation, useTodayTransactions, useIssueStock, useReturnStock } from '../../src/hooks/useStock';
 import { usePendingDeliveries } from '../../src/hooks/useDeliveries';
 import { useExportStock } from '../../src/hooks/useExports';
-import { Card } from '../../src/components/ui/Card';
 import { Badge } from '../../src/components/ui/Badge';
 import { Button } from '../../src/components/ui/Button';
 import { Loading } from '../../src/components/ui/Loading';
 import { KitchenFAB } from '../../src/components/KitchenFAB';
 import { UndoToast } from '../../src/components/UndoToast';
 import { timeAgo } from '../../src/utils/dates';
-import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
+import { brand } from '../../src/constants/theme';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+const mono = Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' });
 
 type FilterMode = 'all' | 'critical' | 'sufficient';
-type StockCondition = 'critical' | 'low' | 'sufficient';
 
-function classify(status: string): StockCondition {
+function classify(status: string): 'critical' | 'low' | 'sufficient' {
   if (status === 'critical' || status === 'out') return 'critical';
   if (status === 'low') return 'low';
   return 'sufficient';
@@ -50,16 +55,15 @@ export default function StockScreen() {
   const transactions = today.data?.transactions ?? [];
   const totalKg = stockItems.reduce((sum, item) => sum + item.on_hand_qty, 0);
   const totalBags = Math.round(totalKg / 10);
-
   const rawLocations = byLocation.data?.locations ?? [];
+  const totalStockBags = Math.round((byLocation.data?.total_stock_kg ?? 0) / 10);
 
-  const { needsAttention, sufficient, criticalCt, sufficientCt, totalBagsAll } = useMemo(() => {
+  const { needsAttention, sufficient, criticalCt, sufficientCt } = useMemo(() => {
     let filtered = rawLocations;
     if (search.trim()) {
       const q = search.toLowerCase();
       filtered = filtered.filter(l => l.location_name.toLowerCase().includes(q));
     }
-
     const needs: typeof filtered = [];
     const suf: typeof filtered = [];
     for (const loc of filtered) {
@@ -67,29 +71,23 @@ export default function StockScreen() {
       if (c === 'critical' || c === 'low') needs.push(loc);
       else suf.push(loc);
     }
-
     const sev: Record<string, number> = { out: 0, critical: 1, low: 2 };
     needs.sort((a, b) => (sev[a.status] ?? 2) - (sev[b.status] ?? 2) || a.on_hand_qty - b.on_hand_qty);
     suf.sort((a, b) => a.location_name.localeCompare(b.location_name));
-
     return {
-      needsAttention: needs,
-      sufficient: suf,
+      needsAttention: needs, sufficient: suf,
       criticalCt: rawLocations.filter(l => l.status === 'critical' || l.status === 'out' || l.status === 'low').length,
       sufficientCt: rawLocations.filter(l => l.status === 'in_stock').length,
-      totalBagsAll: Math.round((byLocation.data?.total_stock_kg ?? 0) / 10),
     };
   }, [rawLocations, search, byLocation.data]);
 
   const sections = useMemo(() => {
-    const result: { title: string; key: string; data: any[] }[] = [];
-    if (filter !== 'sufficient' && needsAttention.length > 0) {
-      result.push({ title: 'NEEDS ATTENTION', key: 'attention', data: needsAttention });
-    }
-    if (filter !== 'critical' && sufficient.length > 0) {
-      result.push({ title: 'SUFFICIENT STOCK', key: 'sufficient', data: sufficient });
-    }
-    return result;
+    const r: { title: string; key: string; data: any[] }[] = [];
+    if (filter !== 'sufficient' && needsAttention.length > 0)
+      r.push({ title: 'Needs Attention', key: 'attention', data: needsAttention });
+    if (filter !== 'critical' && sufficient.length > 0)
+      r.push({ title: 'Sufficient Stock', key: 'sufficient', data: sufficient });
+    return r;
   }, [needsAttention, sufficient, filter]);
 
   const handleWithdraw = useCallback((bags: number) => {
@@ -105,362 +103,401 @@ export default function StockScreen() {
     if (isManager) { byLocation.refetch(); pendingDeliveries.refetch(); }
   }, [balance, today, byLocation, pendingDeliveries, isManager]);
 
-  if (isManager ? byLocation.isLoading : balance.isLoading) {
-    return <Loading fullScreen message="Loading stock..." />;
-  }
+  if (isManager ? byLocation.isLoading : balance.isLoading) return <Loading fullScreen message="" />;
 
-  // ══════════════════════════════════════
-  //  MANAGER VIEW — Wireframe 1
-  // ══════════════════════════════════════
+  // ═══════════════════════════════════
+  //  MANAGER VIEW
+  // ═══════════════════════════════════
   if (isManager) {
     return (
-      <SafeAreaView style={styles.container} edges={['bottom']}>
-        <SectionList
-          sections={sections}
-          keyExtractor={(item) => item.location_id}
-          stickySectionHeadersEnabled={false}
-          refreshControl={<RefreshControl refreshing={byLocation.isRefetching} onRefresh={onRefresh} />}
-          ListHeaderComponent={
-            <View style={styles.header}>
-              {/* Search */}
-              <View style={styles.searchRow}>
-                <View style={styles.searchBox}>
-                  <Ionicons name="search" size={spacing.lg} color={colors.gray[400]} />
-                  <TextInput
-                    style={styles.searchInput}
-                    placeholder="Search locations..."
-                    placeholderTextColor={colors.gray[400]}
-                    value={search}
-                    onChangeText={setSearch}
-                  />
-                  {search.length > 0 && (
-                    <TouchableOpacity onPress={() => setSearch('')}>
-                      <Ionicons name="close-circle" size={spacing.lg} color={colors.gray[400]} />
-                    </TouchableOpacity>
-                  )}
+      <SafeAreaView style={$.safe} edges={['bottom']}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={$.scroll}
+          refreshControl={<RefreshControl refreshing={byLocation.isRefetching} onRefresh={onRefresh} tintColor="#fff" />}
+        >
+          {/* ── Gradient Header KPIs ── */}
+          <LinearGradient
+            colors={[brand.gradientStart, brand.gradientEnd]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={$.header}
+          >
+            <View style={$.kpiRow}>
+              <KPI value={totalStockBags.toString()} label="Total Stock" unit="bags" />
+              <View style={$.kpiDiv} />
+              <KPI value={criticalCt.toString()} label="Critical" highlight={criticalCt > 0} />
+              <View style={$.kpiDiv} />
+              <KPI value={sufficientCt.toString()} label="Sufficient" />
+            </View>
+          </LinearGradient>
+
+          <View style={$.body}>
+            {/* ── Search ── */}
+            <View style={$.searchBar}>
+              <Ionicons name="search-outline" size={16} color="#94a3b8" />
+              <TextInput
+                style={$.searchInput}
+                placeholder="Search locations"
+                placeholderTextColor="#bbb"
+                value={search}
+                onChangeText={setSearch}
+              />
+              {search.length > 0 && (
+                <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                  <Ionicons name="close" size={14} color="#94a3b8" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* ── Pending deliveries banner ── */}
+            {deliveriesList.length > 0 && (
+              <TouchableOpacity style={$.banner} activeOpacity={0.7} onPress={() => router.push('/alerts')}>
+                <View style={$.bannerIcon}>
+                  <Ionicons name="cube" size={20} color="#fff" />
                 </View>
-              </View>
+                <View style={$.bannerBody}>
+                  <Text style={$.bannerTitle}>{deliveriesList.length} deliver{deliveriesList.length !== 1 ? 'ies' : 'y'} pending</Text>
+                  <Text style={$.bannerSub}>Tap to review and confirm</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#94a3b8" />
+              </TouchableOpacity>
+            )}
 
-              {/* Filter chips */}
-              <View style={styles.chipRow}>
-                {([
-                  { key: 'critical' as FilterMode, label: `Critical ${criticalCt}`, color: colors.error, bg: '#fee2e2' /* tinted red bg */ },
-                  { key: 'sufficient' as FilterMode, label: `Sufficient ${sufficientCt}`, color: colors.success, bg: '#dcfce7' /* tinted green bg */ },
-                  { key: 'all' as FilterMode, label: `All ${rawLocations.length}`, color: colors.gray[600], bg: '#f1f5f9' /* tinted slate bg */ },
-                ]).map(c => (
+            {/* ── Quick Actions ── */}
+            <Text style={$.sectionTitle}>Quick Actions</Text>
+            <View style={$.qaGrid}>
+              <QA icon="arrow-down-circle" label="Issue" tint="#ef4444" onPress={() => router.push('/stock/issue')} />
+              <QA icon="swap-horizontal" label="Transfer" tint="#6366f1" onPress={() => router.push('/stock/transfer')} />
+              <QA icon="add-circle" label="Request" tint="#22c55e" onPress={() => router.push('/stock/create-request')} />
+              <QA icon="download-outline" label="Export" tint="#0ea5e9" onPress={() => exportStock()} loading={exportLoading} />
+            </View>
+
+            {/* ── Filter chips ── */}
+            <Text style={$.sectionTitle}>Locations</Text>
+            <ScrollView
+              horizontal showsHorizontalScrollIndicator={false}
+              style={$.chipScroll} contentContainerStyle={$.chipRow}
+              nestedScrollEnabled removeClippedSubviews={false}
+            >
+              {([
+                { key: 'all' as FilterMode, label: 'All', count: rawLocations.length },
+                { key: 'critical' as FilterMode, label: 'Critical', count: criticalCt },
+                { key: 'sufficient' as FilterMode, label: 'Sufficient', count: sufficientCt },
+              ]).map(f => {
+                const active = filter === f.key;
+                return (
                   <TouchableOpacity
-                    key={c.key}
-                    style={[
-                      styles.chip,
-                      { backgroundColor: filter === c.key ? c.bg : colors.white, borderColor: filter === c.key ? c.color : colors.gray[200] },
-                    ]}
-                    onPress={() => setFilter(filter === c.key ? 'all' : c.key)}
+                    key={f.key}
+                    style={[$.chip, active && $.chipActive]}
+                    onPress={() => setFilter(filter === f.key ? 'all' : f.key)}
+                    activeOpacity={0.7}
                   >
-                    <Text style={[styles.chipText, { color: filter === c.key ? c.color : colors.gray[500] }]}>{c.label}</Text>
+                    <Text style={[$.chipText, active && $.chipTextActive]}>{f.label}</Text>
+                    <View style={[$.chipBadge, active && $.chipBadgeActive]}>
+                      <Text style={[$.chipBadgeText, active && $.chipBadgeTextActive]}>{f.count}</Text>
+                    </View>
                   </TouchableOpacity>
-                ))}
+                );
+              })}
+            </ScrollView>
+
+            {/* ── Needs Attention ── */}
+            {(filter === 'all' || filter === 'critical') && needsAttention.length > 0 && (
+              <>
+                <View style={$.secHead}>
+                  <Text style={$.secHeadLabel}>Needs Attention</Text>
+                  <TouchableOpacity onPress={() => router.push('/stock/create-request')}>
+                    <Text style={$.secHeadLink}>Request</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={$.listCard}>
+                  {needsAttention.map((item, i) => {
+                    const bags = Math.round(item.on_hand_qty / 10);
+                    const minBags = Math.round((item.low_stock_threshold ?? 50) / 10);
+                    const shortage = Math.max(0, minBags - bags);
+                    const isCritical = item.status === 'critical' || item.status === 'out';
+                    const accent = isCritical ? '#ef4444' : '#f59e0b';
+                    return (
+                      <View key={item.location_id} style={[$.attRow, i < needsAttention.length - 1 && $.attRowBorder]}>
+                        <View style={[$.attDot, { backgroundColor: accent }]} />
+                        <View style={$.attInfo}>
+                          <Text style={$.attName}>{item.location_name}</Text>
+                          <Text style={$.attMeta}>Min {minBags} · Need +{shortage}</Text>
+                        </View>
+                        <Text style={[$.attBags, { color: accent }]}>{bags}</Text>
+                        <View style={[$.statusPill, { backgroundColor: accent + '18' }]}>
+                          <Text style={[$.statusPillText, { color: accent }]}>{isCritical ? 'Critical' : 'Low'}</Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+
+            {/* ── Sufficient Stock ── */}
+            {(filter === 'all' || filter === 'sufficient') && sufficient.length > 0 && (
+              <>
+                <View style={$.secHead}>
+                  <Text style={$.secHeadLabel}>Sufficient Stock</Text>
+                </View>
+                <View style={$.listCard}>
+                  {sufficient.map((item, i) => {
+                    const bags = Math.round(item.on_hand_qty / 10);
+                    return (
+                      <View key={item.location_id} style={[$.sufRow, i < sufficient.length - 1 && $.sufRowBorder]}>
+                        <View style={[$.attDot, { backgroundColor: '#22c55e' }]} />
+                        <View style={$.attInfo}>
+                          <Text style={$.attName}>{item.location_name}</Text>
+                          <Text style={$.attMeta}>{item.item_name}</Text>
+                        </View>
+                        <Text style={$.sufBags}>{bags}</Text>
+                        <Text style={$.sufOK}>OK</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+
+            {needsAttention.length === 0 && sufficient.length === 0 && (
+              <View style={$.emptyCard}>
+                <Ionicons name="cube-outline" size={24} color="#cbd5e1" />
+                <Text style={$.emptyText}>{search ? 'No locations match' : 'No stock data'}</Text>
               </View>
-
-              {/* Export button */}
-              {isManager && (
-                <TouchableOpacity
-                  style={styles.exportBar}
-                  onPress={() => exportStock()}
-                  activeOpacity={0.7}
-                  disabled={exportLoading}
-                >
-                  <Ionicons name="download-outline" size={fontSize.md} color={colors.sidebar.DEFAULT} />
-                  <Text style={styles.exportBarText}>
-                    {exportLoading ? 'Opening export...' : 'Export Stock Balance'}
-                  </Text>
-                </TouchableOpacity>
-              )}
-
-              {/* Manager actions */}
-              <View style={styles.actionBar}>
-                <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/stock/issue')} activeOpacity={0.7}>
-                  <Ionicons name="arrow-down-circle-outline" size={18} color={colors.primary[600]} />
-                  <Text style={styles.actionBtnText}>Issue</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/stock/transfer')} activeOpacity={0.7}>
-                  <Ionicons name="swap-horizontal-outline" size={18} color={colors.primary[600]} />
-                  <Text style={styles.actionBtnText}>Transfer</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/stock/create-request')} activeOpacity={0.7}>
-                  <Ionicons name="add-circle-outline" size={18} color={colors.primary[600]} />
-                  <Text style={styles.actionBtnText}>Request</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Pending deliveries */}
-              {deliveriesList.length > 0 && (
-                <TouchableOpacity style={styles.deliveryBar} onPress={() => router.push('/alerts')} activeOpacity={0.7}>
-                  <View style={styles.deliveryPulse} />
-                  <Text style={styles.deliveryText}>
-                    {deliveriesList.length} deliver{deliveriesList.length === 1 ? 'y' : 'ies'} awaiting confirmation
-                  </Text>
-                  <Ionicons name="chevron-forward" size={fontSize.sm} color={colors.primary[600]} />
-                </TouchableOpacity>
-              )}
-            </View>
-          }
-          renderSectionHeader={({ section }) => (
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, section.key === 'attention' && styles.sectionTitleAttention]}>
-                {section.title}
-              </Text>
-              {section.key === 'attention' && (
-                <TouchableOpacity onPress={() => router.push('/stock/create-request')}>
-                  <Text style={styles.sectionAction}>Request</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
-          renderItem={({ item, section }) =>
-            section.key === 'attention'
-              ? <AttentionCard item={item} onRequest={() => router.push('/stock/create-request')} />
-              : <SufficientRow item={item} />
-          }
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <Text style={styles.emptyText}>{search ? 'No locations match' : 'No stock data available'}</Text>
-            </View>
-          }
-          contentContainerStyle={styles.list}
-        />
+            )}
+          </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
 
-  // ══════════════════════════════════════
+  // ═══════════════════════════════════
   //  STAFF / DRIVER VIEW
-  // ══════════════════════════════════════
+  // ═══════════════════════════════════
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <SectionList
-        sections={[{ title: "Today's Activity", key: 'activity', data: transactions }]}
-        keyExtractor={(item) => item.id}
-        stickySectionHeadersEnabled={false}
-        refreshControl={<RefreshControl refreshing={balance.isRefetching || today.isRefetching} onRefresh={onRefresh} />}
-        ListHeaderComponent={
-          <>
-            <View style={styles.staffHero}>
-              <Text style={styles.staffHeroLabel}>Current Stock</Text>
-              <View style={styles.staffHeroRow}>
-                <Text style={styles.staffHeroBags}>{totalBags}</Text>
-                <Text style={styles.staffHeroUnit}>bags</Text>
-                <Badge label={totalBags === 0 ? 'Out' : totalBags <= 5 ? 'Critical' : totalBags <= 15 ? 'Low' : 'OK'} variant={totalBags <= 5 ? 'error' : totalBags <= 15 ? 'warning' : 'success'} />
-              </View>
-              <Text style={styles.staffHeroKg}>{totalKg.toFixed(1)} kg</Text>
-            </View>
-            {isStaff && (
-              <View style={styles.staffReturnRow}>
-                <Button title="Return 1 bag" variant="outline" size="sm" onPress={() => handleReturn(1)} loading={returnMutation.isPending} />
-              </View>
-            )}
-          </>
-        }
-        renderSectionHeader={({ section }) => (
-          <View style={styles.staffActHeader}>
-            <Text style={styles.staffActTitle}>{section.title}</Text>
-            {today.data && <Text style={styles.staffActCount}>{today.data.issue_count} out · {today.data.return_count} in</Text>}
+    <SafeAreaView style={$.safe} edges={['bottom']}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={$.scroll}
+        refreshControl={<RefreshControl refreshing={balance.isRefetching || today.isRefetching} onRefresh={onRefresh} tintColor="#fff" />}
+      >
+        <LinearGradient
+          colors={[brand.gradientStart, brand.gradientEnd]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={$.header}
+        >
+          <View style={$.staffHero}>
+            <Text style={$.staffHeroLabel}>Current Stock</Text>
+            <Text style={$.staffHeroVal}>{totalBags}</Text>
+            <Text style={$.staffHeroUnit}>bags · {totalKg.toFixed(0)} kg</Text>
           </View>
-        )}
-        renderItem={({ item }) => (
-          <View style={styles.txRow}>
-            <View style={[styles.txDot, { backgroundColor: item.type === 'issue' ? '#fee2e2' /* tinted red bg */ : '#dcfce7' /* tinted green bg */ }]}>
-              <Ionicons name={item.type === 'issue' ? 'arrow-down' : 'arrow-up'} size={fontSize.sm} color={item.type === 'issue' ? colors.error : colors.success} />
+        </LinearGradient>
+
+        <View style={$.body}>
+          {isStaff && (
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+              <Button title="Return 1 bag" variant="outline" size="sm" onPress={() => handleReturn(1)} loading={returnMutation.isPending} />
             </View>
-            <View style={styles.txContent}>
-              <Text style={styles.txLabel}>{item.type === 'issue' ? 'Withdrew' : 'Returned'} {(item.quantity / 10).toFixed(0)} bag{item.quantity !== 10 ? 's' : ''}</Text>
-              {item.notes && <Text style={styles.txNotes} numberOfLines={1}>{item.notes}</Text>}
+          )}
+
+          <Text style={$.sectionTitle}>Today's Activity</Text>
+          {transactions.length > 0 ? (
+            <View style={$.listCard}>
+              {transactions.map((item, i) => (
+                <View key={item.id} style={[$.txRow, i < transactions.length - 1 && $.txRowBorder]}>
+                  <View style={[$.txIcon, { backgroundColor: item.type === 'issue' ? '#fef2f2' : '#f0fdf4' }]}>
+                    <Ionicons name={item.type === 'issue' ? 'arrow-down' : 'arrow-up'} size={14} color={item.type === 'issue' ? '#ef4444' : '#22c55e'} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={$.txLabel}>{item.type === 'issue' ? 'Withdrew' : 'Returned'} {(item.quantity / 10).toFixed(0)} bag{item.quantity !== 10 ? 's' : ''}</Text>
+                    {item.notes && <Text style={$.txNotes} numberOfLines={1}>{item.notes}</Text>}
+                  </View>
+                  <Text style={$.txTime}>{timeAgo(item.created_at)}</Text>
+                </View>
+              ))}
             </View>
-            <Text style={styles.txTime}>{timeAgo(item.created_at)}</Text>
-          </View>
-        )}
-        ListEmptyComponent={<View style={styles.empty}><Text style={styles.emptyText}>No activity today</Text></View>}
-        contentContainerStyle={styles.list}
-      />
+          ) : (
+            <View style={$.emptyCard}>
+              <Text style={$.emptyText}>No activity today</Text>
+            </View>
+          )}
+        </View>
+      </ScrollView>
       {isStaff && <KitchenFAB onWithdraw={handleWithdraw} disabled={issueMutation.isPending || totalBags === 0} />}
       {undoState && <UndoToast message={undoState.message} onUndo={handleUndo} onDismiss={() => setUndoState(null)} />}
     </SafeAreaView>
   );
 }
 
-// ══════════════════════════════════════
-//  ATTENTION CARD
-//  Tinted, prominent, action-oriented.
-//  Shows: name, stock, minimum, shortage, action.
-// ══════════════════════════════════════
-function AttentionCard({ item, onRequest }: { item: any; onRequest: () => void }) {
-  const bags = Math.round(item.on_hand_qty / 10);
-  const minBags = Math.round((item.low_stock_threshold ?? 50) / 10);
-  const shortage = Math.max(0, minBags - bags);
-  const isCritical = item.status === 'critical' || item.status === 'out';
-  const accent = isCritical ? colors.error : colors.warning;
-  const bg = isCritical ? '#fef2f2' /* tinted red bg */ : '#fffbeb' /* tinted amber bg */;
+/* ── Sub-components ── */
 
+function KPI({ value, label, unit, highlight }: { value: string; label: string; unit?: string; highlight?: boolean }) {
   return (
-    <View style={[styles.attCard, { backgroundColor: bg, borderLeftColor: accent }]}>
-      {/* Name + badge */}
-      <View style={styles.attTopRow}>
-        <Text style={styles.attName} numberOfLines={1}>{item.location_name}</Text>
-        <View style={[styles.attBadge, { backgroundColor: accent }]}>
-          <Text style={styles.attBadgeText}>{isCritical ? 'Critical' : 'Low'}</Text>
-        </View>
-      </View>
-
-      {/* Stock info */}
-      <Text style={[styles.attStock, { color: accent }]}>{bags} bags</Text>
-      <Text style={styles.attMeta}>Minimum: {minBags}</Text>
-      {shortage > 0 && <Text style={[styles.attShortage, { color: accent }]}>Need +{shortage}</Text>}
-
-      {/* Action */}
-      <TouchableOpacity style={[styles.attBtn, { backgroundColor: accent }]} onPress={onRequest} activeOpacity={0.7}>
-        <Text style={styles.attBtnText}>Request stock</Text>
-      </TouchableOpacity>
+    <View style={$.kpiItem}>
+      <Text style={$.kpiLabel}>{label}</Text>
+      <Text style={[$.kpiValue, highlight && { color: brand.accent }]}>{value}</Text>
+      {unit && <Text style={$.kpiUnit}>{unit}</Text>}
     </View>
   );
 }
 
-// ══════════════════════════════════════
-//  SUFFICIENT ROW
-//  Compact, quiet, informational.
-//  Shows: name, bags, minimum, above-minimum.
-// ══════════════════════════════════════
-function SufficientRow({ item }: { item: any }) {
-  const bags = Math.round(item.on_hand_qty / 10);
-  const minBags = Math.round((item.low_stock_threshold ?? 50) / 10);
-  const above = bags - minBags;
-
+function QA({ icon, label, tint, onPress, loading }: { icon: keyof typeof Ionicons.glyphMap; label: string; tint: string; onPress: () => void; loading?: boolean }) {
   return (
-    <View style={styles.sufRow}>
-      <View style={styles.sufInfo}>
-        <Text style={styles.sufName} numberOfLines={1}>{item.location_name}</Text>
-        <Text style={styles.sufMeta}>Minimum: {minBags}   Above minimum: <Text style={styles.sufAbove}>+{above}</Text></Text>
+    <TouchableOpacity style={$.qaCard} onPress={onPress} activeOpacity={0.6} disabled={loading}>
+      <View style={[$.qaIcon, { backgroundColor: tint + '14' }]}>
+        <Ionicons name={icon} size={22} color={tint} />
       </View>
-      <View style={styles.sufRight}>
-        <Text style={styles.sufBags}>{bags}</Text>
-        <Text style={styles.sufUnit}>bags</Text>
-      </View>
-    </View>
+      <Text style={$.qaLabel}>{loading ? '...' : label}</Text>
+    </TouchableOpacity>
   );
 }
 
-// ══════════════════════════════════════
-//  STYLES
-// ══════════════════════════════════════
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#faf9f7' },
-  list: { paddingBottom: spacing['2xl'] },
+const elev = (n: number) => Platform.select({
+  ios: { shadowColor: '#0f172a', shadowOffset: { width: 0, height: n * 2 }, shadowOpacity: 0.04 + n * 0.02, shadowRadius: n * 4 },
+  android: { elevation: n * 2 },
+  default: { shadowColor: '#0f172a', shadowOffset: { width: 0, height: n * 2 }, shadowOpacity: 0.04 + n * 0.02, shadowRadius: n * 4 },
+}) as any;
 
-  // Header area
-  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
-  searchRow: { marginBottom: spacing.md },
-  searchBox: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    backgroundColor: colors.white, borderWidth: 1, borderColor: colors.gray[200],
-    borderRadius: 10, paddingHorizontal: spacing.md, height: spacing['5xl'] - spacing.sm,
+const $ = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: '#f8fafc' },
+  scroll: { paddingBottom: 96 },
+
+  // Gradient header
+  header: { paddingVertical: 22, paddingHorizontal: 24 },
+  kpiRow: { flexDirection: 'row', alignItems: 'center' },
+  kpiItem: { flex: 1, alignItems: 'center' },
+  kpiLabel: { fontSize: 10, color: 'rgba(255,255,255,0.5)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  kpiValue: { fontSize: 26, fontWeight: '800', color: '#fff', marginTop: 6, fontFamily: mono },
+  kpiUnit: { fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: '500', marginTop: 2 },
+  kpiDiv: { width: 1, height: 30, backgroundColor: 'rgba(255,255,255,0.1)' },
+
+  body: { paddingHorizontal: 16, paddingTop: 18 },
+
+  // Search
+  searchBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#fff', borderRadius: 16, paddingHorizontal: 14, height: 44,
+    marginBottom: 16,
+    borderWidth: 1, borderColor: '#e2e8f0',
   },
-  searchInput: { flex: 1, fontSize: fontSize.sm, color: colors.gray[900], padding: 0 },
+  searchInput: { flex: 1, fontSize: 14, fontWeight: '400', color: '#0f172a', padding: 0 },
 
-  // Filter chips
-  chipRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
+  // Banner (matches requests page)
+  banner: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fff', borderRadius: 16, padding: 14, gap: 12,
+    marginBottom: 20,
+    borderLeftWidth: 4, borderLeftColor: brand.accent,
+    ...elev(2),
+  },
+  bannerIcon: {
+    width: 36, height: 36, borderRadius: 12,
+    backgroundColor: brand.accent,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  bannerBody: { flex: 1 },
+  bannerTitle: { fontSize: 14, fontWeight: '700', color: '#0f172a' },
+  bannerSub: { fontSize: 12, color: '#64748b', marginTop: 2 },
+
+  // Section title (matches requests page)
+  sectionTitle: { fontSize: 16, fontWeight: '800', color: '#0f172a', letterSpacing: -0.2, marginBottom: 10, marginTop: 8 },
+
+  // Quick actions (matches dashboard)
+  qaGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 16 },
+  qaCard: {
+    width: '47%',
+    backgroundColor: '#fff', borderRadius: 20, padding: 18,
+    ...elev(2),
+  },
+  qaIcon: {
+    width: 44, height: 44, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 14,
+  },
+  qaLabel: { fontSize: 14, fontWeight: '700', color: '#0f172a' },
+
+  // Filter chips (matches requests page pipeline)
+  chipScroll: { marginBottom: 14, alignSelf: 'stretch' },
+  chipRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingRight: 20, paddingVertical: 2 },
   chip: {
-    paddingHorizontal: spacing.md, paddingVertical: spacing.sm - 2, borderRadius: spacing.lg,
-    borderWidth: 1,
+    flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0,
+    backgroundColor: '#fff', borderRadius: 999,
+    paddingHorizontal: 10, paddingVertical: 7,
+    borderWidth: 1, borderColor: '#e2e8f0',
   },
-  chipText: { fontSize: 13, fontWeight: fontWeight.semibold },
-
-  // Action bar
-  actionBar: {
-    flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm,
+  chipActive: { backgroundColor: '#0f172a', borderColor: '#0f172a' },
+  chipText: { fontSize: 12, fontWeight: '600', color: '#64748b' },
+  chipTextActive: { color: '#fff' },
+  chipBadge: {
+    minWidth: 18, height: 18, borderRadius: 9,
+    backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3,
   },
-  actionBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs,
-    backgroundColor: colors.white, borderWidth: 1, borderColor: colors.primary[200],
-    borderRadius: 10, paddingVertical: spacing.sm + 2,
-  },
-  actionBtnText: { fontSize: 13, fontWeight: fontWeight.semibold, color: colors.primary[600] },
-
-  // Export bar
-  exportBar: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: colors.gray[100], borderWidth: 1, borderColor: colors.gray[200],
-    borderRadius: 10, paddingHorizontal: fontSize.sm, paddingVertical: spacing.md, marginBottom: spacing.sm,
-  },
-  exportBarText: { flex: 1, fontSize: 13, fontWeight: fontWeight.medium, color: colors.sidebar.DEFAULT },
-
-  // Delivery bar
-  deliveryBar: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: colors.primary[50], borderWidth: 1, borderColor: colors.primary[200],
-    borderRadius: 10, paddingHorizontal: fontSize.sm, paddingVertical: spacing.md, marginBottom: spacing.sm,
-  },
-  deliveryPulse: { width: spacing.sm, height: spacing.sm, borderRadius: spacing.xs, backgroundColor: colors.primary[600] },
-  deliveryText: { flex: 1, fontSize: 13, fontWeight: fontWeight.medium, color: colors.primary[800] },
+  chipBadgeActive: { backgroundColor: 'rgba(255,255,255,0.2)' },
+  chipBadgeText: { fontSize: 10, fontWeight: '700', color: '#64748b' },
+  chipBadgeTextActive: { color: '#fff' },
 
   // Section headers
-  sectionHeader: {
+  secHead: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.sm,
+    marginBottom: 8, marginTop: 4,
   },
-  sectionTitle: { fontSize: fontSize.xs, fontWeight: fontWeight.bold, color: colors.gray[500], letterSpacing: 0.8 },
-  sectionTitleAttention: { color: '#991b1b' /* dark red for attention header */ },
-  sectionAction: { fontSize: 13, fontWeight: fontWeight.semibold, color: colors.primary[600] },
+  secHeadLabel: { fontSize: 14, fontWeight: '700', color: '#334155' },
+  secHeadLink: { fontSize: 13, fontWeight: '700', color: brand.accent },
 
-  // ── Attention card ──
-  attCard: {
-    marginHorizontal: spacing.lg, marginBottom: 10, borderRadius: borderRadius.lg,
-    borderLeftWidth: spacing.xs, padding: spacing.lg,
+  // List card (matches requests page)
+  listCard: {
+    backgroundColor: '#fff', borderRadius: 20, overflow: 'hidden',
+    marginBottom: 12,
+    ...elev(2),
   },
-  attTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm },
-  attName: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.gray[900], flex: 1, marginRight: spacing.sm },
-  attBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 10 },
-  attBadgeText: { fontSize: 11, fontWeight: fontWeight.bold, color: colors.white },
-  attStock: { fontSize: 28, fontWeight: fontWeight.bold, marginBottom: 2 },
-  attMeta: { fontSize: 13, color: colors.gray[500], marginBottom: 2 },
-  attShortage: { fontSize: 13, fontWeight: fontWeight.semibold, marginBottom: spacing.md },
-  attBtn: { alignSelf: 'flex-start', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: borderRadius.md },
-  attBtnText: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.white },
 
-  // ── Sufficient row ──
+  // Attention rows (compact, inside listCard)
+  attRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 14, gap: 10,
+  },
+  attRowBorder: { borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  attDot: { width: 8, height: 8, borderRadius: 4 },
+  attInfo: { flex: 1 },
+  attName: { fontSize: 14, fontWeight: '700', color: '#0f172a' },
+  attMeta: { fontSize: 11, color: '#94a3b8', marginTop: 1 },
+  attBags: { fontSize: 18, fontWeight: '800', fontFamily: mono, minWidth: 36, textAlign: 'right' },
+  statusPill: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
+  statusPillText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3 },
+
+  // Sufficient rows (compact, inside listCard)
   sufRow: {
     flexDirection: 'row', alignItems: 'center',
-    marginHorizontal: spacing.lg, marginBottom: 2,
-    backgroundColor: '#f0fdf4', borderRadius: 10,
-    paddingHorizontal: spacing.lg, paddingVertical: fontSize.sm,
+    paddingHorizontal: 16, paddingVertical: 14, gap: 10,
   },
-  sufInfo: { flex: 1 },
-  sufName: { fontSize: 15, fontWeight: fontWeight.semibold, color: colors.gray[900], marginBottom: 2 },
-  sufMeta: { fontSize: fontSize.xs, color: colors.gray[400] },
-  sufAbove: { color: colors.success, fontWeight: fontWeight.semibold },
-  sufRight: { alignItems: 'flex-end', marginLeft: spacing.md },
-  sufBags: { fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.gray[900] },
-  sufUnit: { fontSize: 11, color: colors.gray[400] },
+  sufRowBorder: { borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  sufBags: { fontSize: 16, fontWeight: '800', color: '#0f172a', fontFamily: mono, minWidth: 36, textAlign: 'right' },
+  sufOK: { fontSize: 12, fontWeight: '700', color: '#22c55e', minWidth: 36, textAlign: 'right' },
 
   // Empty
-  empty: { alignItems: 'center', paddingVertical: spacing['5xl'] },
-  emptyText: { fontSize: fontSize.sm, color: colors.gray[400] },
+  emptyCard: {
+    backgroundColor: '#fff', borderRadius: 20, paddingVertical: 32, alignItems: 'center', gap: 8,
+    ...elev(1),
+  },
+  emptyText: { fontSize: 14, color: '#94a3b8', fontWeight: '500' },
 
-  // ── Staff view ──
-  staffHero: { alignItems: 'center', paddingVertical: 28, marginHorizontal: spacing.lg, backgroundColor: colors.white, borderRadius: borderRadius.lg, marginTop: spacing.md, marginBottom: spacing.sm },
-  staffHeroLabel: { fontSize: 13, color: colors.gray[500], marginBottom: spacing.xs },
-  staffHeroRow: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
-  staffHeroBags: { fontSize: 48, fontWeight: fontWeight.bold, color: colors.gray[900] },
-  staffHeroUnit: { fontSize: fontSize.lg, color: colors.gray[500] },
-  staffHeroKg: { fontSize: 13, color: colors.gray[400], marginTop: spacing.xs },
-  staffReturnRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm },
-  staffActHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm - 2 },
-  staffActTitle: { fontSize: 15, fontWeight: fontWeight.semibold, color: colors.gray[900] },
-  staffActCount: { fontSize: fontSize.xs, color: colors.gray[500] },
+  // Staff hero (inside gradient)
+  staffHero: { alignItems: 'center', paddingVertical: 8 },
+  staffHeroLabel: { fontSize: 10, color: 'rgba(255,255,255,0.5)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  staffHeroVal: { fontSize: 48, fontWeight: '800', color: '#fff', fontFamily: mono, marginTop: 4 },
+  staffHeroUnit: { fontSize: 12, color: 'rgba(255,255,255,0.4)', fontWeight: '500', marginTop: 4 },
+
+  // Transaction rows
   txRow: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    marginHorizontal: spacing.lg, backgroundColor: colors.white, padding: spacing.md, borderRadius: borderRadius.md, marginBottom: spacing.xs,
+    paddingHorizontal: 16, paddingVertical: 14,
   },
-  txDot: { width: 28, height: 28, borderRadius: borderRadius.sm + 8, alignItems: 'center', justifyContent: 'center' },
-  txContent: { flex: 1 },
-  txLabel: { fontSize: 13, fontWeight: fontWeight.medium, color: colors.gray[900] },
-  txNotes: { fontSize: 11, color: colors.gray[400], marginTop: 1 },
-  txTime: { fontSize: 11, color: colors.gray[400] },
+  txRowBorder: { borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  txIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  txLabel: { fontSize: 14, fontWeight: '600', color: '#0f172a' },
+  txNotes: { fontSize: 12, color: '#94a3b8', marginTop: 1 },
+  txTime: { fontSize: 11, color: '#94a3b8', fontFamily: mono },
 });

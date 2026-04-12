@@ -1,8 +1,9 @@
 import React from 'react';
 import {
   View, Text, ScrollView, RefreshControl, TouchableOpacity,
-  StyleSheet, Platform, useWindowDimensions,
+  StyleSheet, Platform,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,32 +12,7 @@ import { useDashboard } from '../../src/hooks/useDashboard';
 import { useAvailableRequests } from '../../src/hooks/useRequests';
 import { usePendingDeliveries } from '../../src/hooks/useDeliveries';
 import { Loading } from '../../src/components/ui/Loading';
-
-/*
- * Enterprise dashboard — restrained, structured, mobile-native.
- *
- * Layout: identity → stock position → action → locations table.
- * The locations table is the primary content and fills remaining space.
- * No decorative hero blocks. Typography and structure do the work.
- */
-
-const C = {
-  bg:      '#f5f5f0',
-  surface: '#ffffff',
-  border:  '#e8e6e1',
-  borderL: '#f0eee9',
-  t1:      '#111111',
-  t2:      '#555555',
-  t3:      '#999999',
-  accent:  '#b44d1e',
-  accentBg:'#fdf6f3',
-  green:   '#1a7a3a',
-  greenBg: '#f2f9f4',
-  red:     '#b91c1c',
-  redBg:   '#fef5f5',
-  amber:   '#946b0a',
-  amberBg: '#fefcf3',
-};
+import { brand } from '../../src/constants/theme';
 
 const mono = Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' });
 
@@ -44,7 +20,6 @@ export default function DashboardScreen() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const role = user?.role;
-  const { height: screenH } = useWindowDimensions();
 
   const isManagerRole = ['admin', 'zone_manager', 'location_manager'].includes(role ?? '');
   const dashboard = useDashboard(isManagerRole ? undefined : (user?.location_id ?? undefined));
@@ -66,134 +41,144 @@ export default function DashboardScreen() {
   const issued = stats?.issued_today_bags ?? 0;
   const wasted = stats?.wasted_today_bags ?? 0;
   const hasUsage = forecast && forecast.avg_daily_usage_bags > 0;
-
-  // Estimate minimum height for the locations section to fill the screen
-  // Header ~68 + position ~88 + action ~48 + nav ~130 ≈ 334
-  const locMinH = Math.max(300, screenH - 380);
+  const lowCount = balances.filter((b) => {
+    const oh = b.on_hand_bags ?? 0;
+    return oh <= (b.critical_threshold ?? 0) || oh <= (b.low_threshold ?? 0);
+  }).length;
 
   return (
     <SafeAreaView style={$.root} edges={['bottom']}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ flexGrow: 1 }}
+        contentContainerStyle={$.scroll}
         refreshControl={
           <RefreshControl
             refreshing={dashboard.isRefetching}
-            tintColor={C.t3}
+            tintColor="#fff"
             onRefresh={() => { dashboard.refetch(); available.refetch(); pending.refetch(); }}
           />
         }
       >
-        {/* ── Identity ── */}
-        <View style={$.id}>
-          <View style={$.idLeft}>
-            <Text style={$.idGreet}>{greet()}</Text>
-            <Text style={$.idName}>{user?.full_name ?? user?.email}</Text>
-            {user?.location_name && (
-              <Text style={$.idLoc}>{user.location_name}</Text>
-            )}
-          </View>
-          <View style={$.idRight}>
-            <Text style={$.idRole}>{fmtRole(role ?? 'staff')}</Text>
-          </View>
-        </View>
-
-        {/* ── Stock position ── */}
-        {stats && (
-          <View style={$.pos}>
-            <View style={$.posLeft}>
-              <Text style={$.posVal}>{bags.toFixed(0)}</Text>
-              <Text style={$.posUnit}>bags in stock</Text>
-            </View>
-            <View style={$.posDivider} />
-            <View style={$.posRight}>
-              <Metric label="Received" value={received.toFixed(0)} color={C.green} />
-              <Metric label="Issued" value={issued.toFixed(0)} color={C.t1} />
-              <Metric label="Wasted" value={wasted.toFixed(0)} color={wasted > 0 ? C.red : C.t3} />
+        {/* ─── Gradient Hero Zone ─── */}
+        <LinearGradient
+          colors={[brand.gradientStart, brand.gradientEnd]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={$.hero}
+        >
+          <View style={$.heroContent}>
+            <Text style={$.heroGreet}>{greet()}</Text>
+            <Text style={$.heroName}>{user?.full_name ?? user?.email}</Text>
+            <View style={$.heroMeta}>
+              <View style={$.rolePill}>
+                <Text style={$.roleText}>{fmtRole(role ?? 'staff')}</Text>
+              </View>
+              {user?.location_name && (
+                <View style={$.locPill}>
+                  <Ionicons name="location" size={10} color="rgba(255,255,255,0.6)" />
+                  <Text style={$.locText}>{user.location_name}</Text>
+                </View>
+              )}
             </View>
           </View>
-        )}
 
-        {/* ── Forecast (only with real data) ── */}
-        {hasUsage && (
-          <View style={$.forecast}>
-            <ForecastCell v={Math.min(forecast!.days_of_cover, 999).toFixed(0)} l="days cover" />
-            <View style={$.fSep} />
-            <ForecastCell v={forecast!.avg_daily_usage_bags.toFixed(1)} l="daily use" />
-            {forecast!.suggested_order_qty_bags > 0 && (
-              <>
-                <View style={$.fSep} />
-                <ForecastCell v={forecast!.suggested_order_qty_bags.toFixed(0)} l="order qty" />
-              </>
-            )}
+          {/* Hero KPI strip inside gradient */}
+          <View style={$.heroKpi}>
+            <HeroMetric label="Total Stock" value={bags.toFixed(0)} unit="bags" />
+            <View style={$.heroKpiDivider} />
+            <HeroMetric label="Received" value={received.toFixed(0)} unit="today" highlight />
+            <View style={$.heroKpiDivider} />
+            <HeroMetric label="Issued" value={issued.toFixed(0)} unit="today" />
           </View>
-        )}
+        </LinearGradient>
 
-        {/* ── Action ── */}
-        {isDriver && reqCount > 0 && (
-          <TouchableOpacity style={$.actionLive} onPress={() => router.push('/(tabs)/requests')} activeOpacity={0.6}>
-            <View style={$.actionDot} />
-            <Text style={$.actionText}>{reqCount} request{reqCount !== 1 ? 's' : ''} available</Text>
-            <Ionicons name="arrow-forward" size={15} color={C.accent} />
-          </TouchableOpacity>
-        )}
-        {isDriver && reqCount === 0 && (
-          <View style={$.actionIdle}>
-            <Text style={$.actionIdleText}>No requests available</Text>
+        {/* ─── Overlapping Cards Zone ─── */}
+        <View style={$.body}>
+          {/* Wasted + Low alerts row — overlaps into gradient */}
+          <View style={$.alertRow}>
+            <AlertChip icon="flame-outline" label="Wasted" value={wasted.toFixed(0)} tone={wasted > 0 ? 'danger' : 'neutral'} />
+            <AlertChip icon="warning-outline" label="Low Stock" value={lowCount.toString()} tone={lowCount > 0 ? 'warning' : 'neutral'} />
+            <AlertChip icon="cube-outline" label="Pending" value={delCount.toString()} tone={delCount > 0 ? 'info' : 'neutral'} />
           </View>
-        )}
-        {isManager && delCount > 0 && (
-          <TouchableOpacity style={$.actionLive} onPress={() => router.push('/alerts')} activeOpacity={0.6}>
-            <View style={$.actionDot} />
-            <Text style={$.actionText}>{delCount} deliver{delCount !== 1 ? 'ies' : 'y'} pending</Text>
-            <Ionicons name="arrow-forward" size={15} color={C.accent} />
-          </TouchableOpacity>
-        )}
 
-        {/* ── Locations table — fills remaining space ── */}
-        <View style={[$.loc, { minHeight: locMinH }]}>
-          <View style={$.locHead}>
-            <Text style={$.locHeadLabel}>LOCATIONS</Text>
+          {/* Priority banner */}
+          {isManager && delCount > 0 && (
+            <TouchableOpacity style={$.banner} activeOpacity={0.7} onPress={() => router.push('/alerts')}>
+              <View style={$.bannerDot} />
+              <Text style={$.bannerText}>{delCount} deliver{delCount !== 1 ? 'ies' : 'y'} pending confirmation</Text>
+              <Ionicons name="chevron-forward" size={16} color={brand.accent} />
+            </TouchableOpacity>
+          )}
+          {isDriver && reqCount > 0 && (
+            <TouchableOpacity style={$.banner} activeOpacity={0.7} onPress={() => router.push('/(tabs)/requests')}>
+              <View style={[$.bannerDot, { backgroundColor: '#22c55e' }]} />
+              <Text style={$.bannerText}>{reqCount} request{reqCount !== 1 ? 's' : ''} available</Text>
+              <Ionicons name="chevron-forward" size={16} color={brand.accent} />
+            </TouchableOpacity>
+          )}
+
+          {/* Quick Actions 2x2 */}
+          {isManager && (
+            <>
+              <Text style={$.sectionTitle}>Quick Actions</Text>
+              <View style={$.qaGrid}>
+                <QACard icon="warning" label="Alerts" tint="#ef4444" onPress={() => router.push('/alerts')} />
+                <QACard icon="stats-chart" label="Reports" tint="#6366f1" onPress={() => router.push('/reports')} />
+                <QACard icon="document-text" label="Requests" tint="#0ea5e9" onPress={() => router.push('/(tabs)/requests')} />
+                <QACard icon="add-circle" label="New Request" tint="#22c55e" onPress={() => router.push('/stock/create-request')} />
+              </View>
+            </>
+          )}
+
+          {/* Forecast */}
+          {hasUsage && (
+            <>
+              <Text style={$.sectionTitle}>Forecast</Text>
+              <View style={$.forecastRow}>
+                <ForecastCard value={Math.min(forecast!.days_of_cover, 999).toFixed(0)} label="Days Cover" />
+                <ForecastCard value={forecast!.avg_daily_usage_bags.toFixed(1)} label="Daily Use" />
+                {forecast!.suggested_order_qty_bags > 0 && (
+                  <ForecastCard value={forecast!.suggested_order_qty_bags.toFixed(0)} label="Order Qty" />
+                )}
+              </View>
+            </>
+          )}
+
+          {/* Locations */}
+          <View style={$.locHeader}>
+            <Text style={$.sectionTitle}>Locations</Text>
             {isManager && (
-              <TouchableOpacity onPress={() => router.push('/reports')} activeOpacity={0.6}>
-                <Text style={$.locHeadLink}>Reports →</Text>
+              <TouchableOpacity onPress={() => router.push('/reports')} activeOpacity={0.7}>
+                <Text style={$.locLink}>View all</Text>
               </TouchableOpacity>
             )}
           </View>
-
           {balances.length > 0 ? (
-            <View style={$.table}>
-              {/* Column labels */}
-              <View style={$.colHead}>
-                <Text style={[$.colLabel, { flex: 1 }]}>Name</Text>
-                <Text style={[$.colLabel, { width: 54, textAlign: 'right' }]}>Bags</Text>
-                <Text style={[$.colLabel, { width: 52, textAlign: 'right' }]}>Status</Text>
-              </View>
-
+            <View style={$.locCard}>
               {balances.map((b, i) => {
-                const bg = b.on_hand_bags ?? 0;
-                const crit = bg <= (b.critical_threshold ?? 0);
-                const low = !crit && bg <= (b.low_threshold ?? 0);
-                const sc = crit ? C.red : low ? C.amber : C.green;
-                const sBg = crit ? C.redBg : low ? C.amberBg : C.greenBg;
-                const sL = crit ? 'Critical' : low ? 'Low' : 'OK';
+                const oh = b.on_hand_bags ?? 0;
+                const crit = oh <= (b.critical_threshold ?? 0);
+                const low = !crit && oh <= (b.low_threshold ?? 0);
+                const dot = crit ? '#ef4444' : low ? '#f59e0b' : '#22c55e';
                 return (
-                  <View key={`${b.location_id}-${b.item_id}`} style={[$.tRow, i < balances.length - 1 && $.tRowB]}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={$.tName}>{b.location_name}</Text>
-                      <Text style={$.tSub}>{b.item_name}</Text>
+                  <View key={`${b.location_id}-${b.item_id}`} style={[$.locRow, i < balances.length - 1 && $.locBorder]}>
+                    <View style={[$.locDot, { backgroundColor: dot }]} />
+                    <View style={$.locMeta}>
+                      <Text style={$.locName}>{b.location_name}</Text>
+                      <Text style={$.locSub}>{b.item_name}</Text>
                     </View>
-                    <Text style={$.tBags}>{bg.toFixed(0)}</Text>
-                    <View style={[$.tPill, { backgroundColor: sBg }]}>
-                      <Text style={[$.tPillT, { color: sc }]}>{sL}</Text>
-                    </View>
+                    <Text style={$.locQty}>{oh.toFixed(0)}</Text>
+                    <Text style={[$.locStatus, { color: dot }]}>
+                      {crit ? 'Critical' : low ? 'Low' : 'OK'}
+                    </Text>
                   </View>
                 );
               })}
             </View>
           ) : (
-            <View style={$.tableEmpty}>
-              <Text style={$.tableEmptyText}>No location data</Text>
+            <View style={$.emptyCard}>
+              <Ionicons name="cube-outline" size={24} color="#cbd5e1" />
+              <Text style={$.emptyText}>No inventory data</Text>
             </View>
           )}
         </View>
@@ -202,22 +187,47 @@ export default function DashboardScreen() {
   );
 }
 
-/* ── Components ── */
+/* ─── Sub-components ─── */
 
-function Metric({ label, value, color }: { label: string; value: string; color: string }) {
+function HeroMetric({ label, value, unit, highlight }: { label: string; value: string; unit: string; highlight?: boolean }) {
   return (
-    <View style={$.mRow}>
-      <Text style={$.mLabel}>{label}</Text>
-      <Text style={[$.mVal, { color }]}>{value}</Text>
+    <View style={$.heroMetric}>
+      <Text style={$.heroMetricLabel}>{label}</Text>
+      <Text style={[$.heroMetricValue, highlight && { color: brand.accent }]}>{value}</Text>
+      <Text style={$.heroMetricUnit}>{unit}</Text>
     </View>
   );
 }
 
-function ForecastCell({ v, l }: { v: string; l: string }) {
+function AlertChip({ icon, label, value, tone }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string; tone: 'danger' | 'warning' | 'info' | 'neutral' }) {
+  const toneColors = { danger: '#ef4444', warning: '#f59e0b', info: '#3b82f6', neutral: '#94a3b8' };
+  const toneBg = { danger: '#fef2f2', warning: '#fffbeb', info: '#eff6ff', neutral: '#f8fafc' };
+  const c = toneColors[tone];
   return (
-    <View style={$.fCell}>
-      <Text style={$.fVal}>{v}</Text>
-      <Text style={$.fLbl}>{l}</Text>
+    <View style={[$.alertChip, { backgroundColor: toneBg[tone] }]}>
+      <Ionicons name={icon} size={14} color={c} />
+      <Text style={[$.alertChipVal, { color: c }]}>{value}</Text>
+      <Text style={$.alertChipLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function QACard({ icon, label, tint, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; tint: string; onPress: () => void }) {
+  return (
+    <TouchableOpacity style={$.qaCard} activeOpacity={0.6} onPress={onPress}>
+      <View style={[$.qaIcon, { backgroundColor: tint + '14' }]}>
+        <Ionicons name={icon} size={22} color={tint} />
+      </View>
+      <Text style={$.qaLabel}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function ForecastCard({ value, label }: { value: string; label: string }) {
+  return (
+    <View style={$.forecastCard}>
+      <Text style={$.forecastVal}>{value}</Text>
+      <Text style={$.forecastLbl}>{label}</Text>
     </View>
   );
 }
@@ -231,115 +241,152 @@ function fmtRole(r: string): string {
   return r.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
-/* ── Styles ── */
+/* ─── Styles ─── */
 
 const elev = (n: number) => Platform.select({
-  ios: { shadowColor: '#000', shadowOffset: { width: 0, height: n }, shadowOpacity: 0.02 + n * 0.01, shadowRadius: n * 3 },
-  android: { elevation: n },
-  default: { shadowColor: '#000', shadowOffset: { width: 0, height: n }, shadowOpacity: 0.02 + n * 0.01, shadowRadius: n * 3 },
+  ios: { shadowColor: '#0f172a', shadowOffset: { width: 0, height: n * 2 }, shadowOpacity: 0.04 + n * 0.03, shadowRadius: n * 4 },
+  android: { elevation: n * 2 },
+  default: { shadowColor: '#0f172a', shadowOffset: { width: 0, height: n * 2 }, shadowOpacity: 0.04 + n * 0.03, shadowRadius: n * 4 },
 }) as any;
 
 const $ = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.bg },
+  root: { flex: 1, backgroundColor: '#f8fafc' },
+  scroll: { paddingBottom: 32 },
 
-  /* Identity */
-  id: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
-    paddingHorizontal: 20, paddingTop: 16, paddingBottom: 20,
+  hero: {
+    paddingTop: 8,
+    paddingBottom: 0,
   },
-  idLeft: {},
-  idGreet: { fontSize: 13, fontWeight: '400', color: C.t3 },
-  idName: { fontSize: 19, fontWeight: '700', color: C.t1, letterSpacing: -0.3, marginTop: 1 },
-  idLoc: { fontSize: 12, fontWeight: '400', color: C.t3, marginTop: 3 },
-  idRight: { marginTop: 2 },
-  idRole: {
-    fontSize: 10, fontWeight: '600', color: C.t2, letterSpacing: 0.5,
-    textTransform: 'uppercase',
-    backgroundColor: C.surface, borderWidth: 1, borderColor: C.border,
-    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5, overflow: 'hidden',
+  heroContent: {
+    paddingHorizontal: 24,
+    paddingBottom: 24,
   },
-
-  /* Stock position */
-  pos: {
+  heroGreet: { fontSize: 14, color: 'rgba(255,255,255,0.55)', fontWeight: '500', marginBottom: 6 },
+  heroName: { fontSize: 26, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
+  heroMeta: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  rolePill: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  roleText: { color: 'rgba(255,255,255,0.8)', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8 },
+  locPill: {
     flexDirection: 'row',
-    backgroundColor: C.surface, marginHorizontal: 16, borderRadius: 10,
-    borderWidth: 1, borderColor: C.border, overflow: 'hidden',
-    marginBottom: 10,
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
   },
-  posLeft: { paddingVertical: 16, paddingHorizontal: 18, justifyContent: 'center' },
-  posVal: { fontSize: 34, fontWeight: '800', color: C.t1, letterSpacing: -2, lineHeight: 36, fontFamily: mono },
-  posUnit: { fontSize: 11, fontWeight: '500', color: C.t3, letterSpacing: 0.2, marginTop: 2 },
-  posDivider: { width: 1, backgroundColor: C.border, marginVertical: 10 },
-  posRight: { flex: 1, paddingVertical: 12, paddingHorizontal: 14, justifyContent: 'center', gap: 4 },
-  mRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  mLabel: { fontSize: 12, fontWeight: '400', color: C.t3 },
-  mVal: { fontSize: 14, fontWeight: '700', letterSpacing: -0.3, fontFamily: mono },
+  locText: { color: 'rgba(255,255,255,0.6)', fontSize: 12, fontWeight: '500' },
 
-  /* Forecast — inline strip, not a card */
-  forecast: {
-    flexDirection: 'row', alignItems: 'center',
-    marginHorizontal: 16, marginBottom: 10,
-    backgroundColor: C.surface, borderRadius: 10,
-    borderWidth: 1, borderColor: C.border,
+  heroKpi: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    marginHorizontal: 16,
+    borderRadius: 20,
+    paddingVertical: 18,
+    marginBottom: -28,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  heroMetric: { flex: 1, alignItems: 'center' },
+  heroMetricLabel: { fontSize: 10, color: 'rgba(255,255,255,0.5)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  heroMetricValue: { fontSize: 26, fontWeight: '800', color: '#fff', marginTop: 6, fontFamily: mono },
+  heroMetricUnit: { fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: '500', marginTop: 2 },
+  heroKpiDivider: { width: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginVertical: 8 },
+
+  body: { paddingHorizontal: 16, paddingTop: 40 },
+
+  alertRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  alertChip: {
+    flex: 1,
+    borderRadius: 16,
     paddingVertical: 12,
+    alignItems: 'center',
+    gap: 2,
+    ...elev(1),
   },
-  fCell: { flex: 1, alignItems: 'center' },
-  fVal: { fontSize: 18, fontWeight: '700', color: C.t1, letterSpacing: -0.5, fontFamily: mono },
-  fLbl: { fontSize: 9, fontWeight: '600', color: C.t3, letterSpacing: 0.4, textTransform: 'uppercase', marginTop: 2 },
-  fSep: { width: 1, height: 24, backgroundColor: C.border },
+  alertChipVal: { fontSize: 18, fontWeight: '800', fontFamily: mono },
+  alertChipLabel: { fontSize: 10, color: '#64748b', fontWeight: '600' },
 
-  /* Action */
-  actionLive: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    marginHorizontal: 16, marginBottom: 10,
-    backgroundColor: C.accentBg, borderRadius: 8,
-    borderWidth: 1, borderColor: '#eeddd4',
-    paddingHorizontal: 14, paddingVertical: 11,
+  banner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 10,
+    marginBottom: 20,
+    ...elev(2),
   },
-  actionDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.accent },
-  actionText: { flex: 1, fontSize: 13, fontWeight: '600', color: C.accent, letterSpacing: -0.1 },
-  actionIdle: {
-    marginHorizontal: 16, marginBottom: 10,
-    paddingHorizontal: 14, paddingVertical: 11,
-    borderRadius: 8, borderWidth: 1, borderColor: C.border, backgroundColor: C.surface,
-  },
-  actionIdleText: { fontSize: 13, fontWeight: '400', color: C.t3 },
+  bannerDot: { width: 8, height: 8, borderRadius: 8, backgroundColor: brand.accent },
+  bannerText: { flex: 1, fontSize: 14, fontWeight: '600', color: '#0f172a' },
 
-  /* Locations — fills remaining viewport */
-  loc: {
-    backgroundColor: C.surface,
-    borderTopWidth: 1, borderTopColor: C.border,
-    paddingTop: 14, paddingHorizontal: 16,
-    flexGrow: 1,
-  },
-  locHead: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginBottom: 10,
-  },
-  locHeadLabel: { fontSize: 10, fontWeight: '700', color: C.t3, letterSpacing: 1 },
-  locHeadLink: { fontSize: 12, fontWeight: '500', color: C.t2 },
+  sectionTitle: { fontSize: 16, fontWeight: '800', color: '#0f172a', letterSpacing: -0.2, marginBottom: 12, marginTop: 8 },
 
-  /* Table */
-  table: {
-    borderWidth: 1, borderColor: C.border, borderRadius: 8, overflow: 'hidden',
+  qaGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 8 },
+  qaCard: {
+    width: '47%',
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 18,
+    ...elev(2),
   },
-  colHead: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 12, paddingVertical: 7,
-    backgroundColor: '#fafaf7', borderBottomWidth: 1, borderBottomColor: C.border,
+  qaIcon: {
+    width: 44, height: 44, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 14,
   },
-  colLabel: { fontSize: 9, fontWeight: '700', color: C.t3, letterSpacing: 0.6, textTransform: 'uppercase' },
-  tRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 12, paddingVertical: 10,
-  },
-  tRowB: { borderBottomWidth: 1, borderBottomColor: C.borderL },
-  tName: { fontSize: 13, fontWeight: '600', color: C.t1, letterSpacing: -0.1 },
-  tSub: { fontSize: 10, fontWeight: '400', color: C.t3, marginTop: 1 },
-  tBags: { width: 54, textAlign: 'right', fontSize: 14, fontWeight: '700', color: C.t1, letterSpacing: -0.3, fontFamily: mono },
-  tPill: { width: 52, alignItems: 'center', paddingVertical: 2, borderRadius: 4, marginLeft: 6 },
-  tPillT: { fontSize: 9, fontWeight: '700', letterSpacing: 0.3 },
+  qaLabel: { fontSize: 14, fontWeight: '700', color: '#0f172a' },
 
-  tableEmpty: { paddingVertical: 40, alignItems: 'center' },
-  tableEmptyText: { fontSize: 13, color: C.t3 },
+  forecastRow: { flexDirection: 'row', gap: 10, marginBottom: 8 },
+  forecastCard: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    paddingVertical: 16,
+    alignItems: 'center',
+    ...elev(1),
+  },
+  forecastVal: { fontSize: 20, fontWeight: '800', color: '#0f172a', fontFamily: mono },
+  forecastLbl: { fontSize: 10, fontWeight: '700', color: '#94a3b8', marginTop: 4, textTransform: 'uppercase', letterSpacing: 0.4 },
+
+  locHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, marginBottom: 12 },
+  locLink: { fontSize: 13, fontWeight: '700', color: brand.accent },
+  locCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    overflow: 'hidden',
+    ...elev(2),
+  },
+  locRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    gap: 12,
+  },
+  locBorder: { borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  locDot: { width: 10, height: 10, borderRadius: 5 },
+  locMeta: { flex: 1 },
+  locName: { fontSize: 15, fontWeight: '700', color: '#0f172a' },
+  locSub: { fontSize: 12, color: '#94a3b8', marginTop: 2 },
+  locQty: { fontSize: 18, fontWeight: '800', color: '#0f172a', fontFamily: mono, minWidth: 48, textAlign: 'right' },
+  locStatus: { fontSize: 12, fontWeight: '700', minWidth: 50, textAlign: 'right' },
+
+  emptyCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    paddingVertical: 40,
+    alignItems: 'center',
+    gap: 8,
+    ...elev(1),
+  },
+  emptyText: { fontSize: 14, color: '#94a3b8', fontWeight: '500' },
 });
