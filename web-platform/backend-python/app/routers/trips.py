@@ -1453,9 +1453,12 @@ async def complete_stop(
             if role != "driver":
                 raise HTTPException(status_code=403, detail="Not authorized to complete this stop")
 
-            driver_ids = _get_driver_ids_for_user(supabase, user.id)
-            if not assigned_driver_id or assigned_driver_id not in driver_ids:
-                raise HTTPException(status_code=403, detail="This stop is not assigned to the current driver")
+            # If a driver is assigned, verify it's the current user
+            # If no driver assigned (null), allow any driver to complete
+            if assigned_driver_id:
+                driver_ids = _get_driver_ids_for_user(supabase, user.id)
+                if assigned_driver_id not in driver_ids:
+                    raise HTTPException(status_code=403, detail="This stop is not assigned to the current driver")
 
         scanned_barcodes = [
             barcode.strip()
