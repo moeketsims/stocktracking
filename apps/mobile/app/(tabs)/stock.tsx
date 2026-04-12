@@ -1,5 +1,5 @@
-import React, { useCallback, useState } from 'react';
-import { View, Text, FlatList, StyleSheet, RefreshControl, TouchableOpacity } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { View, Text, SectionList, StyleSheet, RefreshControl, TouchableOpacity, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,17 +15,16 @@ import { UndoToast } from '../../src/components/UndoToast';
 import { timeAgo } from '../../src/utils/dates';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
 
-interface UndoState {
-  message: string;
-  transactionId: string | null;
+type FilterMode = 'all' | 'critical' | 'sufficient';
+type StockCondition = 'critical' | 'low' | 'sufficient';
+
+function classify(status: string): StockCondition {
+  if (status === 'critical' || status === 'out') return 'critical';
+  if (status === 'low') return 'low';
+  return 'sufficient';
 }
 
-const statusColors = {
-  in_stock: { bg: '#dcfce7', text: '#15803d', label: 'Healthy' },
-  low: { bg: '#fef9c3', text: '#a16207', label: 'Low' },
-  critical: { bg: '#fee2e2', text: '#dc2626', label: 'Critical' },
-  out: { bg: '#fef2f2', text: '#991b1b', label: 'Supply Critical' },
-};
+interface UndoState { message: string; transactionId: string | null; }
 
 export default function StockScreen() {
   const router = useRouter();
@@ -33,10 +32,8 @@ export default function StockScreen() {
   const isStaff = user?.role === 'staff';
   const isManager = user?.role === 'location_manager' || user?.role === 'zone_manager' || user?.role === 'admin';
 
-  // Staff/drivers see their own location stock
   const balance = useStockBalance(user?.location_id ?? undefined);
   const today = useTodayTransactions(user?.location_id ?? undefined);
-  // Managers see all locations
   const byLocation = useStockByLocation();
   const pendingDeliveries = usePendingDeliveries();
   const deliveriesList = pendingDeliveries.data?.deliveries ?? [];
@@ -44,450 +41,374 @@ export default function StockScreen() {
   const issueMutation = useIssueStock();
   const returnMutation = useReturnStock();
   const [undoState, setUndoState] = useState<UndoState | null>(null);
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<FilterMode>('all');
 
-  // Staff view data
   const stockItems = balance.data?.balance ?? [];
   const transactions = today.data?.transactions ?? [];
-  const totalKg = stockItems.reduce((sum, s) => sum + s.on_hand_qty, 0);
+  const totalKg = stockItems.reduce((sum, item) => sum + item.on_hand_qty, 0);
   const totalBags = Math.round(totalKg / 10);
 
-  // Manager view data
-  const locations = byLocation.data?.locations ?? [];
-  const totalStockKg = byLocation.data?.total_stock_kg ?? 0;
-  const totalStockBags = Math.round(totalStockKg / 10);
+  const rawLocations = byLocation.data?.locations ?? [];
 
-  const getStockStatus = (kg: number): 'success' | 'warning' | 'error' => {
-    const bags = kg / 10;
-    if (bags <= 5) return 'error';
-    if (bags <= 15) return 'warning';
-    return 'success';
-  };
+  const { needsAttention, sufficient, criticalCt, sufficientCt, totalBagsAll } = useMemo(() => {
+    let filtered = rawLocations;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      filtered = filtered.filter(l => l.location_name.toLowerCase().includes(q));
+    }
 
-  const handleWithdraw = useCallback(
-    (bags: number) => {
-      issueMutation.mutate(
-        { quantity: bags, unit: 'bag' },
-        {
-          onSuccess: (data) => {
-            setUndoState({
-              message: `Withdrew ${bags} bag${bags > 1 ? 's' : ''}`,
-              transactionId: data.transaction_id,
-            });
-          },
-        },
-      );
-    },
-    [issueMutation],
-  );
+    const needs: typeof filtered = [];
+    const suf: typeof filtered = [];
+    for (const loc of filtered) {
+      const c = classify(loc.status);
+      if (c === 'critical' || c === 'low') needs.push(loc);
+      else suf.push(loc);
+    }
 
-  const handleReturn = useCallback(
-    (bags: number) => {
-      returnMutation.mutate({ quantity: bags, unit: 'bag' });
-    },
-    [returnMutation],
-  );
+    const sev: Record<string, number> = { out: 0, critical: 1, low: 2 };
+    needs.sort((a, b) => (sev[a.status] ?? 2) - (sev[b.status] ?? 2) || a.on_hand_qty - b.on_hand_qty);
+    suf.sort((a, b) => a.location_name.localeCompare(b.location_name));
 
-  const handleUndo = () => {
-    returnMutation.mutate({ quantity: 1, unit: 'bag' });
-    setUndoState(null);
-  };
+    return {
+      needsAttention: needs,
+      sufficient: suf,
+      criticalCt: rawLocations.filter(l => l.status === 'critical' || l.status === 'out' || l.status === 'low').length,
+      sufficientCt: rawLocations.filter(l => l.status === 'in_stock').length,
+      totalBagsAll: Math.round((byLocation.data?.total_stock_kg ?? 0) / 10),
+    };
+  }, [rawLocations, search, byLocation.data]);
+
+  const sections = useMemo(() => {
+    const result: { title: string; key: string; data: any[] }[] = [];
+    if (filter !== 'sufficient' && needsAttention.length > 0) {
+      result.push({ title: 'NEEDS ATTENTION', key: 'attention', data: needsAttention });
+    }
+    if (filter !== 'critical' && sufficient.length > 0) {
+      result.push({ title: 'SUFFICIENT STOCK', key: 'sufficient', data: sufficient });
+    }
+    return result;
+  }, [needsAttention, sufficient, filter]);
+
+  const handleWithdraw = useCallback((bags: number) => {
+    issueMutation.mutate({ quantity: bags, unit: 'bag' }, {
+      onSuccess: (data) => setUndoState({ message: `Withdrew ${bags} bag${bags > 1 ? 's' : ''}`, transactionId: data.transaction_id }),
+    });
+  }, [issueMutation]);
+  const handleReturn = useCallback((bags: number) => { returnMutation.mutate({ quantity: bags, unit: 'bag' }); }, [returnMutation]);
+  const handleUndo = () => { returnMutation.mutate({ quantity: 1, unit: 'bag' }); setUndoState(null); };
 
   const onRefresh = useCallback(() => {
-    balance.refetch();
-    today.refetch();
-    if (isManager) byLocation.refetch();
-  }, [balance, today, byLocation, isManager]);
+    balance.refetch(); today.refetch();
+    if (isManager) { byLocation.refetch(); pendingDeliveries.refetch(); }
+  }, [balance, today, byLocation, pendingDeliveries, isManager]);
 
   if (isManager ? byLocation.isLoading : balance.isLoading) {
     return <Loading fullScreen message="Loading stock..." />;
   }
 
-  // ── Manager view: per-location cards like the web Stocks page ──
+  // ══════════════════════════════════════
+  //  MANAGER VIEW — Wireframe 1
+  // ══════════════════════════════════════
   if (isManager) {
     return (
       <SafeAreaView style={styles.container} edges={['bottom']}>
-        <FlatList
-          data={locations}
+        <SectionList
+          sections={sections}
           keyExtractor={(item) => item.location_id}
-          refreshControl={
-            <RefreshControl
-              refreshing={byLocation.isRefetching}
-              onRefresh={onRefresh}
-            />
-          }
+          stickySectionHeadersEnabled={false}
+          refreshControl={<RefreshControl refreshing={byLocation.isRefetching} onRefresh={onRefresh} />}
           ListHeaderComponent={
-            <>
-              {/* Summary tiles — Healthy / Low / Critical counts */}
-              <View style={styles.summaryTiles}>
-                {[
-                  { label: 'Healthy', count: locations.filter(l => l.status === 'in_stock').length, bg: '#dcfce7', text: '#15803d' },
-                  { label: 'Low', count: locations.filter(l => l.status === 'low').length, bg: '#fef9c3', text: '#a16207' },
-                  { label: 'Critical', count: locations.filter(l => l.status === 'critical' || l.status === 'out').length, bg: '#fee2e2', text: '#dc2626' },
-                ].map((tile) => (
-                  <View key={tile.label} style={[styles.summaryTile, { backgroundColor: tile.bg }]}>
-                    <Text style={[styles.summaryCount, { color: tile.text }]}>{tile.count}</Text>
-                    <Text style={[styles.summaryLabel, { color: tile.text }]}>{tile.label}</Text>
-                  </View>
+            <View style={styles.header}>
+              {/* Search */}
+              <View style={styles.searchRow}>
+                <View style={styles.searchBox}>
+                  <Ionicons name="search" size={spacing.lg} color={colors.gray[400]} />
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="Search locations..."
+                    placeholderTextColor={colors.gray[400]}
+                    value={search}
+                    onChangeText={setSearch}
+                  />
+                  {search.length > 0 && (
+                    <TouchableOpacity onPress={() => setSearch('')}>
+                      <Ionicons name="close-circle" size={spacing.lg} color={colors.gray[400]} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+
+              {/* Filter chips */}
+              <View style={styles.chipRow}>
+                {([
+                  { key: 'critical' as FilterMode, label: `Critical ${criticalCt}`, color: colors.error, bg: '#fee2e2' /* tinted red bg */ },
+                  { key: 'sufficient' as FilterMode, label: `Sufficient ${sufficientCt}`, color: colors.success, bg: '#dcfce7' /* tinted green bg */ },
+                  { key: 'all' as FilterMode, label: `All ${rawLocations.length}`, color: colors.gray[600], bg: '#f1f5f9' /* tinted slate bg */ },
+                ]).map(c => (
+                  <TouchableOpacity
+                    key={c.key}
+                    style={[
+                      styles.chip,
+                      { backgroundColor: filter === c.key ? c.bg : colors.white, borderColor: filter === c.key ? c.color : colors.gray[200] },
+                    ]}
+                    onPress={() => setFilter(filter === c.key ? 'all' : c.key)}
+                  >
+                    <Text style={[styles.chipText, { color: filter === c.key ? c.color : colors.gray[500] }]}>{c.label}</Text>
+                  </TouchableOpacity>
                 ))}
               </View>
 
-              {/* Pending Deliveries banner */}
+              {/* Pending deliveries */}
               {deliveriesList.length > 0 && (
-                <TouchableOpacity
-                  style={styles.deliveryBanner}
-                  onPress={() => router.push('/alerts')}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.deliveryBannerHeader}>
-                    <Ionicons name="car" size={18} color="#ea580c" />
-                    <Text style={styles.deliveryBannerTitle}>Pending Deliveries</Text>
-                    <View style={styles.deliveryBadge}>
-                      <Text style={styles.deliveryBadgeText}>{deliveriesList.length} awaiting confirmation</Text>
-                    </View>
-                  </View>
-                  {deliveriesList.slice(0, 3).map((d: any) => (
-                    <View key={d.id} style={styles.deliveryItem}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.deliveryTrip}>
-                          Trip #{d.trip?.trip_number ?? '—'}
-                        </Text>
-                        <Text style={styles.deliveryFrom}>
-                          From: {d.trip?.from_location?.name ?? d.supplier?.name ?? 'Unknown'}
-                        </Text>
-                      </View>
-                      <Text style={styles.deliveryBags}>
-                        {d.driver_claimed_bags ?? Math.round((d.driver_claimed_qty_kg ?? 0) / 10)} bags
-                      </Text>
-                      <Ionicons name="chevron-forward" size={16} color="#ea580c" />
-                    </View>
-                  ))}
+                <TouchableOpacity style={styles.deliveryBar} onPress={() => router.push('/alerts')} activeOpacity={0.7}>
+                  <View style={styles.deliveryPulse} />
+                  <Text style={styles.deliveryText}>
+                    {deliveriesList.length} deliver{deliveriesList.length === 1 ? 'y' : 'ies'} awaiting confirmation
+                  </Text>
+                  <Ionicons name="chevron-forward" size={fontSize.sm} color={colors.primary[600]} />
                 </TouchableOpacity>
               )}
-
-              {/* Request Stock button */}
-              <TouchableOpacity
-                style={styles.requestStockBtn}
-                onPress={() => router.push('/stock/create-request')}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="clipboard-outline" size={18} color={colors.white} />
-                <Text style={styles.requestStockText}>Request Stock</Text>
-              </TouchableOpacity>
-
-              {/* Location count */}
-              <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>{locations.length} Locations</Text>
-                <Text style={styles.totalBags}>{totalStockBags} bags total</Text>
-              </View>
-            </>
-          }
-          renderItem={({ item }) => {
-            const bags = Math.round(item.on_hand_qty / 10);
-            const targetBags = Math.round((item.low_stock_threshold ?? 50) / 10);
-            const pct = targetBags > 0 ? Math.min(100, (bags / targetBags) * 100) : 0;
-            const sc = statusColors[item.status] ?? statusColors.in_stock;
-            const isShop = item.location_type === 'shop';
-            const deficit = Math.max(0, targetBags - bags);
-
-            return (
-              <Card style={styles.locationCard}>
-                <View style={styles.locationHeader}>
-                  <View style={styles.locationTitleRow}>
-                    <Ionicons
-                      name={isShop ? 'storefront-outline' : 'cube-outline'}
-                      size={20}
-                      color={colors.gray[500]}
-                    />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.locationName}>{item.location_name}</Text>
-                      <Text style={styles.locationType}>{isShop ? 'Shop' : 'Warehouse'}</Text>
-                    </View>
-                  </View>
-                  <View style={[styles.statusBadge, { backgroundColor: sc.bg }]}>
-                    <Text style={[styles.statusText, { color: sc.text }]}>{sc.label}</Text>
-                  </View>
-                </View>
-
-                <View style={styles.stockRow}>
-                  <Text style={styles.stockBags}>{bags}</Text>
-                  <Text style={styles.stockUnit}>bags</Text>
-                  <Text style={styles.stockTarget}>Target: {targetBags} bags</Text>
-                </View>
-
-                {/* Progress bar */}
-                <View style={styles.progressBg}>
-                  <View
-                    style={[
-                      styles.progressFill,
-                      {
-                        width: `${pct}%`,
-                        backgroundColor: pct >= 100 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#ef4444',
-                      },
-                    ]}
-                  />
-                </View>
-                <Text style={[styles.pctText, { color: sc.text }]}>
-                  {pct.toFixed(0)}% of target
-                </Text>
-
-                {deficit > 0 && (
-                  <View style={styles.deficitRow}>
-                    <Text style={styles.deficitText}>
-                      Need +{deficit} bags to reach target
-                    </Text>
-                    <TouchableOpacity
-                      style={[styles.requestBtn, { backgroundColor: isShop ? '#fff7ed' : '#f5f3ff', borderColor: isShop ? '#ea580c' : '#7c3aed' }]}
-                      onPress={() => router.push('/stock/create-request')}
-                    >
-                      <Ionicons name="add" size={14} color={isShop ? '#ea580c' : '#7c3aed'} />
-                      <Text style={[styles.requestBtnText, { color: isShop ? '#ea580c' : '#7c3aed' }]}>Request</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-
-                {/* Last activity */}
-                <View style={styles.activityLine}>
-                  <Ionicons name="time-outline" size={14} color={colors.gray[400]} />
-                  <Text style={styles.activityText}>
-                    {item.last_activity ? timeAgo(item.last_activity) : 'No activity'}
-                  </Text>
-                </View>
-              </Card>
-            );
-          }}
-          ListEmptyComponent={
-            <View style={styles.emptyActivity}>
-              <Text style={styles.emptyText}>No locations found</Text>
             </View>
           }
-          contentContainerStyle={styles.listContent}
+          renderSectionHeader={({ section }) => (
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, section.key === 'attention' && styles.sectionTitleAttention]}>
+                {section.title}
+              </Text>
+              {section.key === 'attention' && (
+                <TouchableOpacity onPress={() => router.push('/stock/create-request')}>
+                  <Text style={styles.sectionAction}>Request</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+          renderItem={({ item, section }) =>
+            section.key === 'attention'
+              ? <AttentionCard item={item} onRequest={() => router.push('/stock/create-request')} />
+              : <SufficientRow item={item} />
+          }
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>{search ? 'No locations match' : 'No stock data available'}</Text>
+            </View>
+          }
+          contentContainerStyle={styles.list}
         />
       </SafeAreaView>
     );
   }
 
-  // ── Staff/Driver view: single location stock ──
+  // ══════════════════════════════════════
+  //  STAFF / DRIVER VIEW
+  // ══════════════════════════════════════
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <FlatList
-        data={transactions}
+      <SectionList
+        sections={[{ title: "Today's Activity", key: 'activity', data: transactions }]}
         keyExtractor={(item) => item.id}
-        refreshControl={
-          <RefreshControl
-            refreshing={balance.isRefetching || today.isRefetching}
-            onRefresh={onRefresh}
-          />
-        }
+        stickySectionHeadersEnabled={false}
+        refreshControl={<RefreshControl refreshing={balance.isRefetching || today.isRefetching} onRefresh={onRefresh} />}
         ListHeaderComponent={
           <>
-            <Card style={styles.heroCard}>
-              <Text style={styles.heroLabel}>Current Stock</Text>
-              <View style={styles.heroRow}>
-                <Text style={styles.heroBags}>{totalBags}</Text>
-                <Text style={styles.heroUnit}>bags</Text>
-                <Badge
-                  label={totalBags === 0 ? 'Out' : totalBags <= 5 ? 'Critical' : totalBags <= 15 ? 'Low' : 'OK'}
-                  variant={getStockStatus(totalKg)}
-                />
+            <View style={styles.staffHero}>
+              <Text style={styles.staffHeroLabel}>Current Stock</Text>
+              <View style={styles.staffHeroRow}>
+                <Text style={styles.staffHeroBags}>{totalBags}</Text>
+                <Text style={styles.staffHeroUnit}>bags</Text>
+                <Badge label={totalBags === 0 ? 'Out' : totalBags <= 5 ? 'Critical' : totalBags <= 15 ? 'Low' : 'OK'} variant={totalBags <= 5 ? 'error' : totalBags <= 15 ? 'warning' : 'success'} />
               </View>
-              <Text style={styles.heroKg}>{totalKg.toFixed(1)} kg total</Text>
-            </Card>
-
-            {stockItems.length > 1 &&
-              stockItems.map((item) => (
-                <Card key={`${item.location_id}-${item.item_id}`} style={styles.itemCard}>
-                  <View style={styles.itemRow}>
-                    <Ionicons name="cube" size={16} color={colors.gray[400]} />
-                    <Text style={styles.itemName}>{item.item_name ?? 'Stock'}</Text>
-                    <Text style={styles.itemQty}>{Math.round(item.on_hand_qty / 10)} bags</Text>
-                  </View>
-                </Card>
-              ))}
-
+              <Text style={styles.staffHeroKg}>{totalKg.toFixed(1)} kg</Text>
+            </View>
             {isStaff && (
-              <View style={styles.quickActions}>
-                <Button
-                  title="Return 1 bag"
-                  variant="outline"
-                  size="sm"
-                  onPress={() => handleReturn(1)}
-                  loading={returnMutation.isPending}
-                  icon={<Ionicons name="add" size={16} color={colors.primary[500]} />}
-                />
+              <View style={styles.staffReturnRow}>
+                <Button title="Return 1 bag" variant="outline" size="sm" onPress={() => handleReturn(1)} loading={returnMutation.isPending} />
               </View>
             )}
-
-            <View style={styles.activityHeader}>
-              <Text style={styles.activityTitle}>Today's Activity</Text>
-              {today.data && (
-                <Text style={styles.activityCount}>
-                  {today.data.issue_count} issued, {today.data.return_count} returned
-                </Text>
-              )}
-            </View>
           </>
         }
+        renderSectionHeader={({ section }) => (
+          <View style={styles.staffActHeader}>
+            <Text style={styles.staffActTitle}>{section.title}</Text>
+            {today.data && <Text style={styles.staffActCount}>{today.data.issue_count} out · {today.data.return_count} in</Text>}
+          </View>
+        )}
         renderItem={({ item }) => (
           <View style={styles.txRow}>
-            <View style={styles.txIcon}>
-              <Ionicons
-                name={item.type === 'issue' ? 'arrow-down' : item.type === 'return' ? 'arrow-up' : 'swap-horizontal'}
-                size={16}
-                color={item.type === 'issue' ? colors.error : colors.success}
-              />
+            <View style={[styles.txDot, { backgroundColor: item.type === 'issue' ? '#fee2e2' /* tinted red bg */ : '#dcfce7' /* tinted green bg */ }]}>
+              <Ionicons name={item.type === 'issue' ? 'arrow-down' : 'arrow-up'} size={fontSize.sm} color={item.type === 'issue' ? colors.error : colors.success} />
             </View>
-            <View style={styles.txInfo}>
-              <Text style={styles.txType}>
-                {item.type === 'issue' ? 'Withdrew' : item.type === 'return' ? 'Returned' : item.type}{' '}
-                {(item.quantity / 10).toFixed(0)} bag{item.quantity !== 10 ? 's' : ''}
-              </Text>
-              {item.notes && (
-                <Text style={styles.txNotes} numberOfLines={1}>{item.notes}</Text>
-              )}
+            <View style={styles.txContent}>
+              <Text style={styles.txLabel}>{item.type === 'issue' ? 'Withdrew' : 'Returned'} {(item.quantity / 10).toFixed(0)} bag{item.quantity !== 10 ? 's' : ''}</Text>
+              {item.notes && <Text style={styles.txNotes} numberOfLines={1}>{item.notes}</Text>}
             </View>
             <Text style={styles.txTime}>{timeAgo(item.created_at)}</Text>
           </View>
         )}
-        ListEmptyComponent={
-          <View style={styles.emptyActivity}>
-            <Text style={styles.emptyText}>No activity today</Text>
-          </View>
-        }
-        contentContainerStyle={styles.listContent}
+        ListEmptyComponent={<View style={styles.empty}><Text style={styles.emptyText}>No activity today</Text></View>}
+        contentContainerStyle={styles.list}
       />
-
-      {isStaff && (
-        <KitchenFAB
-          onWithdraw={handleWithdraw}
-          disabled={issueMutation.isPending || totalBags === 0}
-        />
-      )}
-
-      {undoState && (
-        <UndoToast
-          message={undoState.message}
-          onUndo={handleUndo}
-          onDismiss={() => setUndoState(null)}
-        />
-      )}
+      {isStaff && <KitchenFAB onWithdraw={handleWithdraw} disabled={issueMutation.isPending || totalBags === 0} />}
+      {undoState && <UndoToast message={undoState.message} onUndo={handleUndo} onDismiss={() => setUndoState(null)} />}
     </SafeAreaView>
   );
 }
 
+// ══════════════════════════════════════
+//  ATTENTION CARD
+//  Tinted, prominent, action-oriented.
+//  Shows: name, stock, minimum, shortage, action.
+// ══════════════════════════════════════
+function AttentionCard({ item, onRequest }: { item: any; onRequest: () => void }) {
+  const bags = Math.round(item.on_hand_qty / 10);
+  const minBags = Math.round((item.low_stock_threshold ?? 50) / 10);
+  const shortage = Math.max(0, minBags - bags);
+  const isCritical = item.status === 'critical' || item.status === 'out';
+  const accent = isCritical ? colors.error : colors.warning;
+  const bg = isCritical ? '#fef2f2' /* tinted red bg */ : '#fffbeb' /* tinted amber bg */;
+
+  return (
+    <View style={[styles.attCard, { backgroundColor: bg, borderLeftColor: accent }]}>
+      {/* Name + badge */}
+      <View style={styles.attTopRow}>
+        <Text style={styles.attName} numberOfLines={1}>{item.location_name}</Text>
+        <View style={[styles.attBadge, { backgroundColor: accent }]}>
+          <Text style={styles.attBadgeText}>{isCritical ? 'Critical' : 'Low'}</Text>
+        </View>
+      </View>
+
+      {/* Stock info */}
+      <Text style={[styles.attStock, { color: accent }]}>{bags} bags</Text>
+      <Text style={styles.attMeta}>Minimum: {minBags}</Text>
+      {shortage > 0 && <Text style={[styles.attShortage, { color: accent }]}>Need +{shortage}</Text>}
+
+      {/* Action */}
+      <TouchableOpacity style={[styles.attBtn, { backgroundColor: accent }]} onPress={onRequest} activeOpacity={0.7}>
+        <Text style={styles.attBtnText}>Request stock</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// ══════════════════════════════════════
+//  SUFFICIENT ROW
+//  Compact, quiet, informational.
+//  Shows: name, bags, minimum, above-minimum.
+// ══════════════════════════════════════
+function SufficientRow({ item }: { item: any }) {
+  const bags = Math.round(item.on_hand_qty / 10);
+  const minBags = Math.round((item.low_stock_threshold ?? 50) / 10);
+  const above = bags - minBags;
+
+  return (
+    <View style={styles.sufRow}>
+      <View style={styles.sufInfo}>
+        <Text style={styles.sufName} numberOfLines={1}>{item.location_name}</Text>
+        <Text style={styles.sufMeta}>Minimum: {minBags}   Above minimum: <Text style={styles.sufAbove}>+{above}</Text></Text>
+      </View>
+      <View style={styles.sufRight}>
+        <Text style={styles.sufBags}>{bags}</Text>
+        <Text style={styles.sufUnit}>bags</Text>
+      </View>
+    </View>
+  );
+}
+
+// ══════════════════════════════════════
+//  STYLES
+// ══════════════════════════════════════
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.gray[50] },
-  listContent: { padding: spacing.lg, gap: spacing.md, paddingBottom: 120 },
+  list: { paddingBottom: spacing['2xl'] },
 
-  // Summary tiles
-  summaryTiles: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
-  summaryTile: { flex: 1, alignItems: 'center', paddingVertical: spacing.md, borderRadius: borderRadius.md },
-  summaryCount: { fontSize: fontSize['2xl'], fontWeight: fontWeight.bold },
-  summaryLabel: { fontSize: fontSize.xs, fontWeight: fontWeight.medium, marginTop: 2 },
-
-  // Pending deliveries banner
-  deliveryBanner: {
-    backgroundColor: '#fff7ed',
-    borderWidth: 1,
-    borderColor: '#fed7aa',
-    borderRadius: borderRadius.md,
-    padding: spacing.md,
-    marginBottom: spacing.md,
+  // Header area
+  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
+  searchRow: { marginBottom: spacing.md },
+  searchBox: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    backgroundColor: colors.white, borderWidth: 1, borderColor: colors.gray[200],
+    borderRadius: 10, paddingHorizontal: spacing.md, height: spacing['5xl'] - spacing.sm,
   },
-  deliveryBannerHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
-  deliveryBannerTitle: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: '#9a3412', flex: 1 },
-  deliveryBadge: { backgroundColor: '#ffedd5', paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: 10 },
-  deliveryBadgeText: { fontSize: 10, fontWeight: fontWeight.semibold, color: '#ea580c' },
-  deliveryItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#fed7aa',
-  },
-  deliveryTrip: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: '#9a3412' },
-  deliveryFrom: { fontSize: fontSize.xs, color: '#c2410c' },
-  deliveryBags: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: '#9a3412' },
+  searchInput: { flex: 1, fontSize: fontSize.sm, color: colors.gray[900], padding: 0 },
 
-  // Request stock button
-  requestStockBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    backgroundColor: '#ea580c',
-    paddingVertical: spacing.md,
-    borderRadius: borderRadius.md,
-    marginBottom: spacing.md,
-  },
-  requestStockText: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.white },
-
-  totalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-  },
-  totalLabel: { fontSize: fontSize.sm, color: colors.gray[500] },
-  totalBags: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.gray[700] },
-
-  // Location card
-  locationCard: { paddingVertical: spacing.lg, paddingHorizontal: spacing.lg },
-  locationHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: spacing.md },
-  locationTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flex: 1 },
-  locationName: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.gray[900] },
-  locationType: { fontSize: fontSize.xs, color: colors.gray[500] },
-  statusBadge: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: 12 },
-  statusText: { fontSize: fontSize.xs, fontWeight: fontWeight.semibold },
-  stockRow: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.xs, marginBottom: spacing.sm },
-  stockBags: { fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.gray[900] },
-  stockUnit: { fontSize: fontSize.sm, color: colors.gray[500] },
-  stockTarget: { fontSize: fontSize.xs, color: colors.gray[400], marginLeft: 'auto' },
-  progressBg: { height: 6, backgroundColor: colors.gray[200], borderRadius: 3, overflow: 'hidden', marginBottom: 4 },
-  progressFill: { height: '100%', borderRadius: 3 },
-  pctText: { fontSize: fontSize.xs, fontWeight: fontWeight.medium, marginBottom: spacing.xs },
-  deficitRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm },
-  deficitText: { fontSize: fontSize.xs, color: colors.gray[500] },
-  requestBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: borderRadius.md,
+  // Filter chips
+  chipRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
+  chip: {
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm - 2, borderRadius: spacing.lg,
     borderWidth: 1,
   },
-  requestBtnText: { fontSize: fontSize.xs, fontWeight: fontWeight.semibold },
-  activityLine: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  activityText: { fontSize: fontSize.xs, color: colors.gray[400] },
+  chipText: { fontSize: 13, fontWeight: fontWeight.semibold },
 
-  // Staff view
-  heroCard: { alignItems: 'center', paddingVertical: spacing['2xl'] },
-  heroLabel: { fontSize: fontSize.sm, color: colors.gray[500], marginBottom: spacing.xs },
-  heroRow: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
-  heroBags: { fontSize: 48, fontWeight: fontWeight.bold, color: colors.gray[900] },
-  heroUnit: { fontSize: fontSize.xl, color: colors.gray[500] },
-  heroKg: { fontSize: fontSize.sm, color: colors.gray[400], marginTop: spacing.xs },
-  itemCard: { paddingVertical: spacing.md, paddingHorizontal: spacing.lg },
-  itemRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  itemName: { flex: 1, fontSize: fontSize.sm, color: colors.gray[700] },
-  itemQty: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.gray[900] },
-  quickActions: { flexDirection: 'row', gap: spacing.md },
-  activityHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: spacing.md },
-  activityTitle: { fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.gray[900] },
-  activityCount: { fontSize: fontSize.xs, color: colors.gray[500] },
-  txRow: {
+  // Delivery bar
+  deliveryBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: colors.primary[50], borderWidth: 1, borderColor: colors.primary[200],
+    borderRadius: 10, paddingHorizontal: fontSize.sm, paddingVertical: spacing.md, marginBottom: spacing.sm,
+  },
+  deliveryPulse: { width: spacing.sm, height: spacing.sm, borderRadius: spacing.xs, backgroundColor: colors.primary[600] },
+  deliveryText: { flex: 1, fontSize: 13, fontWeight: fontWeight.medium, color: colors.primary[800] },
+
+  // Section headers
+  sectionHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.sm,
+  },
+  sectionTitle: { fontSize: fontSize.xs, fontWeight: fontWeight.bold, color: colors.gray[500], letterSpacing: 0.8 },
+  sectionTitleAttention: { color: '#991b1b' /* dark red for attention header */ },
+  sectionAction: { fontSize: 13, fontWeight: fontWeight.semibold, color: colors.primary[600] },
+
+  // ── Attention card ──
+  attCard: {
+    marginHorizontal: spacing.lg, marginBottom: 10, borderRadius: borderRadius.lg,
+    borderLeftWidth: spacing.xs, padding: spacing.lg,
+  },
+  attTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm },
+  attName: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.gray[900], flex: 1, marginRight: spacing.sm },
+  attBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 10 },
+  attBadgeText: { fontSize: 11, fontWeight: fontWeight.bold, color: colors.white },
+  attStock: { fontSize: 28, fontWeight: fontWeight.bold, marginBottom: 2 },
+  attMeta: { fontSize: 13, color: colors.gray[500], marginBottom: 2 },
+  attShortage: { fontSize: 13, fontWeight: fontWeight.semibold, marginBottom: spacing.md },
+  attBtn: { alignSelf: 'flex-start', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: borderRadius.md },
+  attBtnText: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.white },
+
+  // ── Sufficient row ──
+  sufRow: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: colors.white, padding: spacing.md, borderRadius: 8, gap: spacing.md,
+    marginHorizontal: spacing.lg, marginBottom: 2,
+    backgroundColor: colors.white, borderRadius: 10,
+    paddingHorizontal: spacing.lg, paddingVertical: fontSize.sm,
   },
-  txIcon: {
-    width: 32, height: 32, borderRadius: 16,
-    backgroundColor: colors.gray[100], alignItems: 'center', justifyContent: 'center',
+  sufInfo: { flex: 1 },
+  sufName: { fontSize: 15, fontWeight: fontWeight.semibold, color: colors.gray[900], marginBottom: 2 },
+  sufMeta: { fontSize: fontSize.xs, color: colors.gray[400] },
+  sufAbove: { color: colors.success, fontWeight: fontWeight.semibold },
+  sufRight: { alignItems: 'flex-end', marginLeft: spacing.md },
+  sufBags: { fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.gray[900] },
+  sufUnit: { fontSize: 11, color: colors.gray[400] },
+
+  // Empty
+  empty: { alignItems: 'center', paddingVertical: spacing['5xl'] },
+  emptyText: { fontSize: fontSize.sm, color: colors.gray[400] },
+
+  // ── Staff view ──
+  staffHero: { alignItems: 'center', paddingVertical: 28, marginHorizontal: spacing.lg, backgroundColor: colors.white, borderRadius: borderRadius.lg, marginTop: spacing.md, marginBottom: spacing.sm },
+  staffHeroLabel: { fontSize: 13, color: colors.gray[500], marginBottom: spacing.xs },
+  staffHeroRow: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
+  staffHeroBags: { fontSize: 48, fontWeight: fontWeight.bold, color: colors.gray[900] },
+  staffHeroUnit: { fontSize: fontSize.lg, color: colors.gray[500] },
+  staffHeroKg: { fontSize: 13, color: colors.gray[400], marginTop: spacing.xs },
+  staffReturnRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm },
+  staffActHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm - 2 },
+  staffActTitle: { fontSize: 15, fontWeight: fontWeight.semibold, color: colors.gray[900] },
+  staffActCount: { fontSize: fontSize.xs, color: colors.gray[500] },
+  txRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    marginHorizontal: spacing.lg, backgroundColor: colors.white, padding: spacing.md, borderRadius: borderRadius.md, marginBottom: spacing.xs,
   },
-  txInfo: { flex: 1 },
-  txType: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.gray[900] },
-  txNotes: { fontSize: fontSize.xs, color: colors.gray[500], marginTop: 1 },
-  txTime: { fontSize: fontSize.xs, color: colors.gray[400] },
-  emptyActivity: { alignItems: 'center', paddingVertical: spacing['3xl'] },
-  emptyText: { fontSize: fontSize.sm, color: colors.gray[500] },
+  txDot: { width: 28, height: 28, borderRadius: borderRadius.sm + 8, alignItems: 'center', justifyContent: 'center' },
+  txContent: { flex: 1 },
+  txLabel: { fontSize: 13, fontWeight: fontWeight.medium, color: colors.gray[900] },
+  txNotes: { fontSize: 11, color: colors.gray[400], marginTop: 1 },
+  txTime: { fontSize: 11, color: colors.gray[400] },
 });
