@@ -286,6 +286,7 @@ export interface Location {
   zone_id: string;
   type: LocationType;
   name: string;
+  address?: string | null;
   zone_name?: string;
 }
 
