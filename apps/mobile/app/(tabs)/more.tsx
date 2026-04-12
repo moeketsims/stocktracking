@@ -45,6 +45,8 @@ export default function MoreScreen() {
   const deliveries = usePendingDeliveries();
 
   const isManager = ['admin', 'zone_manager', 'location_manager'].includes(user?.role ?? '');
+  const canManageVehicles = ['admin', 'vehicle_manager'].includes(user?.role ?? '');
+  const isAdmin = user?.role === 'admin';
   const alertCount = alerts.data?.active_alerts?.length ?? 0;
   const deliveryCount = deliveries.data?.total ?? 0;
 
@@ -93,6 +95,20 @@ export default function MoreScreen() {
               icon="swap-horizontal"
               label="Loans"
               onPress={() => router.push('/loans')}
+            />
+          )}
+          {canManageVehicles && (
+            <MenuItem
+              icon="car"
+              label="Vehicles"
+              onPress={() => router.push('/vehicles')}
+            />
+          )}
+          {isAdmin && (
+            <MenuItem
+              icon="business"
+              label="Suppliers"
+              onPress={() => router.push('/suppliers')}
             />
           )}
           <MenuItem
