@@ -27,11 +27,11 @@ def generate_trip_number(supabase) -> str:
     year = datetime.now().year
 
     # Count trips this year
-    result = supabase.table("trips").select("id", count="exact").gte(
+    result = supabase.table("trips").select("id").gte(
         "created_at", f"{year}-01-01"
     ).lt("created_at", f"{year + 1}-01-01").execute()
 
-    count = (result.count or 0) + 1
+    count = len(result.data or []) + 1
     return f"TRP-{year}-{count:04d}"
 
 
