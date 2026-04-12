@@ -37,8 +37,8 @@ import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/c
 import { Ionicons } from '@expo/vector-icons';
 
 /* ── Design tokens (matching dashboard) ── */
-const BRAND    = '#1e1b4b';
-const WARM_BG  = '#faf9f7';
+const BRAND    = '#0f172a';
+const WARM_BG  = '#f8fafc';
 const CARD_R   = 16;
 import type { ProposeTimePayload } from '../../src/api/requests';
 
@@ -92,6 +92,8 @@ export default function RequestDetailScreen() {
   const [selectedVehicleId, setSelectedVehicleId] = useState('');
   const [odometerStart, setOdometerStart] = useState('');
   const [estimatedArrival, setEstimatedArrival] = useState('');
+  const [acceptFromType, setAcceptFromType] = useState<'supplier' | 'warehouse'>('supplier');
+  const [acceptFromId, setAcceptFromId] = useState('');
 
   // Propose time form state
   const [proposedTime, setProposedTime] = useState('');
@@ -148,8 +150,6 @@ export default function RequestDetailScreen() {
     setActiveForm(form);
     if (form === 'accept' || form === 'createTrip') {
       vehiclesQuery.refetch();
-    }
-    if (form === 'createTrip') {
       locationsQuery.refetch();
       suppliersQuery.refetch();
     }
@@ -161,6 +161,8 @@ export default function RequestDetailScreen() {
     setSelectedVehicleId('');
     setOdometerStart('');
     setEstimatedArrival('');
+    setAcceptFromType('supplier');
+    setAcceptFromId('');
     setProposedTime('');
     setProposeReason('schedule_conflict');
     setProposeNotes('');
@@ -186,6 +188,10 @@ export default function RequestDetailScreen() {
       Alert.alert('Required', 'Please enter the odometer start reading.');
       return;
     }
+    if (!acceptFromId) {
+      Alert.alert('Required', `Please select a ${acceptFromType === 'supplier' ? 'supplier' : 'pickup location'}.`);
+      return;
+    }
     acceptMutation.mutate(request.id, {
       onSuccess: () => {
         createTripMutation.mutate(
@@ -193,9 +199,12 @@ export default function RequestDetailScreen() {
             id: request.id,
             data: {
               vehicle_id: selectedVehicleId,
+              driver_id: user?.id,
               odometer_start: Number(odometerStart),
               auto_start: true,
               estimated_arrival_time: estimatedArrival || undefined,
+              supplier_id: acceptFromType === 'supplier' ? acceptFromId : undefined,
+              from_location_id: acceptFromType === 'warehouse' ? acceptFromId : undefined,
             },
           },
           {
@@ -358,6 +367,7 @@ export default function RequestDetailScreen() {
           headerStyle: { backgroundColor: BRAND },
           headerTintColor: colors.white,
           headerTitleStyle: { fontWeight: '600', fontSize: 16 },
+          headerShadowVisible: false,
         }}
       />
       <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -531,6 +541,46 @@ export default function RequestDetailScreen() {
                   ))}
                   {availableVehicles.length === 0 && (
                     <Text style={styles.emptyPickerText}>No available vehicles</Text>
+                  )}
+                </ScrollView>
+              )}
+
+              {/* Source type */}
+              <Text style={styles.fieldLabel}>Pickup From *</Text>
+              <View style={styles.formActions}>
+                <TouchableOpacity
+                  style={[styles.pickerChip, { flex: 1, justifyContent: 'center' }, acceptFromType === 'supplier' && styles.pickerChipActive]}
+                  onPress={() => { setAcceptFromType('supplier'); setAcceptFromId(''); }}
+                >
+                  <Text style={[styles.pickerChipText, acceptFromType === 'supplier' && styles.pickerChipTextActive]}>Supplier</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.pickerChip, { flex: 1, justifyContent: 'center' }, acceptFromType === 'warehouse' && styles.pickerChipActive]}
+                  onPress={() => { setAcceptFromType('warehouse'); setAcceptFromId(''); }}
+                >
+                  <Text style={[styles.pickerChipText, acceptFromType === 'warehouse' && styles.pickerChipTextActive]}>Warehouse</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Source selection */}
+              <Text style={styles.fieldLabel}>{acceptFromType === 'supplier' ? 'Select Supplier *' : 'Select Location *'}</Text>
+              {(acceptFromType === 'supplier' ? suppliersQuery.isLoading : locationsQuery.isLoading) ? (
+                <ActivityIndicator size="small" color={brand.accent} />
+              ) : (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerRow}>
+                  {(acceptFromType === 'supplier' ? suppliers : locations).map((item: any) => (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={[styles.pickerChip, acceptFromId === item.id && styles.pickerChipActive]}
+                      onPress={() => setAcceptFromId(item.id)}
+                    >
+                      <Text style={[styles.pickerChipText, acceptFromId === item.id && styles.pickerChipTextActive]}>
+                        {item.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                  {(acceptFromType === 'supplier' ? suppliers : locations).length === 0 && (
+                    <Text style={styles.emptyPickerText}>No {acceptFromType === 'supplier' ? 'suppliers' : 'locations'} found</Text>
                   )}
                 </ScrollView>
               )}

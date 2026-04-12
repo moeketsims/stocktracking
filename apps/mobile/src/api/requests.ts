@@ -4,6 +4,8 @@ import type { StockRequest } from '../types';
 export interface StockRequestsResponse {
   requests: StockRequest[];
   total: number;
+  limit?: number;
+  offset?: number;
 }
 
 export interface AcceptRequestResponse {
@@ -21,6 +23,7 @@ export interface ProposeTimePayload {
 export interface CreateTripPayload {
   vehicle_id: string;
   driver_id?: string;
+  driver_name?: string;
   supplier_id?: string;
   from_location_id?: string;
   notes?: string;
@@ -63,8 +66,18 @@ export const requestsApi = {
       params: { limit },
     }),
 
-  list: (params?: { status?: string; limit?: number }) =>
+  list: (params?: { status?: string; limit?: number; offset?: number }) =>
     api.get<StockRequestsResponse>('/api/stock-requests', { params }),
+
+  listActive: () =>
+    api.get<StockRequestsResponse>('/api/stock-requests', {
+      params: { status: 'pending,accepted,trip_created,in_delivery,time_proposed', limit: 50 },
+    }),
+
+  listHistory: (params: { limit?: number; offset?: number } = {}) =>
+    api.get<StockRequestsResponse>('/api/stock-requests', {
+      params: { status: 'delivered,fulfilled,cancelled,expired', limit: params.limit ?? 20, offset: params.offset ?? 0 },
+    }),
 
   get: (id: string) =>
     api.get<{ request: StockRequest }>(`/api/stock-requests/${id}`),
