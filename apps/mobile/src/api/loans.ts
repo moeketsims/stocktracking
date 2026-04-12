@@ -49,4 +49,16 @@ export const loansApi = {
 
   assignReturn: (id: string, data: AssignDriverPayload) =>
     api.post(`/api/loans/${id}/assign-return`, data),
+
+  confirmReceipt: (id: string) =>
+    api.post(`/api/loans/${id}/confirm-receipt`),
+
+  initiateReturn: (id: string) =>
+    api.post(`/api/loans/${id}/initiate-return`),
+
+  confirmReturn: (id: string) =>
+    api.post(`/api/loans/${id}/confirm-return`),
+
+  getLocations: () =>
+    api.get<{ locations: Array<{ id: string; name: string; type: string; current_stock_bags: number }> }>('/api/loans/locations'),
 };
