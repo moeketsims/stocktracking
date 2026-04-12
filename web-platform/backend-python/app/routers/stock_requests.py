@@ -45,11 +45,11 @@ def generate_request_number(supabase) -> str:
     """Generate a unique request number like REQ-2026-0001."""
     year = datetime.now().year
 
-    result = supabase.table("stock_requests").select("id", count="exact").gte(
+    result = supabase.table("stock_requests").select("id").gte(
         "created_at", f"{year}-01-01"
     ).lt("created_at", f"{year + 1}-01-01").execute()
 
-    count = (result.count or 0) + 1
+    count = len(result.data or []) + 1
     return f"REQ-{year}-{count:04d}"
 
 
@@ -90,10 +90,11 @@ async def list_stock_requests(
                 q = q.eq("urgency", urgency)
             return q
 
-        count_query = supabase.table("stock_requests").select("id", count="exact")
+        # Get total count using a separate lightweight query
+        count_query = supabase.table("stock_requests").select("id")
         count_query = apply_filters(count_query)
         count_result = count_query.execute()
-        total = count_result.count or 0
+        total = len(count_result.data or [])
 
         query = supabase.table("stock_requests").select(
             "*, "

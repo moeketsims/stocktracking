@@ -169,12 +169,12 @@ async def get_batch_details(batch_id: str, user_data: dict = Depends(require_man
             raise HTTPException(status_code=404, detail="Batch not found")
 
         # Get edit count
-        history_count = supabase.table("batch_edit_history").select(
-            "id", count="exact"
+        history_result = supabase.table("batch_edit_history").select(
+            "id"
         ).eq("batch_id", batch_id).execute()
 
         batch_data = batch.data
-        batch_data["edit_count"] = history_count.count if hasattr(history_count, 'count') else 0
+        batch_data["edit_count"] = len(history_result.data or [])
 
         return batch_data
 
