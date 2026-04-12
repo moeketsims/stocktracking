@@ -344,7 +344,7 @@ function Row({ label, value }: { label: string; value: string }) {
 // ── Styles ──────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
+  container: { flex: 1, backgroundColor: '#faf9f7' },
   content: { padding: spacing.lg, gap: spacing.lg },
 
   sectionTitle: {

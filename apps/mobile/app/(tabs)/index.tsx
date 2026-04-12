@@ -245,9 +245,9 @@ function formatRole(role: string): string {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
+  container: { flex: 1, backgroundColor: '#faf9f7' },
   content: { padding: spacing.lg, gap: spacing.lg },
-  welcome: { gap: spacing.xs },
+  welcome: { gap: spacing.xs, backgroundColor: '#fff8f3', padding: spacing.lg, borderRadius: 12 },
   greeting: { fontSize: fontSize.md, color: colors.gray[500] },
   name: { fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.gray[900] },
   sectionTitle: { fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.gray[900], marginBottom: spacing.md },

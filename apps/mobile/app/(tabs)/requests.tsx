@@ -99,12 +99,14 @@ export default function RequestsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
+  container: { flex: 1, backgroundColor: '#faf9f7' },
   tabs: {
     flexDirection: 'row',
-    backgroundColor: colors.white,
+    backgroundColor: '#faf9f7',
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.gray[200],
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.sm,
   },
   tab: {
     flex: 1,
@@ -118,6 +120,9 @@ const styles = StyleSheet.create({
   },
   activeTab: {
     borderBottomColor: colors.primary[500],
+    backgroundColor: '#fff8f3',
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
   },
   tabText: {
     fontSize: fontSize.sm,

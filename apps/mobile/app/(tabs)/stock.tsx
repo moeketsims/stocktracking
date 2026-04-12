@@ -351,7 +351,7 @@ function SufficientRow({ item }: { item: any }) {
 //  STYLES
 // ══════════════════════════════════════
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
+  container: { flex: 1, backgroundColor: '#faf9f7' },
   list: { paddingBottom: spacing['2xl'] },
 
   // Header area
@@ -428,7 +428,7 @@ const styles = StyleSheet.create({
   sufRow: {
     flexDirection: 'row', alignItems: 'center',
     marginHorizontal: spacing.lg, marginBottom: 2,
-    backgroundColor: colors.white, borderRadius: 10,
+    backgroundColor: '#f0fdf4', borderRadius: 10,
     paddingHorizontal: spacing.lg, paddingVertical: fontSize.sm,
   },
   sufInfo: { flex: 1 },

@@ -18,12 +18,15 @@ interface MenuItemProps {
   onPress: () => void;
   badge?: number;
   color?: string;
+  iconBg?: string;
 }
 
-function MenuItem({ icon, label, onPress, badge, color }: MenuItemProps) {
+function MenuItem({ icon, label, onPress, badge, color, iconBg }: MenuItemProps) {
   return (
     <TouchableOpacity style={styles.menuItem} onPress={onPress} activeOpacity={0.7}>
-      <Ionicons name={icon} size={22} color={color ?? colors.gray[600]} />
+      <View style={[styles.iconCircle, iconBg ? { backgroundColor: iconBg } : undefined]}>
+        <Ionicons name={icon} size={18} color={color ?? colors.gray[600]} />
+      </View>
       <Text style={styles.menuLabel}>{label}</Text>
       <View style={styles.menuRight}>
         {badge != null && badge > 0 && (
@@ -55,7 +58,7 @@ export default function MoreScreen() {
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         {/* Profile */}
-        <Card>
+        <Card style={{ backgroundColor: '#fff8f3' }}>
           <View style={styles.profileRow}>
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>
@@ -79,7 +82,8 @@ export default function MoreScreen() {
             icon="alert-circle"
             label="Alerts"
             badge={alertCount}
-            color={alertCount > 0 ? colors.error : undefined}
+            color={alertCount > 0 ? colors.error : '#dc2626'}
+            iconBg="#fef2f2"
             onPress={() => router.push('/alerts')}
           />
           {isManager && (
@@ -87,7 +91,8 @@ export default function MoreScreen() {
               icon="cube"
               label="Pending Deliveries"
               badge={deliveryCount}
-              color={deliveryCount > 0 ? colors.warning : undefined}
+              color={deliveryCount > 0 ? colors.warning : '#d97706'}
+              iconBg="#fffbeb"
               onPress={() => router.push('/alerts')}
             />
           )}
@@ -95,6 +100,8 @@ export default function MoreScreen() {
             <MenuItem
               icon="swap-horizontal"
               label="Loans"
+              color="#2563eb"
+              iconBg="#eff6ff"
               onPress={() => router.push('/loans')}
             />
           )}
@@ -102,6 +109,8 @@ export default function MoreScreen() {
             <MenuItem
               icon="people"
               label="Drivers"
+              color="#16a34a"
+              iconBg="#f0fdf4"
               onPress={() => router.push('/drivers')}
             />
           )}
@@ -109,6 +118,8 @@ export default function MoreScreen() {
             <MenuItem
               icon="clipboard"
               label="Batches"
+              color="#9333ea"
+              iconBg="#faf5ff"
               onPress={() => router.push('/stock/batches')}
             />
           )}
@@ -116,6 +127,8 @@ export default function MoreScreen() {
             <MenuItem
               icon="people"
               label="User Management"
+              color="#4f46e5"
+              iconBg="#eef2ff"
               onPress={() => router.push('/users')}
             />
           )}
@@ -123,6 +136,8 @@ export default function MoreScreen() {
             <MenuItem
               icon="checkbox"
               label="Stock Take"
+              color="#0d9488"
+              iconBg="#f0fdfa"
               onPress={() => router.push('/stock-take')}
             />
           )}
@@ -130,6 +145,8 @@ export default function MoreScreen() {
             <MenuItem
               icon="car"
               label="Vehicles"
+              color="#475569"
+              iconBg="#f1f5f9"
               onPress={() => router.push('/vehicles')}
             />
           )}
@@ -137,6 +154,8 @@ export default function MoreScreen() {
             <MenuItem
               icon="location"
               label="Locations"
+              color="#ea580c"
+              iconBg="#fff7ed"
               onPress={() => router.push('/locations')}
             />
           )}
@@ -144,6 +163,8 @@ export default function MoreScreen() {
             <MenuItem
               icon="map"
               label="Zones"
+              color="#0891b2"
+              iconBg="#ecfeff"
               onPress={() => router.push('/zones')}
             />
           )}
@@ -151,6 +172,8 @@ export default function MoreScreen() {
             <MenuItem
               icon="business"
               label="Suppliers"
+              color="#92400e"
+              iconBg="#fef3c7"
               onPress={() => router.push('/suppliers')}
             />
           )}
@@ -158,17 +181,23 @@ export default function MoreScreen() {
             <MenuItem
               icon="bar-chart"
               label="Reports & Analytics"
+              color="#7c3aed"
+              iconBg="#f5f3ff"
               onPress={() => router.push('/reports')}
             />
           )}
           <MenuItem
             icon="notifications"
             label="Notifications"
+            color="#0284c7"
+            iconBg="#f0f9ff"
             onPress={() => router.push('/notifications')}
           />
           <MenuItem
             icon="settings"
             label="Settings"
+            color="#6b7280"
+            iconBg="#f3f4f6"
             onPress={() => router.push('/settings')}
           />
         </Card>
@@ -193,7 +222,7 @@ export default function MoreScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
+  container: { flex: 1, backgroundColor: '#faf9f7' },
   content: { padding: spacing.lg, gap: spacing.lg },
   profileRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
   avatar: {
@@ -206,6 +235,14 @@ const styles = StyleSheet.create({
   profileName: { fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.gray[900] },
   profileEmail: { fontSize: fontSize.sm, color: colors.gray[500] },
   profileRole: { fontSize: fontSize.xs, color: colors.gray[400], marginTop: 2 },
+  iconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.gray[100],
+  },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',

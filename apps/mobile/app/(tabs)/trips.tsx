@@ -92,7 +92,7 @@ export default function TripsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
+  container: { flex: 1, backgroundColor: '#faf9f7' },
   filterRow: {
     flexDirection: 'row',
     padding: spacing.md,
