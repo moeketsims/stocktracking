@@ -1,5 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, FlatList, StyleSheet, RefreshControl, TouchableOpacity, Platform } from 'react-native';
+import {
+  View, Text, SectionList, StyleSheet, RefreshControl,
+  TouchableOpacity, TextInput, Platform,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,198 +10,233 @@ import { useTrips } from '../../src/hooks/useTrips';
 import { useAuthStore } from '../../src/stores/authStore';
 import { TripCard } from '../../src/components/TripCard';
 import { Loading } from '../../src/components/ui/Loading';
-import { colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
+import { colors } from '../../src/constants/theme';
 import type { Trip, TripStatus } from '../../src/types';
 
-/* ── Design tokens (match dashboard) ── */
-const BRAND    = '#1e1b4b';
-const WARM_BG  = '#faf9f7';
-const CARD_R   = 16;
+/*
+ * Trips screen — retrieval tool, not a feed.
+ *
+ * Design priorities:
+ * 1. Search by trip number, location, or vehicle
+ * 2. Filter by status
+ * 3. Group completed trips by recency
+ * 4. Compact rows — 8-10 visible without scrolling
+ */
 
-type Filter = 'all' | 'active' | 'completed';
-
-const FILTER_MAP: Record<Filter, TripStatus[] | null> = {
-  all: null,
-  active: ['planned', 'in_progress'],
-  completed: ['completed'],
+const C = {
+  bg:     '#f5f5f0',
+  surface:'#ffffff',
+  border: '#e8e6e1',
+  t1:     '#111111',
+  t2:     '#555555',
+  t3:     '#999999',
+  accent: '#b44d1e',
 };
+
+type Filter = 'active' | 'completed' | 'all';
+
+function groupByRecency(trips: Trip[]): { title: string; data: Trip[] }[] {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const weekAgo = new Date(today.getTime() - 7 * 86400000);
+
+  const groups: Record<string, Trip[]> = { Today: [], 'This Week': [], Earlier: [] };
+
+  for (const t of trips) {
+    const d = new Date(t.completed_at ?? t.created_at);
+    if (d >= today) groups.Today.push(t);
+    else if (d >= weekAgo) groups['This Week'].push(t);
+    else groups.Earlier.push(t);
+  }
+
+  return ['Today', 'This Week', 'Earlier']
+    .filter(k => groups[k].length > 0)
+    .map(k => ({ title: k, data: groups[k] }));
+}
 
 export default function TripsScreen() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const isManager = ['admin', 'zone_manager', 'location_manager', 'vehicle_manager'].includes(user?.role ?? '');
   const [filter, setFilter] = useState<Filter>('active');
+  const [search, setSearch] = useState('');
   const trips = useTrips();
   const allTrips = trips.data?.trips ?? [];
 
-  const filtered = useMemo(() => {
-    const allowed = FILTER_MAP[filter];
-    if (!allowed) return allTrips;
-    return allTrips.filter((t) => allowed.includes(t.status));
-  }, [allTrips, filter]);
+  const sections = useMemo(() => {
+    // Filter by status
+    let list = allTrips;
+    if (filter === 'active') list = list.filter(t => t.status === 'planned' || t.status === 'in_progress');
+    else if (filter === 'completed') list = list.filter(t => t.status === 'completed');
 
-  const handlePress = (trip: Trip) => {
-    router.push(`/trip/${trip.id}`);
-  };
+    // Search
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(t =>
+        t.trip_number.toLowerCase().includes(q) ||
+        (t.origin_description ?? t.from_location?.name ?? '').toLowerCase().includes(q) ||
+        (t.destination_description ?? t.to_location?.name ?? '').toLowerCase().includes(q) ||
+        (t.vehicles?.registration_number ?? '').toLowerCase().includes(q) ||
+        (t.driver_name ?? '').toLowerCase().includes(q)
+      );
+    }
+
+    // Group completed by recency, active as one section
+    if (filter === 'completed') return groupByRecency(list);
+    if (list.length === 0) return [];
+    return [{ title: filter === 'active' ? 'Active' : 'All Trips', data: list }];
+  }, [allTrips, filter, search]);
+
+  const counts = useMemo(() => ({
+    active: allTrips.filter(t => t.status === 'planned' || t.status === 'in_progress').length,
+    completed: allTrips.filter(t => t.status === 'completed').length,
+    all: allTrips.length,
+  }), [allTrips]);
 
   return (
-    <SafeAreaView style={st.safe} edges={['bottom']}>
-      {/* ── Filter chips ── */}
-      <View style={st.chipRow}>
-        <Text style={st.chipLabel}>FILTER</Text>
-        <View style={st.chipGroup}>
-          {(['active', 'all', 'completed'] as Filter[]).map((f) => (
+    <SafeAreaView style={s.safe} edges={['bottom']}>
+      {/* ── Controls ── */}
+      <View style={s.controls}>
+        {/* Search */}
+        <View style={s.searchRow}>
+          <Ionicons name="search" size={15} color={C.t3} />
+          <TextInput
+            style={s.searchInput}
+            placeholder="Trip number, location, or vehicle"
+            placeholderTextColor={C.t3}
+            value={search}
+            onChangeText={setSearch}
+            returnKeyType="search"
+          />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons name="close" size={15} color={C.t3} />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Filter tabs */}
+        <View style={s.filterRow}>
+          {(['active', 'completed', 'all'] as Filter[]).map(f => (
             <TouchableOpacity
               key={f}
-              style={[st.chip, filter === f && st.chipActive]}
+              style={[s.filterTab, filter === f && s.filterTabActive]}
               onPress={() => setFilter(f)}
-              activeOpacity={0.7}
+              activeOpacity={0.6}
             >
-              <Text style={[st.chipText, filter === f && st.chipTextActive]}>
-                {f.charAt(0).toUpperCase() + f.slice(1)}
+              <Text style={[s.filterText, filter === f && s.filterTextActive]}>
+                {f === 'active' ? 'Active' : f === 'completed' ? 'Completed' : 'All'}
+              </Text>
+              <Text style={[s.filterCount, filter === f && s.filterCountActive]}>
+                {counts[f]}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
       </View>
 
+      {/* ── List ── */}
       {trips.isLoading ? (
-        <Loading fullScreen message="Loading trips..." />
+        <Loading fullScreen message="" />
       ) : (
-        <FlatList
-          data={filtered}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={st.list}
+        <SectionList
+          sections={sections}
+          keyExtractor={item => item.id}
+          stickySectionHeadersEnabled={false}
+          contentContainerStyle={{ flexGrow: 1 }}
           refreshControl={
-            <RefreshControl refreshing={trips.isRefetching} onRefresh={() => trips.refetch()} />
+            <RefreshControl refreshing={trips.isRefetching} onRefresh={() => trips.refetch()} tintColor={C.t3} />
           }
-          renderItem={({ item }) => (
-            <TripCard trip={item} onPress={() => handlePress(item)} />
+          renderSectionHeader={({ section }) => (
+            <View style={s.sectionHead}>
+              <Text style={s.sectionLabel}>{section.title.toUpperCase()}</Text>
+              <Text style={s.sectionCount}>{section.data.length}</Text>
+            </View>
+          )}
+          renderItem={({ item, index, section }) => (
+            <TripCard
+              trip={item}
+              onPress={() => router.push(`/trip/${item.id}`)}
+              isLast={index === section.data.length - 1}
+            />
           )}
           ListEmptyComponent={
-            <View style={st.empty}>
-              <View style={st.emptyIconBox}>
-                <Ionicons name="navigate-outline" size={28} color={colors.gray[300]} />
-              </View>
-              <Text style={st.emptyTitle}>
-                {filter === 'active' ? 'No active trips' : 'No trips found'}
-              </Text>
-              <Text style={st.emptyBody}>
-                {filter === 'active'
-                  ? 'Accept a request to start a trip.'
-                  : 'Try a different filter.'}
+            <View style={s.empty}>
+              <Text style={s.emptyText}>
+                {search ? 'No trips match your search' : filter === 'active' ? 'No active trips' : 'No trips'}
               </Text>
             </View>
           }
+          renderSectionFooter={() => <View style={s.sectionGap} />}
         />
       )}
 
+      {/* ── FAB ── */}
       {isManager && (
         <TouchableOpacity
-          style={st.fab}
-          activeOpacity={0.8}
+          style={s.fab}
+          activeOpacity={0.7}
           onPress={() => router.push('/trip/create')}
         >
-          <Ionicons name="add" size={26} color="#fff" />
+          <Ionicons name="add" size={22} color="#fff" />
         </TouchableOpacity>
       )}
     </SafeAreaView>
   );
 }
 
-/* ══════════════════════════════════════
-   STYLES
-══════════════════════════════════════ */
-const st = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: WARM_BG },
+const s = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: C.bg },
 
-  /* ── Filter chips ── */
-  chipRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 10,
-    backgroundColor: WARM_BG,
-    gap: 10,
+  /* Controls */
+  controls: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6, backgroundColor: C.bg },
+  searchRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: C.surface, borderWidth: 1, borderColor: C.border,
+    borderRadius: 8, paddingHorizontal: 12, height: 38,
+    marginBottom: 10,
   },
-  chipLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.gray[400],
-    letterSpacing: 0.8,
+  searchInput: { flex: 1, fontSize: 13, fontWeight: '400', color: C.t1, padding: 0 },
+  filterRow: { flexDirection: 'row', gap: 0, borderBottomWidth: 1, borderBottomColor: C.border },
+  filterTab: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+    paddingVertical: 10,
+    borderBottomWidth: 2, borderBottomColor: 'transparent',
   },
-  chipGroup: {
-    flexDirection: 'row',
-    gap: 8,
+  filterTabActive: { borderBottomColor: C.t1 },
+  filterText: { fontSize: 12, fontWeight: '500', color: C.t3 },
+  filterTextActive: { color: C.t1, fontWeight: '600' },
+  filterCount: {
+    fontSize: 10, fontWeight: '700', color: C.t3,
+    backgroundColor: '#f0eee9', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4,
+    overflow: 'hidden',
   },
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 10,
-    backgroundColor: '#f0eeeb',
-  },
-  chipActive: {
-    backgroundColor: BRAND,
-  },
-  chipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.gray[500],
-    letterSpacing: 0.2,
-  },
-  chipTextActive: {
-    color: '#fff',
-  },
+  filterCountActive: { backgroundColor: C.t1, color: '#fff' },
 
-  /* ── List ── */
-  list: { padding: 16, gap: 12, paddingBottom: 88 },
+  /* Section headers */
+  sectionHead: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6,
+    backgroundColor: C.bg,
+  },
+  sectionLabel: { fontSize: 10, fontWeight: '700', color: C.t3, letterSpacing: 1 },
+  sectionCount: { fontSize: 10, fontWeight: '600', color: C.t3 },
+  sectionGap: { height: 4 },
 
-  /* ── Empty state ── */
-  empty: {
-    alignItems: 'center',
-    paddingVertical: 64,
-    paddingHorizontal: 32,
-  },
-  emptyIconBox: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    backgroundColor: '#f0eeeb',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.gray[600],
-    letterSpacing: -0.1,
-    marginBottom: 4,
-  },
-  emptyBody: {
-    fontSize: 13,
-    fontWeight: '400',
-    color: colors.gray[400],
-    textAlign: 'center',
-    lineHeight: 18,
-  },
+  /* Empty */
+  empty: { paddingVertical: 48, alignItems: 'center' },
+  emptyText: { fontSize: 13, fontWeight: '400', color: C.t3 },
 
-  /* ── FAB ── */
+  /* FAB */
   fab: {
-    position: 'absolute',
-    right: 20,
-    bottom: 24,
-    width: 54,
-    height: 54,
-    borderRadius: 16,
-    backgroundColor: BRAND,
-    alignItems: 'center',
-    justifyContent: 'center',
+    position: 'absolute', right: 16, bottom: 20,
+    width: 48, height: 48, borderRadius: 24,
+    backgroundColor: C.t1,
+    alignItems: 'center', justifyContent: 'center',
     ...Platform.select({
-      ios: { shadowColor: BRAND, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 },
-      android: { elevation: 6 },
-      default: { shadowColor: BRAND, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 },
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.15, shadowRadius: 6 },
+      android: { elevation: 4 },
+      default: { shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.15, shadowRadius: 6 },
     }),
   },
 });
