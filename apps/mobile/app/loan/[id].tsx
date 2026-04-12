@@ -21,6 +21,7 @@ import { StatusBadge } from '../../src/components/StatusBadge';
 import { Button } from '../../src/components/ui/Button';
 import { Card } from '../../src/components/ui/Card';
 import { Loading } from '../../src/components/ui/Loading';
+import { QueryErrorState } from '../../src/components/ui/QueryErrorState';
 import { formatDateTime } from '../../src/utils/dates';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
 
@@ -34,7 +35,7 @@ const LOAN_STEPS = [
 export default function LoanDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const user = useAuthStore((s) => s.user);
-  const { data: loan, isLoading } = useLoan(id);
+  const { data: loan, isLoading, isError, error, refetch } = useLoan(id);
 
   const acceptMutation = useAcceptLoan();
   const rejectMutation = useRejectLoan();
@@ -59,6 +60,9 @@ export default function LoanDetailScreen() {
 
   if (isLoading || !loan) {
     return <Loading fullScreen message="Loading loan..." />;
+  }
+  if (isError) {
+    return <QueryErrorState error={error} onRetry={() => refetch()} />;
   }
 
   const isBorrower = user?.location_id === loan.borrower_location_id;

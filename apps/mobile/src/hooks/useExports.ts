@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { Alert, Platform } from 'react-native';
-import * as WebBrowser from 'expo-web-browser';
-import * as Linking from 'expo-linking';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import * as Haptics from 'expo-haptics';
 import { useAuthStore } from '../stores/authStore';
 import {
@@ -11,45 +11,47 @@ import {
 } from '../api/exports';
 
 /**
- * Opens an authenticated export URL in the system browser.
+ * Downloads an export file using the Authorization header (not a URL token)
+ * and then shares it via the system share sheet.
  *
- * Because the backend uses Bearer auth (not cookies), we append the
- * access token as a query parameter. The backend's `require_manager`
- * dependency reads from the Authorization header; for direct browser
- * downloads we rely on the browser sending credentials or we fall back
- * to opening a WebBrowser session with the token in the URL.
- *
- * NOTE: The FastAPI export endpoints use `Depends(require_manager)` which
- * reads from `Authorization: Bearer …`. For a direct browser URL this
- * won't work natively, so we open via WebBrowser which doesn't carry
- * the header. A pragmatic approach is to append `?token=…` and handle
- * it on the server, or open an in-app webview. For now we attempt the
- * browser approach with a query-string token fallback.
+ * This avoids leaking the JWT in browser history, server logs, or referrer
+ * headers that would happen with a ?token= query parameter approach.
  */
-async function openExportUrl(url: string, token: string | null) {
+async function downloadAndShareExport(url: string, token: string | null, filename: string) {
   if (!token) {
     Alert.alert('Error', 'You must be logged in to export data.');
     return;
   }
 
-  // Append token as query parameter for browser-based auth
-  const separator = url.includes('?') ? '&' : '?';
-  const authenticatedUrl = `${url}${separator}token=${encodeURIComponent(token)}`;
+  if (Platform.OS === 'web') {
+    // On web we cannot use expo-file-system; inform the user
+    Alert.alert('Export', 'Please use the web dashboard to download exports.');
+    return;
+  }
+
+  const localUri = `${FileSystem.cacheDirectory}${filename}`;
 
   try {
-    if (Platform.OS === 'web') {
-      // On web, just open in a new tab
-      window.open(authenticatedUrl, '_blank');
+    const result = await FileSystem.downloadAsync(url, localUri, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (result.status !== 200) {
+      Alert.alert('Export Failed', 'The server returned an error. Please try again.');
+      return;
+    }
+
+    const canShare = await Sharing.isAvailableAsync();
+    if (canShare) {
+      await Sharing.shareAsync(result.uri, {
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        dialogTitle: 'Save Export',
+      });
     } else {
-      await WebBrowser.openBrowserAsync(authenticatedUrl);
+      Alert.alert('Saved', `File downloaded to ${result.uri}`);
     }
   } catch {
-    // Fallback to Linking if WebBrowser fails
-    try {
-      await Linking.openURL(authenticatedUrl);
-    } catch {
-      Alert.alert('Error', 'Could not open the export. Please try again.');
-    }
+    Alert.alert('Error', 'Could not download the export. Please try again.');
   }
 }
 
@@ -63,7 +65,7 @@ export function useExportStock() {
       try {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         const url = getStockExportUrl(token ?? '', locationId);
-        await openExportUrl(url, token);
+        await downloadAndShareExport(url, token, 'stock_export.xlsx');
       } finally {
         setLoading(false);
       }
@@ -84,7 +86,7 @@ export function useExportBatches() {
       try {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         const url = getBatchesExportUrl(token ?? '', locationId);
-        await openExportUrl(url, token);
+        await downloadAndShareExport(url, token, 'batches_export.xlsx');
       } finally {
         setLoading(false);
       }
@@ -105,7 +107,7 @@ export function useExportTransactions() {
       try {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         const url = getTransactionsExportUrl(token ?? '', opts);
-        await openExportUrl(url, token);
+        await downloadAndShareExport(url, token, 'transactions_export.xlsx');
       } finally {
         setLoading(false);
       }

@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     smtp_from_name: str = "Potato Stock Tracking"
     app_url: str = "http://localhost:5173"  # Frontend URL for invite links
 
+    # OpenAI settings (Voice Assistant)
+    openai_api_key: str = ""
+
     class Config:
         env_file = ".env"
 
@@ -80,9 +83,13 @@ class TableQuery:
         self._update_data = None  # Store update data for chaining
         self._insert_data = None  # Store insert data for chaining
         self._insert_returning = "*"  # Store returning columns for insert
+        self._count = None  # For count=exact support
+        self._range_start = None  # For range() pagination
+        self._range_end = None
 
-    def select(self, columns: str = "*") -> "TableQuery":
+    def select(self, columns: str = "*", *, count: str = None) -> "TableQuery":
         self._select_columns = columns
+        self._count = count
         return self
 
     def eq(self, column: str, value) -> "TableQuery":
@@ -114,6 +121,10 @@ class TableQuery:
         self._filters.append(f"{column}=in.({vals})")
         return self
 
+    def is_(self, column: str, value: str) -> "TableQuery":
+        self._filters.append(f"{column}=is.{value}")
+        return self
+
     def like(self, column: str, pattern: str) -> "TableQuery":
         """Case-sensitive LIKE filter."""
         self._filters.append(f"{column}=like.{pattern}")
@@ -140,6 +151,11 @@ class TableQuery:
 
     def single(self) -> "TableQuery":
         self._single = True
+        return self
+
+    def range(self, start: int, end: int) -> "TableQuery":
+        self._range_start = start
+        self._range_end = end
         return self
 
     def execute(self) -> "QueryResult":
@@ -172,6 +188,10 @@ class TableQuery:
         headers = self.client.headers.copy()
         if self._single:
             headers["Accept"] = "application/vnd.pgrst.object+json"
+        if self._count:
+            headers["Prefer"] = f"count={self._count}"
+        if self._range_start is not None:
+            headers["Range"] = f"{self._range_start}-{self._range_end}"
 
         with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT) as http:
             response = http.get(url, headers=headers, params=params)
@@ -183,7 +203,20 @@ class TableQuery:
             data = response.json()
             row_count = len(data) if isinstance(data, list) else 1
             logger.debug(f"Supabase query on {self.table_name}: {row_count} rows")
-            return QueryResult(data=data, error=None)
+
+            # Parse count from Content-Range header if count was requested
+            result_count = None
+            if self._count:
+                content_range = response.headers.get("Content-Range", "")
+                if "/" in content_range:
+                    total_str = content_range.split("/")[-1]
+                    if total_str != "*":
+                        try:
+                            result_count = int(total_str)
+                        except ValueError:
+                            pass
+
+            return QueryResult(data=data, error=None, count=result_count)
 
     def insert(self, data, returning: str = "*") -> "TableQuery":
         """Prepare an insert operation. Must be followed by execute().
@@ -272,9 +305,14 @@ class TableQuery:
 
 
 class QueryResult:
-    def __init__(self, data, error):
+    def __init__(self, data, error, count=None):
         self.data = data
         self.error = error
+        self.count = count
+
+    def execute(self):
+        """No-op passthrough so callers can chain .execute() on an already-executed result."""
+        return self
 
 
 class AuthClient:

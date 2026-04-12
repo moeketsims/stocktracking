@@ -1,5 +1,12 @@
+export const brand = {
+  gradientStart: '#0f172a',
+  gradientEnd: '#1e3a5f',
+  accent: '#f97316',
+  accentLight: '#fff7ed',
+  accentDark: '#c2410c',
+} as const;
+
 export const colors = {
-  // Primary (orange) — matches web platform
   primary: {
     50: '#fff7ed',
     100: '#ffedd5',
@@ -12,7 +19,6 @@ export const colors = {
     800: '#9a3412',
     900: '#7c2d12',
   },
-  // Brown — brand accent
   brown: {
     50: '#fdf8f6',
     100: '#f2e8e5',
@@ -25,47 +31,42 @@ export const colors = {
     800: '#7c3a25',
     900: '#663222',
   },
-  // Sidebar / navigation background
   sidebar: {
-    DEFAULT: '#1e1b4b', // indigo-950
-    dark: '#0f0e2b',
-    light: '#312e81',
-    active: '#f97316',
+    DEFAULT: brand.gradientStart,
+    dark: '#070c18',
+    light: '#1e3a5f',
+    active: brand.accent,
   },
-  // Semantic
   success: '#22c55e',
   warning: '#eab308',
   error: '#ef4444',
   info: '#3b82f6',
-  // Neutrals
   gray: {
-    50: '#f9fafb',
-    100: '#f3f4f6',
-    200: '#e5e7eb',
-    300: '#d1d5db',
-    400: '#9ca3af',
-    500: '#6b7280',
-    600: '#4b5563',
-    700: '#374151',
-    800: '#1f2937',
-    900: '#111827',
+    50: '#f8fafc',
+    100: '#f1f5f9',
+    200: '#e2e8f0',
+    300: '#cbd5e1',
+    400: '#94a3b8',
+    500: '#64748b',
+    600: '#475569',
+    700: '#334155',
+    800: '#1e293b',
+    900: '#0f172a',
   },
   white: '#ffffff',
   black: '#000000',
-  // Surface colors — warm tints for different contexts
   surface: {
-    DEFAULT: '#faf9f7',    // warm off-white (replaces cold gray-50 as page background)
-    card: '#ffffff',         // card background stays white
-    elevated: '#ffffff',     // elevated surfaces
-    muted: '#f5f3f0',       // muted backgrounds (section dividers)
-    brand: '#fff8f3',        // very subtle orange-tinted background
+    DEFAULT: '#f8fafc',
+    card: '#ffffff',
+    elevated: '#ffffff',
+    muted: '#f1f5f9',
+    brand: '#fff8f3',
   },
-  // Status surface tints (for card backgrounds)
   statusBg: {
-    critical: '#fef2f2',    // red-50 tint
-    low: '#fffbeb',         // amber-50 tint
-    sufficient: '#f0fdf4',  // green-50 tint
-    info: '#eff6ff',        // blue-50 tint
+    critical: '#fef2f2',
+    low: '#fffbeb',
+    sufficient: '#f0fdf4',
+    info: '#eff6ff',
   },
 } as const;
 
@@ -83,20 +84,23 @@ export const spacing = {
 
 export const borderRadius = {
   sm: 6,
-  md: 8,
-  lg: 12,
-  xl: 16,
+  md: 10,
+  lg: 16,
+  xl: 20,
+  '2xl': 24,
   full: 9999,
 } as const;
 
 export const fontSize = {
+  micro: 10,
   xs: 12,
   sm: 14,
   md: 16,
   lg: 18,
   xl: 20,
   '2xl': 24,
-  '3xl': 30,
+  '3xl': 28,
+  '4xl': 34,
 } as const;
 
 export const fontWeight = {
@@ -104,28 +108,36 @@ export const fontWeight = {
   medium: '500' as const,
   semibold: '600' as const,
   bold: '700' as const,
+  heavy: '800' as const,
 };
 
 export const shadow = {
   sm: {
-    shadowColor: '#000',
+    shadowColor: '#0f172a',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
     elevation: 1,
   },
   md: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
     elevation: 3,
   },
   lg: {
-    shadowColor: '#000',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  glow: {
+    shadowColor: brand.accent,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 6,
   },
 } as const;

@@ -11,8 +11,8 @@ import { colors, spacing, fontSize, fontWeight } from '../../src/constants/theme
 import { APP_VERSION } from '../../src/constants/config';
 
 /* ── Design tokens (matching dashboard) ── */
-const BRAND    = '#1e1b4b';
-const WARM_BG  = '#faf9f7';
+const BRAND    = '#0f172a';
+const WARM_BG  = '#f8fafc';
 const CARD_R   = 16;
 
 interface MenuItemProps {
