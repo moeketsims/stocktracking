@@ -11,6 +11,8 @@ import { Button, Badge } from '../ui';
 import { useTripStops, useCompleteStop, useArriveAtStop } from '../../hooks/useData';
 import type { TripStatus } from '../../types';
 
+const KG_PER_BAG = 10;
+
 interface TripStopsDetailProps {
   tripId: string;
   tripStatus: TripStatus;
@@ -158,8 +160,8 @@ export default function TripStopsDetail({
                   {(stop.planned_qty_kg || stop.actual_qty_kg) && (
                     <p className="text-xs text-gray-500 mt-1">
                       {stop.actual_qty_kg
-                        ? `${stop.actual_qty_kg} kg delivered`
-                        : `${stop.planned_qty_kg} kg planned`}
+                        ? `${stop.actual_qty_kg / KG_PER_BAG} bags delivered`
+                        : `${(stop.planned_qty_kg || 0) / KG_PER_BAG} bags planned`}
                     </p>
                   )}
 

@@ -312,7 +312,7 @@ export const pendingDeliveriesApi = {
   getPending: (locationId?: string, limit?: number) =>
     api.get('/api/pending-deliveries/pending', { params: { location_id: locationId, limit } }),
   get: (id: string) => api.get(`/api/pending-deliveries/${id}`),
-  confirm: (id: string, data: { confirmed_qty_kg: number; notes?: string }) =>
+  confirm: (id: string, data: { confirmed_bags: number; notes?: string }) =>
     api.post(`/api/pending-deliveries/${id}/confirm`, data),
   reject: (id: string, data: { reason: string }) =>
     api.post(`/api/pending-deliveries/${id}/reject`, data),
@@ -472,4 +472,18 @@ export const barcodeApi = {
     api.patch(`/api/barcode/mappings/${mappingId}`, data),
   deleteMapping: (mappingId: string) =>
     api.delete(`/api/barcode/mappings/${mappingId}`),
+};
+
+// Voice Assistant API
+export const voiceApi = {
+  chat: (audioBlob: Blob) => {
+    const formData = new FormData();
+    formData.append('audio', audioBlob, 'recording.webm');
+    return api.post<{ transcript: string; response: string; audio: string | null }>(
+      '/api/voice/chat',
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    );
+  },
+  clearHistory: () => api.post('/api/voice/clear-history'),
 };
