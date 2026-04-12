@@ -16,7 +16,7 @@ import { useCreateStockRequest } from '../../src/hooks/useStock';
 import { Card } from '../../src/components/ui/Card';
 import { Button } from '../../src/components/ui/Button';
 import { Input } from '../../src/components/ui/Input';
-import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
+import { brand, colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
 
 type Urgency = 'normal' | 'urgent';
 
@@ -65,8 +65,8 @@ export default function CreateRequestScreen() {
       <Stack.Screen
         options={{
           title: 'Create Stock Request',
-          headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
-          headerTintColor: colors.white,
+          headerStyle: { backgroundColor: brand.gradientStart },
+          headerTintColor: '#fff',
         }}
       />
       <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -117,7 +117,7 @@ export default function CreateRequestScreen() {
                   <Ionicons
                     name="time-outline"
                     size={20}
-                    color={urgency === 'normal' ? colors.info : colors.gray[400]}
+                    color={urgency === 'normal' ? '#fff' : '#94a3b8'}
                   />
                   <Text
                     style={[
@@ -138,7 +138,7 @@ export default function CreateRequestScreen() {
                   <Ionicons
                     name="flash"
                     size={20}
-                    color={urgency === 'urgent' ? colors.error : colors.gray[400]}
+                    color={urgency === 'urgent' ? '#fff' : '#94a3b8'}
                   />
                   <Text
                     style={[
@@ -183,16 +183,17 @@ export default function CreateRequestScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
+  container: { flex: 1, backgroundColor: '#f8fafc' },
   flex: { flex: 1 },
   content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing['3xl'] },
   infoBanner: { borderLeftWidth: 3, borderLeftColor: colors.info },
   infoRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
   infoText: { flex: 1, fontSize: fontSize.sm, color: colors.gray[600], lineHeight: 20 },
   sectionTitle: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[900],
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0f172a',
+    letterSpacing: -0.2,
     marginBottom: spacing.md,
   },
   kgHint: { fontSize: fontSize.xs, color: colors.gray[500], marginTop: spacing.xs },
@@ -204,26 +205,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.sm,
     padding: spacing.md,
-    borderRadius: borderRadius.md,
-    borderWidth: 2,
-    borderColor: colors.gray[200],
-    backgroundColor: colors.white,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#fff',
   },
   urgencySelected: {
-    borderColor: colors.info,
-    backgroundColor: '#dbeafe',
+    borderColor: '#0f172a',
+    backgroundColor: '#0f172a',
   },
   urgencyUrgentSelected: {
-    borderColor: colors.error,
-    backgroundColor: '#fee2e2',
+    borderColor: '#0f172a',
+    backgroundColor: '#0f172a',
   },
   urgencyLabel: {
     fontSize: fontSize.sm,
-    fontWeight: fontWeight.medium,
-    color: colors.gray[500],
+    fontWeight: '600',
+    color: '#64748b',
   },
-  urgencyLabelSelected: { color: colors.info },
-  urgencyUrgentLabel: { color: colors.error },
+  urgencyLabelSelected: { color: '#fff' },
+  urgencyUrgentLabel: { color: '#fff' },
   textArea: { minHeight: 80, textAlignVertical: 'top' },
   footer: {
     padding: spacing.lg,
@@ -231,5 +232,5 @@ const styles = StyleSheet.create({
     borderTopColor: colors.gray[200],
     backgroundColor: colors.white,
   },
-  submitButton: { backgroundColor: colors.info },
+  submitButton: { backgroundColor: brand.accent },
 });
