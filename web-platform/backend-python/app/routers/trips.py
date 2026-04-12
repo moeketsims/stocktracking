@@ -1440,7 +1440,7 @@ async def complete_stop(
 
         # Get the stop first to check stop_type before completing
         stop_check = supabase.table("trip_stops").select(
-            "*, trips(id, supplier_id, request_id, driver_id)"
+            "*, trips(id, supplier_id, driver_id)"
         ).eq("id", stop_id).single().execute()
 
         if not stop_check.data:
