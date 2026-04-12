@@ -31,7 +31,11 @@ export function useMyRequests(status?: string) {
 export function useRequest(id: string) {
   return useQuery({
     queryKey: ['requests', id],
-    queryFn: () => requestsApi.get(id).then((r) => r.data),
+    queryFn: () => requestsApi.get(id).then((r) => {
+      // Backend returns { request: { ...data } }
+      const data = r.data as any;
+      return data.request ?? data;
+    }),
     enabled: !!id,
   });
 }

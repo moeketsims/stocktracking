@@ -67,7 +67,7 @@ export const requestsApi = {
     api.get<StockRequestsResponse>('/api/stock-requests', { params }),
 
   get: (id: string) =>
-    api.get<StockRequest>(`/api/stock-requests/${id}`),
+    api.get<{ request: StockRequest }>(`/api/stock-requests/${id}`),
 
   accept: (id: string) =>
     api.post<AcceptRequestResponse>(`/api/stock-requests/${id}/accept`),

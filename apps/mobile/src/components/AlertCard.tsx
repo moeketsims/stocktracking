@@ -25,6 +25,12 @@ const SEVERITY_VARIANT: Record<string, 'error' | 'warning' | 'info'> = {
   info: 'info',
 };
 
+const SEVERITY_LABEL: Record<string, string> = {
+  error: 'Urgent',
+  warning: 'Warning',
+  info: 'Info',
+};
+
 export function AlertCard({ alert, onAcknowledge }: AlertCardProps) {
   const icon = TYPE_ICONS[alert.type] ?? 'alert-circle';
   const severityColor =
@@ -43,7 +49,7 @@ export function AlertCard({ alert, onAcknowledge }: AlertCardProps) {
           <Text style={styles.time}>{timeAgo(alert.created_at)}</Text>
         </View>
         <Badge
-          label={alert.severity}
+          label={SEVERITY_LABEL[alert.severity] ?? alert.severity}
           variant={SEVERITY_VARIANT[alert.severity] ?? 'neutral'}
         />
       </View>

@@ -340,7 +340,7 @@ export default function RequestDetailScreen() {
 
   // --- Vehicle picker helper ---
   const vehicles = vehiclesQuery.data ?? [];
-  const availableVehicles = vehicles.filter((v) => v.is_active && v.is_available !== false);
+  const availableVehicles = vehicles.filter((v: any) => v.is_active && v.is_available !== false);
 
   const locations = locationsQuery.data ?? [];
   const suppliers = suppliersQuery.data ?? [];
