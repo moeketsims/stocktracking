@@ -100,7 +100,7 @@ async def list_stock_requests(
             "*, "
             "location:locations(id, name, type), "
             "trips(id, trip_number, status)"
-        ).order("created_at", desc=True).range(offset, offset + limit - 1)
+        ).order("created_at", desc=True).limit(limit)
 
         query = apply_filters(query)
         result = query.execute()
