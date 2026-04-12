@@ -98,11 +98,39 @@ export default function MoreScreen() {
               onPress={() => router.push('/loans')}
             />
           )}
-          {isAdmin && (
+          {isManager && (
+            <MenuItem
+              icon="people"
+              label="Drivers"
+              onPress={() => router.push('/drivers')}
+            />
+          )}
+          {isManager && (
+            <MenuItem
+              icon="clipboard"
+              label="Batches"
+              onPress={() => router.push('/stock/batches')}
+            />
+          )}
+          {isManager && (
             <MenuItem
               icon="people"
               label="User Management"
               onPress={() => router.push('/users')}
+            />
+          )}
+          {isManager && (
+            <MenuItem
+              icon="checkbox"
+              label="Stock Take"
+              onPress={() => router.push('/stock-take')}
+            />
+          )}
+          {(canManageVehicles || isManager) && (
+            <MenuItem
+              icon="car"
+              label="Vehicles"
+              onPress={() => router.push('/vehicles')}
             />
           )}
           {isAdminOrZone && (
@@ -117,13 +145,6 @@ export default function MoreScreen() {
               icon="map"
               label="Zones"
               onPress={() => router.push('/zones')}
-            />
-          )}
-          {canManageVehicles && (
-            <MenuItem
-              icon="car"
-              label="Vehicles"
-              onPress={() => router.push('/vehicles')}
             />
           )}
           {isAdmin && (
