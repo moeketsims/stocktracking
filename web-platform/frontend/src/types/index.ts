@@ -833,6 +833,10 @@ export interface PendingDelivery {
   location_id: string;
   supplier_id: string | null;
   driver_claimed_qty_kg: number;
+  driver_scanned_qty_kg?: number | null;
+  driver_scanned_by?: string | null;
+  driver_scanned_at?: string | null;
+  driver_scanned_barcodes?: string[];
   status: PendingDeliveryStatus;
   confirmed_qty_kg: number | null;
   confirmed_by: string | null;
@@ -842,6 +846,7 @@ export interface PendingDelivery {
   updated_at: string;
   // Computed fields
   driver_claimed_bags?: number;
+  driver_scanned_bags?: number;
   confirmed_bags?: number;
   // Joined relations
   location?: {
@@ -886,7 +891,7 @@ export interface PendingDeliveriesData {
 }
 
 export interface ConfirmDeliveryForm {
-  confirmed_qty_kg: number;
+  confirmed_bags: number;
   notes?: string;
 }
 

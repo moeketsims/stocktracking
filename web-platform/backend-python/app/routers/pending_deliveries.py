@@ -13,6 +13,8 @@ from ..config import get_supabase_admin_client, get_settings
 from ..routers.auth import require_auth, require_manager, get_current_user
 from ..models.requests import ConfirmDeliveryRequest, RejectDeliveryRequest, SubmitClosingKmRequest, CorrectClosingKmRequest
 from ..email import send_delivery_arrived_notification, send_delivery_confirmed_notification, send_driver_km_submission_request, send_km_submitted_notification
+from ..routers.bags import bulk_register_barcodes_for_batch
+from ..utils.conversion import KG_PER_BAG
 
 # Secret key for JWT tokens - MUST be set in environment variables
 KM_SUBMISSION_SECRET = os.environ.get("KM_SUBMISSION_SECRET")
@@ -21,8 +23,15 @@ if not KM_SUBMISSION_SECRET:
 
 router = APIRouter(prefix="/pending-deliveries", tags=["Pending Deliveries"])
 
-# Conversion factor: 1 bag = 10 kg
-KG_PER_BAG = 10
+def _get_driver_scan_summary(delivery: dict) -> tuple[list[str], float, int]:
+    """Return scanned barcodes, total scanned kg, and scanned bag count for a delivery."""
+    scanned_barcodes = delivery.get("driver_scanned_barcodes") or []
+    scanned_barcodes = [barcode for barcode in scanned_barcodes if barcode]
+    scanned_bags = len(scanned_barcodes)
+    scanned_qty_kg = delivery.get("driver_scanned_qty_kg")
+    if scanned_qty_kg is None and scanned_bags:
+        scanned_qty_kg = scanned_bags * KG_PER_BAG
+    return scanned_barcodes, float(scanned_qty_kg or 0), scanned_bags
 
 
 @router.get("")
@@ -74,9 +83,12 @@ async def list_pending_deliveries(
             claimed_bags = delivery.get("driver_claimed_qty_kg", 0) / KG_PER_BAG
             confirmed_kg = delivery.get("confirmed_qty_kg")
             confirmed_bags = confirmed_kg / KG_PER_BAG if confirmed_kg else None
+            _, scanned_qty_kg, scanned_bags = _get_driver_scan_summary(delivery)
 
             delivery["driver_claimed_bags"] = round(claimed_bags, 1)
             delivery["confirmed_bags"] = round(confirmed_bags, 1) if confirmed_bags else None
+            delivery["driver_scanned_bags"] = scanned_bags
+            delivery["driver_scanned_qty_kg"] = scanned_qty_kg if scanned_bags else None
             deliveries.append(delivery)
 
         return {
@@ -132,7 +144,10 @@ async def list_pending_only(
         deliveries = []
         for delivery in (result.data or []):
             claimed_bags = delivery.get("driver_claimed_qty_kg", 0) / KG_PER_BAG
+            _, scanned_qty_kg, scanned_bags = _get_driver_scan_summary(delivery)
             delivery["driver_claimed_bags"] = round(claimed_bags, 1)
+            delivery["driver_scanned_bags"] = scanned_bags
+            delivery["driver_scanned_qty_kg"] = scanned_qty_kg if scanned_bags else None
             deliveries.append(delivery)
 
         return {
@@ -169,7 +184,10 @@ async def get_pending_delivery(
             raise HTTPException(status_code=404, detail="Pending delivery not found")
 
         delivery = result.data
+        _, scanned_qty_kg, scanned_bags = _get_driver_scan_summary(delivery)
         delivery["driver_claimed_bags"] = round(delivery.get("driver_claimed_qty_kg", 0) / KG_PER_BAG, 1)
+        delivery["driver_scanned_bags"] = scanned_bags
+        delivery["driver_scanned_qty_kg"] = scanned_qty_kg if scanned_bags else None
         if delivery.get("confirmed_qty_kg"):
             delivery["confirmed_bags"] = round(delivery["confirmed_qty_kg"] / KG_PER_BAG, 1)
 
@@ -185,19 +203,15 @@ async def get_pending_delivery(
 async def confirm_delivery(
     delivery_id: str,
     request: ConfirmDeliveryRequest,
-    user_data: dict = Depends(require_auth)
+    user_data: dict = Depends(require_manager)
 ):
     """Confirm a pending delivery and create stock batch."""
     supabase = get_supabase_admin_client()
     user = user_data["user"]
 
     try:
-        # Get user profile
-        profile = supabase.table("profiles").select("*").eq(
-            "user_id", user.id
-        ).single().execute()
-
-        if not profile.data:
+        profile = user_data.get("profile")
+        if not profile:
             raise HTTPException(status_code=403, detail="Profile not found")
 
         # Get the pending delivery
@@ -231,28 +245,46 @@ async def confirm_delivery(
             )
 
         # Verify user has access to this location
-        is_admin = profile.data["role"] in ("admin", "zone_manager")
-        is_location_match = profile.data.get("location_id") == delivery.data["location_id"]
+        is_admin = profile["role"] in ("admin", "zone_manager")
+        is_location_match = profile.get("location_id") == delivery.data["location_id"]
 
         if not is_admin and not is_location_match:
             raise HTTPException(status_code=403, detail="Not authorized to confirm this delivery")
 
+        driver_scanned_barcodes, _, driver_scanned_bags = _get_driver_scan_summary(delivery.data)
+
+        confirmed_bags = request.confirmed_bags or 0
+        confirmed_kg = float(confirmed_bags * KG_PER_BAG)
+
+        if driver_scanned_barcodes and confirmed_bags != driver_scanned_bags:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Confirmed bag count must match the driver scan "
+                    f"({driver_scanned_bags} bags)"
+                )
+            )
+
         # Calculate discrepancy
         claimed_kg = delivery.data["driver_claimed_qty_kg"]
-        confirmed_kg = request.confirmed_qty_kg
+        claimed_bags = claimed_kg / KG_PER_BAG
         discrepancy_kg = abs(claimed_kg - confirmed_kg)
-        has_discrepancy = discrepancy_kg > 0.1  # Allow 0.1 kg tolerance
+        discrepancy_bags = abs(claimed_bags - confirmed_bags)
+        has_discrepancy = discrepancy_bags > 0.01
 
         discrepancy_notes = request.notes
         if has_discrepancy and not discrepancy_notes:
-            discrepancy_pct = round((discrepancy_kg / claimed_kg) * 100, 1) if claimed_kg > 0 else 0
-            discrepancy_notes = f"Discrepancy of {discrepancy_kg:.1f} kg ({discrepancy_pct}%)"
+            discrepancy_pct = round((discrepancy_bags / claimed_bags) * 100, 1) if claimed_bags > 0 else 0
+            discrepancy_notes = (
+                f"Discrepancy of {discrepancy_bags:.0f} bags "
+                f"({discrepancy_kg:.1f} kg, {discrepancy_pct}%)"
+            )
 
         # Prepare delivery status update (don't execute yet)
         update_data = {
             "status": "confirmed",
             "confirmed_qty_kg": confirmed_kg,
-            "confirmed_by": profile.data["id"],
+            "confirmed_by": profile["id"],
             "confirmed_at": datetime.now().isoformat(),
             "discrepancy_notes": discrepancy_notes
         }
@@ -343,6 +375,17 @@ async def confirm_delivery(
         else:
             raise HTTPException(status_code=500, detail="Failed to create stock batch")
 
+        bag_registration = None
+        if driver_scanned_barcodes:
+            bag_registration = bulk_register_barcodes_for_batch(
+                supabase,
+                batch_id=batch["id"],
+                item_id=item_id,
+                location_id=delivery.data["location_id"],
+                barcodes=driver_scanned_barcodes,
+                received_by_user_id=delivery.data.get("driver_scanned_by") or user.id,
+            )
+
         # Create stock transaction
         transaction_data = {
             "id": str(uuid4()),
@@ -380,8 +423,6 @@ async def confirm_delivery(
         if request_id:
             stock_request = delivery.data.get("stock_request")
             requested_bags = stock_request.get("quantity_bags", 0) if stock_request else 0
-            confirmed_bags = confirmed_kg / KG_PER_BAG
-
             # Update trip_requests junction table with delivered quantity
             trip_id = delivery.data.get("trip_id")
             current_delivery_recorded = False
@@ -394,7 +435,7 @@ async def confirm_delivery(
                 if trip_request.data:
                     # Update the delivered quantity for this trip
                     supabase.table("trip_requests").update({
-                        "delivered_qty_bags": int(confirmed_bags),
+                        "delivered_qty_bags": confirmed_bags,
                         "status": "delivered"
                     }).eq("id", trip_request.data[0]["id"]).execute()
                     current_delivery_recorded = True
@@ -412,7 +453,7 @@ async def confirm_delivery(
             # If current delivery wasn't recorded in trip_requests (single trip scenario),
             # add it to the total for accurate calculation
             if not current_delivery_recorded:
-                total_delivered_bags += int(confirmed_bags)
+                total_delivered_bags += confirmed_bags
 
             # Determine request status based on total delivered
             # 95% threshold: if >= 95% of requested bags delivered, mark as "delivered"
@@ -440,7 +481,7 @@ async def confirm_delivery(
             location_data = delivery.data.get("location", {})
             trip_number = trip_data.get("trip_number", "N/A") if trip_data else "N/A"
             location_name = location_data.get("name", "Unknown Location") if location_data else "Unknown Location"
-            confirmed_by_name = profile.data.get("full_name", "Store Manager")
+            confirmed_by_name = profile.get("full_name", "Store Manager")
 
             # Get driver info and vehicle info from trip
             if delivery.data.get("trip_id"):
@@ -520,7 +561,7 @@ async def confirm_delivery(
                                 recipient_name=driver_name,
                                 recipient_type="driver",
                                 location_name=location_name,
-                                quantity_bags=confirmed_kg / KG_PER_BAG,
+                                quantity_bags=confirmed_bags,
                                 quantity_kg=confirmed_kg,
                                 trip_number=trip_number,
                                 has_discrepancy=has_discrepancy,
@@ -550,7 +591,7 @@ async def confirm_delivery(
                         recipient_name=confirmed_by_name,
                         recipient_type="manager",
                         location_name=location_name,
-                        quantity_bags=confirmed_kg / KG_PER_BAG,
+                        quantity_bags=confirmed_bags,
                         quantity_kg=confirmed_kg,
                         trip_number=trip_number,
                         has_discrepancy=has_discrepancy,
@@ -580,15 +621,20 @@ async def confirm_delivery(
 
         return {
             "success": True,
-            "message": f"Delivery confirmed: {confirmed_kg:.1f} kg ({confirmed_kg / KG_PER_BAG:.1f} bags)",
+            "message": f"Delivery confirmed: {confirmed_bags} bags",
             "batch_id": batch["id"],
             "has_discrepancy": has_discrepancy,
+            "confirmed_bags": confirmed_bags,
+            "confirmed_qty_kg": confirmed_kg,
+            "discrepancy_bags": discrepancy_bags if has_discrepancy else 0,
             "discrepancy_kg": discrepancy_kg if has_discrepancy else 0,
             "request_status": request_status,
             "total_delivered_bags": total_delivered_bags,
             "requested_bags": requested_bags,
             "remaining_bags": max(0, requested_bags - total_delivered_bags),
-            "km_email_status": km_email_status  # Feature 5: Email status tracking
+            "km_email_status": km_email_status,  # Feature 5: Email status tracking
+            "driver_scanned_bags": driver_scanned_bags,
+            "bag_registration": bag_registration,
         }
 
     except HTTPException:
@@ -1137,7 +1183,10 @@ def create_pending_delivery(
     location_id: str,
     supplier_id: str,
     quantity_kg: float,
-    request_id: str = None
+    request_id: str = None,
+    scanned_barcodes: Optional[list[str]] = None,
+    scanned_by_user_id: Optional[str] = None,
+    scanned_qty_kg: Optional[float] = None,
 ) -> dict:
     """Helper function to create a pending delivery record.
 
@@ -1151,7 +1200,11 @@ def create_pending_delivery(
         "supplier_id": supplier_id,
         "driver_claimed_qty_kg": quantity_kg,
         "status": "pending",
-        "request_id": request_id
+        "request_id": request_id,
+        "driver_scanned_barcodes": list(dict.fromkeys(scanned_barcodes or [])),
+        "driver_scanned_qty_kg": scanned_qty_kg,
+        "driver_scanned_by": scanned_by_user_id,
+        "driver_scanned_at": datetime.now().isoformat() if scanned_barcodes else None,
     }
 
     result = supabase.table("pending_deliveries").insert(delivery_data).execute()

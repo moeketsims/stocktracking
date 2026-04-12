@@ -32,6 +32,9 @@ import { useAuthStore } from '../stores/authStore';
 import type { PendingDelivery, Trip } from '../types';
 
 const KG_PER_BAG = 10;
+const formatBagCount = (value: number): string => (
+  Number.isInteger(value) ? value.toString() : value.toFixed(1)
+);
 
 // Helper to get relative time
 const getRelativeTime = (dateStr: string): string => {
@@ -95,51 +98,6 @@ export default function DeliveriesPage() {
   // Check user role for admin actions
   const user = useAuthStore((state) => state.user);
   const isVehicleManager = user?.role && ['admin', 'vehicle_manager'].includes(user.role);
-
-  // Mutation to complete a trip by completing its dropoff stop
-  const completeTripMutation = useMutation({
-    mutationFn: async ({ tripId }: { tripId: string }) => {
-      // First, get the trip stops to find the dropoff stop
-      const stopsResponse = await tripsApi.getStops(tripId);
-      const stops = stopsResponse.data?.stops || [];
-
-      // Find the dropoff stop that hasn't been completed yet
-      const dropoffStop = stops.find(
-        (s: any) => s.stop_type === 'dropoff' && !s.is_completed
-      );
-
-      if (!dropoffStop) {
-        // If no dropoff stop, try to complete the trip directly
-        // This handles simple trips
-        const response = await tripsApi.complete(tripId, {
-          fuel_cost: 0,
-          toll_cost: 0,
-          other_cost: 0,
-          notes: 'Marked as arrived from Deliveries page',
-        });
-        return response.data;
-      }
-
-      // Complete the dropoff stop - this creates the pending delivery
-      const response = await tripsApi.completeStop(dropoffStop.id, {
-        actual_qty_kg: dropoffStop.planned_qty_kg || 500,
-        notes: 'Marked as arrived from Deliveries page',
-      });
-      return response.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['trips'] });
-      queryClient.invalidateQueries({ queryKey: ['pending-deliveries'] });
-      queryClient.invalidateQueries({ queryKey: ['deliveries'] });
-      setCompletingTripId(null);
-      setSuccessMessage('Delivery marked as arrived. Awaiting confirmation.');
-      setTimeout(() => setSuccessMessage(null), 2000);
-    },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.detail || 'Failed to mark trip as arrived');
-      setCompletingTripId(null);
-    },
-  });
 
   // Feature 2: Resend KM email mutation
   const resendKmEmailMutation = useMutation({
@@ -429,8 +387,8 @@ export default function DeliveriesPage() {
         setCompletingTripId(null);
       }
     } else {
-      // Regular trip - use existing mutation
-      completeTripMutation.mutate({ tripId: trip.id });
+      setCompletingTripId(null);
+      toast.info('Regular deliveries must be scanned by the assigned driver from Requests before a manager can confirm receipt.');
     }
   };
 
@@ -741,6 +699,8 @@ function EnRouteCard({
     buttonColor = isLoanPickup ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700';
   }
 
+  const showPrimaryAction = isLoanTrip;
+
   // Fetch loan details when eye icon is clicked
   const handleViewLoanDetails = async () => {
     if (loanDetails) {
@@ -842,15 +802,21 @@ function EnRouteCard({
                   <Eye className={`w-4 h-4 ${loadingLoanDetails ? 'animate-pulse' : ''}`} />
                 </button>
               )}
-              <Button
-                onClick={onMarkArrived}
-                disabled={isCompleting}
-                size="sm"
-                className={`${buttonColor} gap-1.5`}
-              >
-                <PackageCheck className="w-4 h-4" />
-                {isCompleting ? 'Processing...' : buttonText}
-              </Button>
+              {showPrimaryAction ? (
+                <Button
+                  onClick={onMarkArrived}
+                  disabled={isCompleting}
+                  size="sm"
+                  className={`${buttonColor} gap-1.5`}
+                >
+                  <PackageCheck className="w-4 h-4" />
+                  {isCompleting ? 'Processing...' : buttonText}
+                </Button>
+              ) : (
+                <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700 max-w-[220px]">
+                  Driver must scan the delivered bags from Requests before a manager can confirm receipt.
+                </div>
+              )}
             </div>
             <div className={`flex items-center gap-1.5 ${isOverdue ? 'text-red-600' : 'text-blue-600'}`}>
               <Timer className="w-3.5 h-3.5" />
@@ -881,7 +847,7 @@ function PendingDeliveryCard({
   delivery: PendingDelivery;
   onConfirm: () => void;
 }) {
-  const driverClaimedBags = delivery.driver_claimed_qty_kg / KG_PER_BAG;
+  const driverClaimedBags = delivery.driver_claimed_bags || (delivery.driver_claimed_qty_kg / KG_PER_BAG);
 
   // Determine if this is a loan-related delivery
   const trip = delivery.trip as any;
@@ -934,7 +900,7 @@ function PendingDeliveryCard({
           {/* Quantity */}
           <div className="flex items-center gap-2">
             <Package className={`w-4 h-4 ${isLoanTrip ? 'text-purple-500' : 'text-orange-500'}`} />
-            <span className="text-lg font-bold text-gray-900">{driverClaimedBags} bags</span>
+            <span className="text-lg font-bold text-gray-900">{formatBagCount(driverClaimedBags)} bags</span>
             <span className="text-sm text-gray-500">({delivery.driver_claimed_qty_kg} kg)</span>
           </div>
 
@@ -978,8 +944,8 @@ function DeliveryHistoryCard({
   const isConfirmed = delivery.status === 'confirmed';
   const isRejected = delivery.status === 'rejected';
 
-  const confirmedBags = (delivery.confirmed_qty_kg || 0) / KG_PER_BAG;
-  const driverClaimedBags = delivery.driver_claimed_qty_kg / KG_PER_BAG;
+  const confirmedBags = delivery.confirmed_bags || ((delivery.confirmed_qty_kg || 0) / KG_PER_BAG);
+  const driverClaimedBags = delivery.driver_claimed_bags || (delivery.driver_claimed_qty_kg / KG_PER_BAG);
 
   // Check if km has been submitted (Feature 6)
   const trip = delivery.trip as any;
@@ -1070,10 +1036,10 @@ function DeliveryHistoryCard({
           {/* Quantity Info */}
           {isConfirmed && (
             <div className="text-sm">
-              <span className="font-semibold text-gray-900">{confirmedBags} bags</span>
+              <span className="font-semibold text-gray-900">{formatBagCount(confirmedBags)} bags</span>
               {confirmedBags !== driverClaimedBags && (
                 <span className="text-gray-500 ml-1">
-                  (driver claimed {driverClaimedBags})
+                  (driver claimed {formatBagCount(driverClaimedBags)})
                 </span>
               )}
             </div>

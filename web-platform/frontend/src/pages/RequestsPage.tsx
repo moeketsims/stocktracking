@@ -34,6 +34,7 @@ import AcceptDeliveryModal from '../components/modals/AcceptDeliveryModal';
 import AcceptLoanPickupModal from '../components/modals/AcceptLoanPickupModal';
 import ProposeTimeModal from '../components/modals/ProposeTimeModal';
 import ReviewProposalModal from '../components/modals/ReviewProposalModal';
+import DriverDeliveryScanModal from '../components/modals/DriverDeliveryScanModal';
 import { REQUEST_STATUS_CONFIG, getShortRequestId } from '../utils/statusConfig';
 import type { StockRequest, StockRequestStatus, Vehicle, Supplier } from '../types';
 
@@ -61,6 +62,7 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
   const [showAcceptLoanPickupModal, setShowAcceptLoanPickupModal] = useState(false);
   const [showProposeTimeModal, setShowProposeTimeModal] = useState(false);
   const [showReviewProposalModal, setShowReviewProposalModal] = useState(false);
+  const [showDriverDeliveryScanModal, setShowDriverDeliveryScanModal] = useState(false);
   const [selectedLoanTrip, setSelectedLoanTrip] = useState<{
     id: string;
     loanId: string;
@@ -834,6 +836,10 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
                 }}
                 onViewTrip={(tripId: string) => onNavigateToTrip?.(tripId)}
                 onTrackDelivery={() => onNavigateToDeliveries?.()}
+                onScanDelivery={() => {
+                  setSelectedRequest(request);
+                  setShowDriverDeliveryScanModal(true);
+                }}
                 onReRequest={() => reRequestMutation.mutate(request.id)}
                 isReRequesting={reRequestMutation.isPending && reRequestMutation.variables === request.id}
                 onAcceptLoanPickup={() => {
@@ -915,6 +921,17 @@ export default function RequestsPage({ onNavigateToTrip, onNavigateToCreateTrip,
         }}
       />
 
+      <DriverDeliveryScanModal
+        isOpen={showDriverDeliveryScanModal}
+        onClose={() => { setShowDriverDeliveryScanModal(false); setSelectedRequest(null); }}
+        request={selectedRequest}
+        onSuccess={async () => {
+          await queryClient.invalidateQueries({ queryKey: ['stock-requests', 'all'] });
+          await queryClient.invalidateQueries({ queryKey: ['stock-requests', 'my'] });
+          await queryClient.invalidateQueries({ queryKey: ['pending-deliveries'] });
+        }}
+      />
+
       {showFulfillRemainingModal && selectedRequest && (
         <FulfillRemainingModal
           request={selectedRequest}
@@ -991,6 +1008,7 @@ function RequestRow({
   onFulfillRemaining,
   onViewTrip,
   onTrackDelivery,
+  onScanDelivery,
   onReRequest,
   isReRequesting,
   onAcceptLoanPickup,
@@ -1012,6 +1030,7 @@ function RequestRow({
   onFulfillRemaining: () => void;
   onViewTrip: (tripId: string) => void;
   onTrackDelivery: () => void;
+  onScanDelivery: () => void;
   onReRequest?: () => void;
   isReRequesting?: boolean;
   onAcceptLoanPickup?: () => void;
@@ -1135,6 +1154,18 @@ function RequestRow({
           className="bg-emerald-600 hover:bg-emerald-700 h-7 text-xs px-3 whitespace-nowrap disabled:opacity-50"
         >
           {isAcceptingLoan ? 'Accepting...' : 'Accept & Deliver'}
+        </Button>
+      );
+    }
+    if (request.status === 'in_delivery' && isOwner && isDriver && request.trips) {
+      return (
+        <Button
+          onClick={onScanDelivery}
+          size="sm"
+          className="bg-indigo-600 hover:bg-indigo-700 h-7 text-xs px-3 whitespace-nowrap gap-1"
+        >
+          <Package className="w-3 h-3" />
+          Scan Delivery
         </Button>
       );
     }

@@ -5,9 +5,10 @@ from typing import Optional
 import json
 import logging
 from ..config import get_supabase_admin_client
+from ..utils.conversion import KG_PER_BAG, whole_bags_from_kg
 
 logger = logging.getLogger(__name__)
-from ..routers.auth import require_manager, get_current_user
+from ..routers.auth import require_auth, require_manager, get_current_user
 from ..models.requests import (
     CreateTripRequest,
     UpdateTripRequest,
@@ -32,6 +33,27 @@ def generate_trip_number(supabase) -> str:
 
     count = (result.count or 0) + 1
     return f"TRP-{year}-{count:04d}"
+
+
+def _get_driver_ids_for_user(supabase, user_id: str) -> list[str]:
+    """Resolve all driver identifiers that may be attached to a trip for this user."""
+    driver_ids: list[str] = []
+
+    driver_result = supabase.table("drivers").select("id").eq(
+        "user_id", user_id
+    ).execute()
+    for driver in (driver_result.data or []):
+        if driver.get("id") and driver["id"] not in driver_ids:
+            driver_ids.append(driver["id"])
+
+    profile_result = supabase.table("profiles").select("id").eq(
+        "user_id", user_id
+    ).execute()
+    for profile in (profile_result.data or []):
+        if profile.get("id") and profile["id"] not in driver_ids:
+            driver_ids.append(profile["id"])
+
+    return driver_ids
 
 
 @router.get("")
@@ -1399,26 +1421,76 @@ async def arrive_at_stop(stop_id: str, user_data: dict = Depends(require_manager
 async def complete_stop(
     stop_id: str,
     request: CompleteStopRequest,
-    user_data: dict = Depends(require_manager)
+    user_data: dict = Depends(require_auth)
 ):
     """Complete a stop (mark as done with actual quantities)."""
     supabase = get_supabase_admin_client()
+    user = user_data["user"]
 
     try:
+        profile = supabase.table("profiles").select(
+            "id, role"
+        ).eq("user_id", user.id).single().execute()
+
+        if not profile.data:
+            raise HTTPException(status_code=403, detail="Profile not found")
+
+        role = profile.data.get("role")
+        is_manager = role in ("admin", "zone_manager", "location_manager")
+
         # Get the stop first to check stop_type before completing
         stop_check = supabase.table("trip_stops").select(
-            "*, trips(id, supplier_id)"
+            "*, trips(id, supplier_id, request_id, driver_id)"
         ).eq("id", stop_id).single().execute()
 
         if not stop_check.data:
             raise HTTPException(status_code=404, detail="Stop not found")
 
+        trip = stop_check.data.get("trips", {}) or {}
+        assigned_driver_id = trip.get("driver_id")
+
+        if not is_manager:
+            if role != "driver":
+                raise HTTPException(status_code=403, detail="Not authorized to complete this stop")
+
+            driver_ids = _get_driver_ids_for_user(supabase, user.id)
+            if not assigned_driver_id or assigned_driver_id not in driver_ids:
+                raise HTTPException(status_code=403, detail="This stop is not assigned to the current driver")
+
+        scanned_barcodes = [
+            barcode.strip()
+            for barcode in (request.scanned_barcodes or [])
+            if isinstance(barcode, str) and barcode.strip()
+        ]
+        scanned_barcodes = list(dict.fromkeys(scanned_barcodes))
+
+        scanned_bags = len(scanned_barcodes) if scanned_barcodes else None
+        if scanned_bags is not None and request.actual_bags is not None:
+            if request.actual_bags != scanned_bags:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Actual bag count does not match the scanned bag count"
+                )
+
+        actual_bags = scanned_bags
+        if actual_bags is None:
+            if request.actual_bags is not None:
+                actual_bags = request.actual_bags
+            else:
+                planned_qty_kg = stop_check.data.get("planned_qty_kg") or 0
+                try:
+                    actual_bags = whole_bags_from_kg(planned_qty_kg, "planned_qty_kg") if planned_qty_kg else 0
+                except ValueError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        actual_qty = float(actual_bags * KG_PER_BAG)
+
         # Use the database function
         result = supabase.rpc("complete_trip_stop", {
             "p_stop_id": stop_id,
-            "p_actual_qty_kg": request.actual_qty_kg,
+            "p_actual_qty_kg": actual_qty,
             "p_notes": request.notes
-        })
+        }).execute()
 
         if result.error:
             raise HTTPException(status_code=500, detail=f"Failed to complete stop: {result.error}")
@@ -1435,12 +1507,9 @@ async def complete_stop(
 
         # If this is a dropoff stop, create a pending delivery
         if stop_check.data.get("stop_type") == "dropoff" and stop_check.data.get("location_id"):
-            actual_qty = request.actual_qty_kg or stop_check.data.get("planned_qty_kg") or 0
-
             if actual_qty > 0:
                 from ..routers.pending_deliveries import create_pending_delivery
 
-                trip = stop_check.data.get("trips", {})
                 pending_delivery = create_pending_delivery(
                     supabase=supabase,
                     trip_id=stop_check.data["trip_id"],
@@ -1448,7 +1517,10 @@ async def complete_stop(
                     location_id=stop_check.data["location_id"],
                     supplier_id=stop_check.data.get("supplier_id") or trip.get("supplier_id"),
                     quantity_kg=actual_qty,
-                    request_id=trip.get("request_id")
+                    request_id=trip.get("request_id"),
+                    scanned_barcodes=scanned_barcodes,
+                    scanned_by_user_id=user.id if scanned_barcodes else None,
+                    scanned_qty_kg=float(actual_bags * KG_PER_BAG) if scanned_barcodes else None,
                 )
 
                 if pending_delivery:
