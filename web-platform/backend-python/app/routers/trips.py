@@ -1485,17 +1485,14 @@ async def complete_stop(
 
         actual_qty = float(actual_bags * KG_PER_BAG)
 
-        # Use the database function
-        result = supabase.rpc("complete_trip_stop", {
-            "p_stop_id": stop_id,
-            "p_actual_qty_kg": actual_qty,
-            "p_notes": request.notes
-        }).execute()
+        # Update the stop directly (custom client doesn't support rpc)
+        stop_update = supabase.table("trip_stops").update({
+            "is_completed": True,
+            "actual_qty_kg": actual_qty,
+            "notes": request.notes,
+        }).eq("id", stop_id).execute()
 
-        if result.error:
-            raise HTTPException(status_code=500, detail=f"Failed to complete stop: {result.error}")
-
-        if not result.data:
+        if not stop_update.data:
             raise HTTPException(status_code=404, detail="Stop not found")
 
         # Fetch updated stop
