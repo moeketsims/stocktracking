@@ -43,6 +43,20 @@ export interface CreateTripResponse {
   request_id: string;
 }
 
+export interface UpdateRequestPayload {
+  quantity_bags?: number;
+  urgency?: 'urgent' | 'normal';
+  notes?: string;
+}
+
+export interface CancelRequestPayload {
+  reason: string;
+}
+
+export interface DeclineProposalPayload {
+  notes?: string;
+}
+
 export const requestsApi = {
   getAvailable: (limit = 50) =>
     api.get<StockRequestsResponse>('/api/stock-requests/available', {
@@ -63,4 +77,19 @@ export const requestsApi = {
 
   createTrip: (id: string, data: CreateTripPayload) =>
     api.post<CreateTripResponse>(`/api/stock-requests/${id}/create-trip`, data),
+
+  update: (id: string, data: UpdateRequestPayload) =>
+    api.patch(`/api/stock-requests/${id}`, data),
+
+  cancel: (id: string, data: CancelRequestPayload) =>
+    api.post(`/api/stock-requests/${id}/cancel`, data),
+
+  reRequest: (id: string) =>
+    api.post(`/api/stock-requests/${id}/re-request`),
+
+  acceptProposal: (id: string) =>
+    api.post(`/api/stock-requests/${id}/accept-proposal`),
+
+  declineProposal: (id: string, data: DeclineProposalPayload) =>
+    api.post(`/api/stock-requests/${id}/decline-proposal`, data),
 };
