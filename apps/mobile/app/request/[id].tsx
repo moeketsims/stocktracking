@@ -35,6 +35,11 @@ import { formatDateTime, timeAgo } from '../../src/utils/dates';
 import { getUrgencyVariant } from '../../src/utils/status';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
+
+/* ── Design tokens (matching dashboard) ── */
+const BRAND    = '#1e1b4b';
+const WARM_BG  = '#faf9f7';
+const CARD_R   = 16;
 import type { ProposeTimePayload } from '../../src/api/requests';
 
 type ActiveForm = null | 'accept' | 'proposeTime' | 'edit' | 'cancel' | 'createTrip' | 'declineProposal';
@@ -350,8 +355,9 @@ export default function RequestDetailScreen() {
       <Stack.Screen
         options={{
           title: 'Request Detail',
-          headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
+          headerStyle: { backgroundColor: BRAND },
           headerTintColor: colors.white,
+          headerTitleStyle: { fontWeight: '600', fontSize: 16 },
         }}
       />
       <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -872,7 +878,9 @@ function DetailRow({
 }) {
   return (
     <View style={styles.detailRow}>
-      <Ionicons name={icon} size={16} color={colors.gray[400]} style={styles.detailIcon} />
+      <View style={styles.detailIconBox}>
+        <Ionicons name={icon} size={14} color={colors.gray[400]} />
+      </View>
       <Text style={styles.detailLabel}>{label}</Text>
       <Text style={styles.detailValue}>{value}</Text>
     </View>
@@ -880,54 +888,69 @@ function DetailRow({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
-  content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing['5xl'] },
+  container: { flex: 1, backgroundColor: WARM_BG },
+  content: { padding: 16, gap: 14, paddingBottom: 48 },
   headerRow: {
     flexDirection: 'row',
     gap: spacing.sm,
-    marginBottom: spacing.lg,
+    marginBottom: 14,
   },
-  section: { gap: spacing.md },
+  section: { gap: 10 },
   sectionTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[900],
-    marginBottom: spacing.md,
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.gray[800],
+    letterSpacing: -0.1,
+    marginBottom: 12,
   },
   detailRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.xs,
+    paddingVertical: 6,
+    minHeight: 34,
   },
-  detailIcon: { width: 24 },
+  detailIconBox: {
+    width: 26, height: 26, borderRadius: 7,
+    backgroundColor: '#f5f3ff',
+    alignItems: 'center', justifyContent: 'center',
+    marginRight: 10,
+  },
   detailLabel: {
-    width: 110,
-    fontSize: fontSize.sm,
-    color: colors.gray[500],
+    width: 105,
+    fontSize: 13,
+    fontWeight: '400',
+    color: colors.gray[400],
+    letterSpacing: 0.1,
   },
   detailValue: {
     flex: 1,
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.medium,
+    fontSize: 14,
+    fontWeight: '500',
     color: colors.gray[900],
+    letterSpacing: -0.1,
   },
   notesSection: {
-    marginTop: spacing.md,
-    paddingTop: spacing.md,
+    marginTop: 14,
+    paddingTop: 14,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.gray[200],
+    borderTopColor: colors.gray[100],
   },
   notesLabel: {
-    fontSize: fontSize.sm,
-    color: colors.gray[500],
-    marginBottom: spacing.xs,
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.gray[400],
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginBottom: 6,
   },
   notesText: {
-    fontSize: fontSize.sm,
+    fontSize: 14,
+    fontWeight: '400',
     color: colors.gray[700],
+    lineHeight: 20,
   },
   actions: {
-    gap: spacing.md,
+    gap: 10,
   },
   // Form styles
   fieldLabel: {
@@ -946,15 +969,15 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: colors.gray[300],
+    borderColor: colors.gray[200],
     backgroundColor: colors.white,
     marginRight: spacing.sm,
   },
   pickerChipActive: {
-    backgroundColor: colors.sidebar.DEFAULT,
-    borderColor: colors.sidebar.DEFAULT,
+    backgroundColor: BRAND,
+    borderColor: BRAND,
   },
   pickerChipText: {
     fontSize: fontSize.sm,

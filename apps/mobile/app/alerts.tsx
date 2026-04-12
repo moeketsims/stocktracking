@@ -10,10 +10,14 @@ import { AlertCard } from '../src/components/AlertCard';
 import { DeliveryCard } from '../src/components/DeliveryCard';
 import { Button } from '../src/components/ui/Button';
 import { Input } from '../src/components/ui/Input';
-import { Card } from '../src/components/ui/Card';
 import { Loading } from '../src/components/ui/Loading';
 import { colors, spacing, fontSize, fontWeight, borderRadius } from '../src/constants/theme';
 import type { PendingDelivery } from '../src/types';
+
+/* ── Design tokens (matching dashboard) ── */
+const BRAND    = '#1e1b4b';
+const WARM_BG  = '#faf9f7';
+const CARD_R   = 16;
 
 type Tab = 'alerts' | 'deliveries' | 'confirmed';
 
@@ -100,45 +104,47 @@ export default function AlertsScreen() {
     ]);
   };
 
+  /* ── Tab data ── */
+  const tabs: { key: Tab; label: string; count: number; show: boolean }[] = [
+    { key: 'alerts', label: 'Alerts', count: activeAlerts.length, show: true },
+    { key: 'deliveries', label: 'Pending', count: pendingDeliveries.length, show: isManager },
+    { key: 'confirmed', label: 'Confirmed', count: confirmedList.length, show: isVehicleManager },
+  ];
+  const visibleTabs = tabs.filter((t) => t.show);
+
   return (
     <>
       <Stack.Screen
         options={{
           title: 'Alerts & Deliveries',
-          headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
+          headerStyle: { backgroundColor: BRAND },
           headerTintColor: colors.white,
         }}
       />
-      <SafeAreaView style={styles.container} edges={['bottom']}>
-        {/* Tab switcher */}
-        {isManager && (
-          <View style={styles.tabs}>
-            <TouchableOpacity
-              style={[styles.tab, tab === 'alerts' && styles.activeTab]}
-              onPress={() => setTab('alerts')}
-            >
-              <Text style={[styles.tabText, tab === 'alerts' && styles.activeTabText]}>
-                Alerts ({activeAlerts.length})
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tab, tab === 'deliveries' && styles.activeTab]}
-              onPress={() => setTab('deliveries')}
-            >
-              <Text style={[styles.tabText, tab === 'deliveries' && styles.activeTabText]}>
-                Pending ({pendingDeliveries.length})
-              </Text>
-            </TouchableOpacity>
-            {isVehicleManager && (
-              <TouchableOpacity
-                style={[styles.tab, tab === 'confirmed' && styles.activeTab]}
-                onPress={() => setTab('confirmed')}
-              >
-                <Text style={[styles.tabText, tab === 'confirmed' && styles.activeTabText]}>
-                  Confirmed ({confirmedList.length})
-                </Text>
-              </TouchableOpacity>
-            )}
+      <SafeAreaView style={st.safe} edges={['bottom']}>
+        {/* ── Tab switcher ── */}
+        {visibleTabs.length > 1 && (
+          <View style={st.tabBar}>
+            {visibleTabs.map((t) => {
+              const active = tab === t.key;
+              return (
+                <TouchableOpacity
+                  key={t.key}
+                  style={[st.tab, active && st.tabActive]}
+                  onPress={() => setTab(t.key)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[st.tabText, active && st.tabTextActive]}>
+                    {t.label}
+                  </Text>
+                  {t.count > 0 && (
+                    <View style={[st.tabCount, active && st.tabCountActive]}>
+                      <Text style={[st.tabCountText, active && st.tabCountTextActive]}>{t.count}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
           </View>
         )}
 
@@ -149,7 +155,7 @@ export default function AlertsScreen() {
             <FlatList
               data={activeAlerts}
               keyExtractor={(item) => item.id}
-              contentContainerStyle={styles.list}
+              contentContainerStyle={st.list}
               refreshControl={
                 <RefreshControl refreshing={alerts.isRefetching} onRefresh={() => alerts.refetch()} />
               }
@@ -160,9 +166,12 @@ export default function AlertsScreen() {
                 />
               )}
               ListEmptyComponent={
-                <View style={styles.empty}>
-                  <Text style={styles.emptyTitle}>No active alerts</Text>
-                  <Text style={styles.emptyBody}>All clear — no stock alerts right now.</Text>
+                <View style={st.empty}>
+                  <View style={st.emptyIcon}>
+                    <Ionicons name="checkmark-circle-outline" size={36} color={colors.gray[300]} />
+                  </View>
+                  <Text style={st.emptyTitle}>No active alerts</Text>
+                  <Text style={st.emptyBody}>All clear -- no stock alerts right now.</Text>
                 </View>
               }
             />
@@ -174,7 +183,7 @@ export default function AlertsScreen() {
             <FlatList
               data={pendingDeliveries}
               keyExtractor={(item) => item.id}
-              contentContainerStyle={styles.list}
+              contentContainerStyle={st.list}
               refreshControl={
                 <RefreshControl refreshing={deliveries.isRefetching} onRefresh={() => deliveries.refetch()} />
               }
@@ -190,9 +199,12 @@ export default function AlertsScreen() {
                 />
               )}
               ListEmptyComponent={
-                <View style={styles.empty}>
-                  <Text style={styles.emptyTitle}>No pending deliveries</Text>
-                  <Text style={styles.emptyBody}>No deliveries waiting for confirmation.</Text>
+                <View style={st.empty}>
+                  <View style={st.emptyIcon}>
+                    <Ionicons name="cube-outline" size={36} color={colors.gray[300]} />
+                  </View>
+                  <Text style={st.emptyTitle}>No pending deliveries</Text>
+                  <Text style={st.emptyBody}>No deliveries waiting for confirmation.</Text>
                 </View>
               }
             />
@@ -204,7 +216,7 @@ export default function AlertsScreen() {
             <FlatList
               data={confirmedList}
               keyExtractor={(item) => item.id}
-              contentContainerStyle={styles.list}
+              contentContainerStyle={st.list}
               refreshControl={
                 <RefreshControl
                   refreshing={confirmedDeliveries.isRefetching}
@@ -212,29 +224,33 @@ export default function AlertsScreen() {
                 />
               }
               renderItem={({ item }) => (
-                <Card>
-                  <View style={styles.confirmedHeader}>
-                    <Text style={styles.confirmedLocation}>
-                      {item.location?.name ?? 'Unknown'}
-                    </Text>
-                    <Text style={styles.confirmedBags}>
-                      {item.confirmed_bags ?? '?'} bags
-                    </Text>
+                <View style={st.confirmedCard}>
+                  <View style={st.confirmedHeader}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={st.confirmedLocation}>
+                        {item.location?.name ?? 'Unknown'}
+                      </Text>
+                      {item.trip && (
+                        <Text style={st.confirmedTrip}>
+                          {item.trip.trip_number}
+                          {item.trip.driver_name ? ` \u2014 ${item.trip.driver_name}` : ''}
+                        </Text>
+                      )}
+                    </View>
+                    <View style={st.confirmedBagsPill}>
+                      <Text style={st.confirmedBagsText}>
+                        {item.confirmed_bags ?? '?'} bags
+                      </Text>
+                    </View>
                   </View>
-                  {item.trip && (
-                    <Text style={styles.confirmedTrip}>
-                      {item.trip.trip_number}
-                      {item.trip.driver_name ? ` — ${item.trip.driver_name}` : ''}
-                    </Text>
-                  )}
-                  <View style={styles.kmActions}>
+                  <View style={st.kmActions}>
                     <Button
                       title="Resend KM Email"
                       variant="outline"
                       size="sm"
                       onPress={() => handleResendKmEmail(item.id)}
                       loading={resendKmEmail.isPending}
-                      icon={<Ionicons name="mail" size={14} color={colors.primary[500]} />}
+                      icon={<Ionicons name="mail" size={14} color={BRAND} />}
                     />
                     <Button
                       title="Correct KM"
@@ -244,19 +260,22 @@ export default function AlertsScreen() {
                       icon={<Ionicons name="speedometer" size={14} color={colors.gray[800]} />}
                     />
                   </View>
-                </Card>
+                </View>
               )}
               ListEmptyComponent={
-                <View style={styles.empty}>
-                  <Text style={styles.emptyTitle}>No confirmed deliveries</Text>
-                  <Text style={styles.emptyBody}>Confirmed deliveries will appear here.</Text>
+                <View style={st.empty}>
+                  <View style={st.emptyIcon}>
+                    <Ionicons name="checkmark-done-outline" size={36} color={colors.gray[300]} />
+                  </View>
+                  <Text style={st.emptyTitle}>No confirmed deliveries</Text>
+                  <Text style={st.emptyBody}>Confirmed deliveries will appear here.</Text>
                 </View>
               }
             />
           )
         )}
 
-        {/* Correct KM Modal */}
+        {/* ── Correct KM Modal ── */}
         <Modal
           visible={correctKmModalVisible}
           animationType="slide"
@@ -264,23 +283,25 @@ export default function AlertsScreen() {
           onRequestClose={() => setCorrectKmModalVisible(false)}
         >
           <KeyboardAvoidingView
-            style={styles.modalOverlay}
+            style={st.modalOverlay}
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           >
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Correct Closing KM</Text>
-                <TouchableOpacity onPress={() => setCorrectKmModalVisible(false)}>
-                  <Ionicons name="close" size={24} color={colors.gray[500]} />
+            <View style={st.modalContent}>
+              <View style={st.modalHeader}>
+                <Text style={st.modalTitle}>Correct Closing KM</Text>
+                <TouchableOpacity onPress={() => setCorrectKmModalVisible(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                  <Ionicons name="close" size={22} color={colors.gray[400]} />
                 </TouchableOpacity>
               </View>
               {selectedTripForKm && selectedTripForKm.startingKm > 0 && (
-                <Text style={styles.modalHint}>
-                  Starting KM: {selectedTripForKm.startingKm.toLocaleString()}
-                  {selectedTripForKm.currentKm > 0
-                    ? ` | Current: ${selectedTripForKm.currentKm.toLocaleString()}`
-                    : ''}
-                </Text>
+                <View style={st.modalHintRow}>
+                  <Text style={st.modalHint}>
+                    Starting KM: {selectedTripForKm.startingKm.toLocaleString()}
+                    {selectedTripForKm.currentKm > 0
+                      ? ` | Current: ${selectedTripForKm.currentKm.toLocaleString()}`
+                      : ''}
+                  </Text>
+                </View>
               )}
               <Input
                 label="New Closing KM"
@@ -299,7 +320,7 @@ export default function AlertsScreen() {
                 style={{ minHeight: 60, textAlignVertical: 'top' }}
                 containerStyle={{ marginTop: spacing.md }}
               />
-              <View style={styles.modalActions}>
+              <View style={st.modalActions}>
                 <Button
                   title="Cancel"
                   variant="ghost"
@@ -319,85 +340,105 @@ export default function AlertsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#faf9f7' },
-  tabs: {
+/* ══════════════════════════════════════
+   STYLES
+══════════════════════════════════════ */
+const st = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: WARM_BG },
+
+  /* ── Tab bar ── */
+  tabBar: {
     flexDirection: 'row',
-    backgroundColor: colors.white,
+    backgroundColor: '#fff',
+    paddingHorizontal: 16, paddingTop: 6, paddingBottom: 0,
+    gap: 4,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.gray[200],
+    borderBottomColor: colors.gray[100],
   },
   tab: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: spacing.md,
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+    flexDirection: 'row', gap: 6,
+    paddingVertical: 11,
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',
   },
-  activeTab: { borderBottomColor: colors.primary[500] },
-  tabText: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.gray[500] },
-  activeTabText: { color: colors.primary[500], fontWeight: fontWeight.semibold },
-  list: { padding: spacing.lg, gap: spacing.md },
-  empty: { alignItems: 'center', paddingVertical: spacing['5xl'] },
-  emptyTitle: { fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.gray[700] },
-  emptyBody: { fontSize: fontSize.sm, color: colors.gray[500], marginTop: spacing.xs },
-  // Confirmed deliveries
+  tabActive: { borderBottomColor: BRAND },
+  tabText: {
+    fontSize: 13, fontWeight: '500', color: colors.gray[400],
+    letterSpacing: 0.1,
+  },
+  tabTextActive: { color: BRAND, fontWeight: '600' },
+  tabCount: {
+    backgroundColor: colors.gray[100],
+    paddingHorizontal: 6, paddingVertical: 1, borderRadius: 8,
+    minWidth: 20, alignItems: 'center',
+  },
+  tabCountActive: { backgroundColor: '#ede9fe' },
+  tabCountText: { fontSize: 11, fontWeight: '600', color: colors.gray[400] },
+  tabCountTextActive: { color: BRAND },
+
+  /* ── List ── */
+  list: { padding: 16, gap: 12 },
+
+  /* ── Empty ── */
+  empty: { alignItems: 'center', paddingVertical: 56 },
+  emptyIcon: { marginBottom: 12 },
+  emptyTitle: { fontSize: 16, fontWeight: '600', color: colors.gray[700], letterSpacing: -0.1 },
+  emptyBody: { fontSize: 13, fontWeight: '400', color: colors.gray[400], marginTop: 4 },
+
+  /* ── Confirmed deliveries ── */
+  confirmedCard: {
+    backgroundColor: '#fff', borderRadius: CARD_R, padding: 16,
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 6 },
+      android: { elevation: 1 },
+      default: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 6 },
+    }),
+  },
   confirmedHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.xs,
+    flexDirection: 'row', alignItems: 'center',
+    marginBottom: 12,
   },
   confirmedLocation: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[900],
-  },
-  confirmedBags: {
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.medium,
-    color: colors.success,
+    fontSize: 15, fontWeight: '600', color: colors.gray[900], letterSpacing: -0.1,
   },
   confirmedTrip: {
-    fontSize: fontSize.sm,
-    color: colors.gray[500],
-    marginBottom: spacing.md,
+    fontSize: 13, fontWeight: '400', color: colors.gray[400], marginTop: 2,
+  },
+  confirmedBagsPill: {
+    backgroundColor: '#f0fdf4',
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8,
+  },
+  confirmedBagsText: {
+    fontSize: 13, fontWeight: '600', color: '#059669',
   },
   kmActions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
+    flexDirection: 'row', gap: 8,
+    paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.gray[100],
   },
-  // Correct KM modal
+
+  /* ── Modal ── */
   modalOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    flex: 1, justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.35)',
   },
   modalContent: {
-    backgroundColor: colors.white,
-    borderTopLeftRadius: borderRadius.xl,
-    borderTopRightRadius: borderRadius.xl,
-    padding: spacing.xl,
-    gap: spacing.md,
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    padding: 20, gap: 12,
   },
   modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
   },
   modalTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.bold,
-    color: colors.gray[900],
+    fontSize: 17, fontWeight: '700', color: colors.gray[900], letterSpacing: -0.2,
   },
+  modalHintRow: { marginBottom: 4 },
   modalHint: {
-    fontSize: fontSize.sm,
-    color: colors.gray[500],
+    fontSize: 13, fontWeight: '400', color: colors.gray[400],
   },
   modalActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: spacing.sm,
-    marginTop: spacing.md,
+    flexDirection: 'row', justifyContent: 'flex-end',
+    gap: 8, marginTop: 12,
   },
 });
