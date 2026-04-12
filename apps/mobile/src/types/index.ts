@@ -293,3 +293,32 @@ export interface Zone {
   id: string;
   name: string;
 }
+
+// Vehicle Types
+export interface Vehicle {
+  id: string;
+  registration_number: string;
+  make: string | null;
+  model: string | null;
+  year: number | null;
+  capacity_kg: number | null;
+  fuel_type: string | null;
+  notes: string | null;
+  is_active: boolean;
+  is_available?: boolean;
+  current_trip?: {
+    trip_id: string;
+    trip_number: string;
+    driver_name: string;
+    status: string;
+  } | null;
+  created_at?: string;
+}
+
+// Supplier Types
+export interface Supplier {
+  id: string;
+  name: string;
+  contact_name: string | null;
+  contact_phone: string | null;
+}

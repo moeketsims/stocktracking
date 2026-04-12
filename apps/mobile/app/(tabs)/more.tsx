@@ -46,6 +46,7 @@ export default function MoreScreen() {
 
   const isAdmin = user?.role === 'admin';
   const isManager = ['admin', 'zone_manager', 'location_manager'].includes(user?.role ?? '');
+  const canManageVehicles = ['admin', 'vehicle_manager'].includes(user?.role ?? '');
   const alertCount = alerts.data?.active_alerts?.length ?? 0;
   const deliveryCount = deliveries.data?.total ?? 0;
 
@@ -101,6 +102,20 @@ export default function MoreScreen() {
               icon="people"
               label="User Management"
               onPress={() => router.push('/users')}
+            />
+          )}
+          {canManageVehicles && (
+            <MenuItem
+              icon="car"
+              label="Vehicles"
+              onPress={() => router.push('/vehicles')}
+            />
+          )}
+          {isAdmin && (
+            <MenuItem
+              icon="business"
+              label="Suppliers"
+              onPress={() => router.push('/suppliers')}
             />
           )}
           <MenuItem
