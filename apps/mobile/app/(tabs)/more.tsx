@@ -133,6 +133,13 @@ export default function MoreScreen() {
               onPress={() => router.push('/suppliers')}
             />
           )}
+          {isManager && (
+            <MenuItem
+              icon="bar-chart"
+              label="Reports & Analytics"
+              onPress={() => router.push('/reports')}
+            />
+          )}
           <MenuItem
             icon="notifications"
             label="Notifications"

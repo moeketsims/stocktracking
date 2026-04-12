@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, RefreshControl, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, RefreshControl, TouchableOpacity, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,6 +28,7 @@ export default function DashboardScreen() {
 
   const greeting = getGreeting();
   const isLoading = dashboard.isLoading;
+  const isManager = ['admin', 'zone_manager', 'location_manager'].includes(role ?? '');
 
   if (isLoading) return <Loading fullScreen message="Loading dashboard..." />;
 
@@ -116,6 +117,24 @@ export default function DashboardScreen() {
               </Text>
             )}
           </Card>
+        )}
+
+        {/* Reports Quick Link (Managers) */}
+        {isManager && (
+          <TouchableOpacity activeOpacity={0.7} onPress={() => router.push('/reports')}>
+            <Card>
+              <View style={styles.reportsLink}>
+                <View style={styles.reportsIconBg}>
+                  <Ionicons name="stats-chart" size={20} color={colors.primary[500]} />
+                </View>
+                <View style={styles.reportsLinkInfo}>
+                  <Text style={styles.reportsLinkTitle}>Reports & Analytics</Text>
+                  <Text style={styles.reportsLinkSub}>Stock trends, usage, deliveries</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.gray[400]} />
+              </View>
+            </Card>
+          </TouchableOpacity>
         )}
 
         {/* Driver: Available Requests */}
@@ -246,6 +265,15 @@ const styles = StyleSheet.create({
   forecastValue: { fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.gray[900] },
   forecastLabel: { fontSize: fontSize.xs, color: colors.gray[500], marginTop: 2 },
   stockOutWarning: { fontSize: fontSize.sm, color: colors.error, marginTop: spacing.md, textAlign: 'center', fontWeight: fontWeight.medium },
+  reportsLink: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  reportsIconBg: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: colors.primary[50],
+    alignItems: 'center', justifyContent: 'center',
+  },
+  reportsLinkInfo: { flex: 1 },
+  reportsLinkTitle: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.gray[900] },
+  reportsLinkSub: { fontSize: fontSize.xs, color: colors.gray[500], marginTop: 1 },
   balanceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.gray[200] },
   balanceInfo: { flex: 1 },
   balanceName: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.gray[900] },
