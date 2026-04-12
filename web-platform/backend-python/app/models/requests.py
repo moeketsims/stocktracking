@@ -251,6 +251,7 @@ class AcceptStockRequestRequest(BaseModel):
 class CreateTripFromRequestRequest(BaseModel):
     vehicle_id: str
     driver_id: Optional[str] = None
+    driver_name: Optional[str] = None  # Fallback if driver_id lookup fails
     supplier_id: Optional[str] = None  # External supplier pickup
     from_location_id: Optional[str] = None  # Warehouse/internal location pickup
     notes: Optional[str] = None

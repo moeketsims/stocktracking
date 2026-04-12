@@ -27,6 +27,24 @@ export interface ConfirmDeliveryResponse {
   remaining_bags: number;
 }
 
+export interface ResendKmEmailResponse {
+  success: boolean;
+  message: string;
+}
+
+export interface CorrectKmPayload {
+  new_closing_km: number;
+  reason: string;
+}
+
+export interface CorrectKmResponse {
+  success: boolean;
+  message: string;
+  old_closing_km: number;
+  new_closing_km: number;
+  distance_km: number;
+}
+
 export const deliveriesApi = {
   list: (params?: { status?: string; location_id?: string; limit?: number }) =>
     api.get<PendingDeliveriesResponse>('/api/pending-deliveries', { params }),
@@ -39,4 +57,10 @@ export const deliveriesApi = {
 
   reject: (id: string, reason: string) =>
     api.post(`/api/pending-deliveries/${id}/reject`, { reason }),
+
+  resendKmEmail: (id: string) =>
+    api.post<ResendKmEmailResponse>(`/api/pending-deliveries/${id}/resend-km-email`),
+
+  correctKm: (tripId: string, data: CorrectKmPayload) =>
+    api.post<CorrectKmResponse>(`/api/pending-deliveries/trips/${tripId}/correct-km`, data),
 };

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, RefreshControl, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/authStore';
 import { useDailySummary, useShopEfficiency } from '../../src/hooks/useReports';
@@ -70,6 +71,7 @@ export default function DeliveriesReportScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
+      <Stack.Screen options={{ title: 'Delivery Performance', headerStyle: { backgroundColor: '#1e1b4b' }, headerTintColor: '#fff' }} />
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={

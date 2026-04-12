@@ -11,10 +11,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useBatches } from '../../src/hooks/useStock';
+import { useExportBatches } from '../../src/hooks/useExports';
 import { Badge } from '../../src/components/ui/Badge';
 import { Card } from '../../src/components/ui/Card';
 import { Loading } from '../../src/components/ui/Loading';
-import { colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
+import { brand, colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
 import type { BatchListItem } from '../../src/api/stock';
 
 type FilterType = 'all' | 'expiring_soon';
@@ -34,6 +35,7 @@ export default function BatchesScreen() {
   const router = useRouter();
   const [filter, setFilter] = useState<FilterType>('all');
   const query = useBatches(filter);
+  const { exportBatches, loading: exportLoading } = useExportBatches();
 
   const batches = query.data?.batches ?? [];
   const counts = query.data?.counts ?? { all: 0, expiring_soon: 0 };
@@ -47,8 +49,21 @@ export default function BatchesScreen() {
       <Stack.Screen
         options={{
           title: 'Batches',
-          headerStyle: { backgroundColor: colors.primary[500] },
-          headerTintColor: colors.white,
+          headerStyle: { backgroundColor: brand.gradientStart },
+          headerTintColor: '#fff',
+          headerRight: () => (
+            <TouchableOpacity
+              onPress={() => exportBatches()}
+              disabled={exportLoading}
+              style={styles.headerExportBtn}
+            >
+              <Ionicons
+                name="download-outline"
+                size={22}
+                color={exportLoading ? colors.gray[400] : colors.white}
+              />
+            </TouchableOpacity>
+          ),
         }}
       />
       <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -152,12 +167,16 @@ export default function BatchesScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
+  container: { flex: 1, backgroundColor: '#f8fafc' },
+  headerExportBtn: { marginRight: spacing.sm, padding: spacing.xs },
   tabs: {
     flexDirection: 'row',
-    backgroundColor: colors.white,
+    backgroundColor: '#fff',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.gray[200],
+    borderBottomColor: '#e2e8f0',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    gap: 6,
   },
   tab: {
     flex: 1,
@@ -166,15 +185,15 @@ const styles = StyleSheet.create({
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',
   },
-  activeTab: { borderBottomColor: colors.primary[500] },
+  activeTab: { borderBottomColor: brand.accent },
   tabText: {
     fontSize: fontSize.sm,
-    fontWeight: fontWeight.medium,
-    color: colors.gray[500],
+    fontWeight: '600',
+    color: '#64748b',
   },
   activeTabText: {
-    color: colors.primary[500],
-    fontWeight: fontWeight.semibold,
+    color: '#0f172a',
+    fontWeight: '800',
   },
   list: { padding: spacing.lg, gap: spacing.md },
   batchCard: { gap: spacing.sm },
@@ -190,8 +209,8 @@ const styles = StyleSheet.create({
   },
   batchId: {
     fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[900],
+    fontWeight: '800',
+    color: '#0f172a',
   },
   batchDetails: { gap: spacing.xs, marginTop: spacing.xs },
   detailRow: {
@@ -200,12 +219,13 @@ const styles = StyleSheet.create({
   },
   detailLabel: {
     fontSize: fontSize.sm,
-    color: colors.gray[500],
+    color: '#64748b',
+    fontWeight: '600',
   },
   detailValue: {
     fontSize: fontSize.sm,
-    fontWeight: fontWeight.medium,
-    color: colors.gray[800],
+    fontWeight: '700',
+    color: '#0f172a',
   },
   batchFooter: {
     flexDirection: 'row',

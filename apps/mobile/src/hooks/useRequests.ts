@@ -1,7 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Alert } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { requestsApi, type ProposeTimePayload, type CreateTripPayload } from '../api/requests';
+import {
+  requestsApi,
+  type ProposeTimePayload,
+  type CreateTripPayload,
+  type UpdateRequestPayload,
+  type CancelRequestPayload,
+  type DeclineProposalPayload,
+} from '../api/requests';
 import { STALE_TIME, REFETCH_INTERVAL } from '../constants/config';
 
 export function useAvailableRequests() {
@@ -24,7 +31,11 @@ export function useMyRequests(status?: string) {
 export function useRequest(id: string) {
   return useQuery({
     queryKey: ['requests', id],
-    queryFn: () => requestsApi.get(id).then((r) => r.data),
+    queryFn: () => requestsApi.get(id).then((r) => {
+      // Backend returns { request: { ...data } }
+      const data = r.data as any;
+      return data.request ?? data;
+    }),
     enabled: !!id,
   });
 }
@@ -54,6 +65,7 @@ export function useProposeTime() {
       qc.invalidateQueries({ queryKey: ['requests'] });
     },
     onError: (error: any) => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', error.response?.data?.detail ?? 'Failed to propose time');
     },
   });
@@ -71,7 +83,86 @@ export function useCreateTripFromRequest() {
       Alert.alert('Trip Created', data.message);
     },
     onError: (error: any) => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', error.response?.data?.detail ?? 'Failed to create trip');
+    },
+  });
+}
+
+export function useUpdateRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateRequestPayload }) =>
+      requestsApi.update(id, data).then((r) => r.data),
+    onSuccess: () => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      qc.invalidateQueries({ queryKey: ['requests'] });
+    },
+    onError: (error: any) => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Error', error.response?.data?.detail ?? 'Failed to update request');
+    },
+  });
+}
+
+export function useCancelRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: CancelRequestPayload }) =>
+      requestsApi.cancel(id, data).then((r) => r.data),
+    onSuccess: () => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      qc.invalidateQueries({ queryKey: ['requests'] });
+    },
+    onError: (error: any) => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Error', error.response?.data?.detail ?? 'Failed to cancel request');
+    },
+  });
+}
+
+export function useReRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => requestsApi.reRequest(id).then((r) => r.data),
+    onSuccess: () => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      qc.invalidateQueries({ queryKey: ['requests'] });
+    },
+    onError: (error: any) => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Error', error.response?.data?.detail ?? 'Failed to re-request');
+    },
+  });
+}
+
+export function useAcceptProposal() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => requestsApi.acceptProposal(id).then((r) => r.data),
+    onSuccess: () => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      qc.invalidateQueries({ queryKey: ['requests'] });
+    },
+    onError: (error: any) => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Error', error.response?.data?.detail ?? 'Failed to accept proposal');
+    },
+  });
+}
+
+export function useDeclineProposal() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: DeclineProposalPayload }) =>
+      requestsApi.declineProposal(id, data).then((r) => r.data),
+    onSuccess: () => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      qc.invalidateQueries({ queryKey: ['requests'] });
+    },
+    onError: (error: any) => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Error', error.response?.data?.detail ?? 'Failed to decline proposal');
     },
   });
 }

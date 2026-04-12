@@ -1,13 +1,16 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Card } from './ui/Card';
 import { Badge } from './ui/Badge';
 import { StatusBadge } from './StatusBadge';
 import { timeAgo } from '../utils/dates';
 import { getUrgencyVariant } from '../utils/status';
-import { colors, spacing, fontSize, fontWeight } from '../constants/theme';
+import { colors } from '../constants/theme';
 import type { StockRequest } from '../types';
+
+/* ── Design tokens (match dashboard) ── */
+const BRAND  = '#1e1b4b';
+const CARD_R = 16;
 
 interface RequestCardProps {
   request: StockRequest;
@@ -18,98 +21,175 @@ interface RequestCardProps {
 export function RequestCard({ request, onPress, showActions }: RequestCardProps) {
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
-      <Card>
-        <View style={styles.header}>
-          <View style={styles.badges}>
+      <View style={st.card}>
+        {/* ── Header: badges + time ── */}
+        <View style={st.header}>
+          <View style={st.badges}>
             <StatusBadge status={request.status} type="request" />
             {request.urgency === 'urgent' && (
               <Badge label="Urgent" variant={getUrgencyVariant(request.urgency)} />
             )}
           </View>
-          <Text style={styles.time}>{timeAgo(request.created_at)}</Text>
+          <Text style={st.time}>{timeAgo(request.created_at)}</Text>
         </View>
 
-        <View style={styles.body}>
-          <View style={styles.row}>
-            <Ionicons name="location" size={16} color={colors.gray[400]} />
-            <Text style={styles.locationName}>
+        {/* ── Body ── */}
+        <View style={st.body}>
+          {/* Location — primary info */}
+          <View style={st.locationRow}>
+            <View style={st.locationIcon}>
+              <Ionicons name="location" size={14} color={BRAND} />
+            </View>
+            <Text style={st.locationName} numberOfLines={1}>
               {request.location?.name ?? 'Unknown location'}
             </Text>
           </View>
 
-          <View style={styles.row}>
-            <Ionicons name="cube" size={16} color={colors.gray[400]} />
-            <Text style={styles.qty}>{request.quantity_bags} bags</Text>
+          {/* Quantity — prominent */}
+          <View style={st.qtyRow}>
+            <Text style={st.qtyValue}>{request.quantity_bags}</Text>
+            <Text style={st.qtyUnit}>bags</Text>
           </View>
 
-          {request.requester?.full_name && (
-            <View style={styles.row}>
-              <Ionicons name="person" size={16} color={colors.gray[400]} />
-              <Text style={styles.detail}>{request.requester.full_name}</Text>
-            </View>
-          )}
-
-          {request.requested_delivery_time && (
-            <View style={styles.row}>
-              <Ionicons name="time" size={16} color={colors.gray[400]} />
-              <Text style={styles.detail}>
-                Requested: {new Date(request.requested_delivery_time).toLocaleString()}
-              </Text>
-            </View>
-          )}
+          {/* Metadata */}
+          <View style={st.metaGroup}>
+            {request.requester?.full_name && (
+              <View style={st.metaRow}>
+                <Ionicons name="person-outline" size={13} color={colors.gray[400]} />
+                <Text style={st.metaText}>{request.requester.full_name}</Text>
+              </View>
+            )}
+            {request.requested_delivery_time && (
+              <View style={st.metaRow}>
+                <Ionicons name="time-outline" size={13} color={colors.gray[400]} />
+                <Text style={st.metaText}>
+                  {new Date(request.requested_delivery_time).toLocaleString()}
+                </Text>
+              </View>
+            )}
+          </View>
         </View>
 
+        {/* ── Notes ── */}
         {request.notes && (
-          <Text style={styles.notes} numberOfLines={2}>
-            {request.notes}
-          </Text>
+          <View style={st.notesWrap}>
+            <Text style={st.notes} numberOfLines={2}>{request.notes}</Text>
+          </View>
         )}
-      </Card>
+      </View>
     </TouchableOpacity>
   );
 }
 
-const styles = StyleSheet.create({
+/* ══════════════════════════════════════
+   STYLES
+══════════════════════════════════════ */
+const st = StyleSheet.create({
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: CARD_R,
+    padding: 16,
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 6 },
+      android: { elevation: 1 },
+      default: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 6 },
+    }),
+  },
+
+  /* Header */
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: spacing.md,
+    marginBottom: 14,
   },
   badges: {
     flexDirection: 'row',
-    gap: spacing.xs,
+    gap: 6,
   },
   time: {
-    fontSize: fontSize.xs,
+    fontSize: 11,
+    fontWeight: '400',
     color: colors.gray[400],
+    letterSpacing: 0.1,
   },
+
+  /* Body */
   body: {
-    gap: spacing.sm,
+    gap: 10,
   },
-  row: {
+
+  /* Location */
+  locationRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: 8,
+  },
+  locationIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    backgroundColor: '#ede9fe',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   locationName: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
+    fontSize: 15,
+    fontWeight: '600',
     color: colors.gray[900],
+    letterSpacing: -0.1,
+    flex: 1,
   },
-  qty: {
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.medium,
-    color: colors.gray[700],
+
+  /* Quantity */
+  qtyRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 4,
+    marginLeft: 34, // align with text after icon
   },
-  detail: {
-    fontSize: fontSize.sm,
-    color: colors.gray[600],
+  qtyValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: BRAND,
+    letterSpacing: -0.8,
+  },
+  qtyUnit: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.gray[400],
+    letterSpacing: 0.2,
+  },
+
+  /* Metadata */
+  metaGroup: {
+    gap: 4,
+    marginLeft: 34,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  metaText: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: colors.gray[500],
+    letterSpacing: 0.1,
+  },
+
+  /* Notes */
+  notesWrap: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.gray[100],
   },
   notes: {
-    marginTop: spacing.sm,
-    fontSize: fontSize.sm,
-    color: colors.gray[500],
+    fontSize: 12,
+    fontWeight: '400',
+    color: colors.gray[400],
     fontStyle: 'italic',
+    lineHeight: 17,
   },
 });

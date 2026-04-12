@@ -58,15 +58,15 @@ async def list_stock_requests(
     status: Optional[str] = Query(None, description="Filter by status"),
     location_id: Optional[str] = Query(None, description="Filter by location"),
     urgency: Optional[str] = Query(None, description="Filter by urgency"),
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
     user_data: dict = Depends(get_current_user)
 ):
-    """List stock requests. Managers see all, staff see their location only."""
+    """List stock requests with pagination. Managers see all, staff see their location only."""
     supabase = get_supabase_admin_client()
     user = user_data["user"]
 
     try:
-        # Get user profile for role-based filtering
         profile = supabase.table("profiles").select("*").eq(
             "user_id", user.id
         ).single().execute()
@@ -74,29 +74,38 @@ async def list_stock_requests(
         if not profile.data:
             raise HTTPException(status_code=403, detail="Profile not found")
 
+        def apply_filters(q):
+            if profile.data["role"] == "staff" or profile.data["role"] == "location_manager":
+                if profile.data.get("location_id"):
+                    q = q.eq("location_id", profile.data["location_id"])
+            if status:
+                statuses = [s.strip() for s in status.split(",") if s.strip()]
+                if len(statuses) == 1:
+                    q = q.eq("status", statuses[0])
+                else:
+                    q = q.in_("status", statuses)
+            if location_id:
+                q = q.eq("location_id", location_id)
+            if urgency:
+                q = q.eq("urgency", urgency)
+            return q
+
+        count_query = supabase.table("stock_requests").select("id", count="exact")
+        count_query = apply_filters(count_query)
+        count_result = count_query.execute()
+        total = count_result.count or 0
+
         query = supabase.table("stock_requests").select(
             "*, "
             "location:locations(id, name, type), "
             "trips(id, trip_number, status)"
-        ).order("created_at", desc=True).limit(limit)
+        ).order("created_at", desc=True).range(offset, offset + limit - 1)
 
-        # Apply role-based filtering
-        if profile.data["role"] == "staff" or profile.data["role"] == "location_manager":
-            if profile.data.get("location_id"):
-                query = query.eq("location_id", profile.data["location_id"])
-
-        if status:
-            query = query.eq("status", status)
-        if location_id:
-            query = query.eq("location_id", location_id)
-        if urgency:
-            query = query.eq("urgency", urgency)
-
+        query = apply_filters(query)
         result = query.execute()
 
         requests = result.data or []
 
-        # Fetch profile info for requesters and acceptors
         if requests:
             profile_ids = set()
             for req in requests:
@@ -118,7 +127,9 @@ async def list_stock_requests(
 
         return {
             "requests": requests,
-            "total": len(requests)
+            "total": total,
+            "limit": limit,
+            "offset": offset
         }
 
     except HTTPException:
@@ -639,6 +650,22 @@ async def create_trip_from_request(
                             actual_driver_id = None
             except Exception:
                 actual_driver_id = None
+
+        # Fallback: use driver_name from request body, or look up from auth user
+        if not driver_name:
+            driver_name = trip_request.driver_name
+        if not driver_name:
+            # Last resort: look up the current user's profile name
+            try:
+                user_profile = supabase.table("profiles").select("full_name").eq(
+                    "user_id", user.id
+                ).single().execute()
+                if user_profile.data:
+                    driver_name = user_profile.data.get("full_name")
+            except Exception:
+                pass
+        if not driver_name:
+            driver_name = "Driver"  # Absolute fallback to satisfy NOT NULL
 
         # Generate trip number by finding the max existing trip number for this year
         year = datetime.now().year

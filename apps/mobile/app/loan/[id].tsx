@@ -1,16 +1,28 @@
-import React from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, ScrollView, StyleSheet, Alert, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useLoan, useAcceptLoan, useRejectLoan, useConfirmLoan } from '../../src/hooks/useLoans';
+import {
+  useLoan,
+  useAcceptLoan,
+  useRejectLoan,
+  useConfirmLoan,
+  useAssignPickup,
+  useConfirmReceipt,
+  useInitiateReturn,
+  useAssignReturn,
+  useConfirmReturn,
+} from '../../src/hooks/useLoans';
+import { useDrivers } from '../../src/hooks/useDrivers';
+import { useVehicles } from '../../src/hooks/useVehicles';
 import { useAuthStore } from '../../src/stores/authStore';
 import { StatusBadge } from '../../src/components/StatusBadge';
 import { Button } from '../../src/components/ui/Button';
 import { Card } from '../../src/components/ui/Card';
 import { Loading } from '../../src/components/ui/Loading';
 import { formatDateTime } from '../../src/utils/dates';
-import { colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
+import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
 
 // Loan flow steps for the progress indicator
 const LOAN_STEPS = [
@@ -23,9 +35,27 @@ export default function LoanDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const user = useAuthStore((s) => s.user);
   const { data: loan, isLoading } = useLoan(id);
+
   const acceptMutation = useAcceptLoan();
   const rejectMutation = useRejectLoan();
   const confirmMutation = useConfirmLoan();
+  const assignPickupMutation = useAssignPickup();
+  const confirmReceiptMutation = useConfirmReceipt();
+  const initiateReturnMutation = useInitiateReturn();
+  const assignReturnMutation = useAssignReturn();
+  const confirmReturnMutation = useConfirmReturn();
+
+  // For assign driver modals
+  const [showPickupAssign, setShowPickupAssign] = useState(false);
+  const [showReturnAssign, setShowReturnAssign] = useState(false);
+  const [selectedDriverId, setSelectedDriverId] = useState('');
+  const [selectedVehicleId, setSelectedVehicleId] = useState('');
+
+  const { data: driversData } = useDrivers(true);
+  const { data: vehiclesData } = useVehicles(true);
+
+  const drivers = driversData?.drivers ?? [];
+  const vehicles = vehiclesData?.vehicles ?? [];
 
   if (isLoading || !loan) {
     return <Loading fullScreen message="Loading loan..." />;
@@ -33,7 +63,10 @@ export default function LoanDetailScreen() {
 
   const isBorrower = user?.location_id === loan.borrower_location_id;
   const isLender = user?.location_id === loan.lender_location_id;
+  const isManager = user?.role === 'location_manager' || user?.role === 'zone_manager' || user?.role === 'admin';
   const currentStepIndex = LOAN_STEPS.indexOf(loan.status as any);
+
+  // ── Action handlers ──
 
   const handleAccept = () => {
     Alert.alert('Accept Loan', `Approve ${loan.quantity_requested} bags?`, [
@@ -66,6 +99,84 @@ export default function LoanDetailScreen() {
       { text: 'Confirm', onPress: () => confirmMutation.mutate(loan.id) },
     ]);
   };
+
+  const handleAssignPickup = () => {
+    if (!selectedDriverId || !selectedVehicleId) {
+      Alert.alert('Missing Info', 'Please select both a driver and a vehicle.');
+      return;
+    }
+    assignPickupMutation.mutate(
+      { id: loan.id, data: { driver_id: selectedDriverId, vehicle_id: selectedVehicleId } },
+      {
+        onSuccess: () => {
+          setShowPickupAssign(false);
+          setSelectedDriverId('');
+          setSelectedVehicleId('');
+        },
+      },
+    );
+  };
+
+  const handleConfirmReceipt = () => {
+    Alert.alert(
+      'Confirm Receipt',
+      `Confirm you received ${loan.quantity_approved ?? loan.quantity_requested} bags? This adds stock to your inventory.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Confirm Receipt', onPress: () => confirmReceiptMutation.mutate(loan.id) },
+      ],
+    );
+  };
+
+  const handleInitiateReturn = () => {
+    Alert.alert('Start Return', 'Initiate the return process for this loan?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Start Return', onPress: () => initiateReturnMutation.mutate(loan.id) },
+    ]);
+  };
+
+  const handleAssignReturn = () => {
+    if (!selectedDriverId || !selectedVehicleId) {
+      Alert.alert('Missing Info', 'Please select both a driver and a vehicle.');
+      return;
+    }
+    assignReturnMutation.mutate(
+      { id: loan.id, data: { driver_id: selectedDriverId, vehicle_id: selectedVehicleId } },
+      {
+        onSuccess: () => {
+          setShowReturnAssign(false);
+          setSelectedDriverId('');
+          setSelectedVehicleId('');
+        },
+      },
+    );
+  };
+
+  const handleConfirmReturn = () => {
+    Alert.alert(
+      'Confirm Return',
+      `Confirm that ${loan.quantity_approved ?? loan.quantity_requested} bags have been returned? This completes the loan.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Confirm Return', onPress: () => confirmReturnMutation.mutate(loan.id) },
+      ],
+    );
+  };
+
+  // ── Determine which actions to show ──
+
+  const showAcceptReject = isLender && loan.status === 'pending';
+  const showConfirm = isBorrower && loan.status === 'accepted';
+  const showAssignPickup = isManager && loan.status === 'confirmed' && !loan.pickup_trip_id;
+  const showConfirmReceipt = isBorrower && ['active', 'collected', 'in_transit'].includes(loan.status);
+  const showInitiateReturn = isBorrower && ['active', 'overdue'].includes(loan.status);
+  const showAssignReturnBtn = isBorrower && isManager && ['return_initiated', 'active', 'overdue'].includes(loan.status);
+  const showConfirmReturnBtn = isLender && loan.status === 'return_in_progress';
+
+  const anyLoading =
+    acceptMutation.isPending || rejectMutation.isPending || confirmMutation.isPending ||
+    assignPickupMutation.isPending || confirmReceiptMutation.isPending ||
+    initiateReturnMutation.isPending || assignReturnMutation.isPending || confirmReturnMutation.isPending;
 
   return (
     <>
@@ -115,8 +226,8 @@ export default function LoanDetailScreen() {
           {/* Loan Info */}
           <Card>
             <Text style={styles.sectionTitle}>Details</Text>
-            <DetailRow icon="arrow-forward" label="Lender" value={loan.lender_location?.name ?? '—'} />
-            <DetailRow icon="arrow-back" label="Borrower" value={loan.borrower_location?.name ?? '—'} />
+            <DetailRow icon="arrow-forward" label="Lender" value={loan.lender_location?.name ?? '\u2014'} />
+            <DetailRow icon="arrow-back" label="Borrower" value={loan.borrower_location?.name ?? '\u2014'} />
             <DetailRow icon="cube" label="Requested" value={`${loan.quantity_requested} bags`} />
             {loan.quantity_approved != null && (
               <DetailRow icon="checkmark" label="Approved" value={`${loan.quantity_approved} bags`} />
@@ -145,19 +256,181 @@ export default function LoanDetailScreen() {
             )}
           </Card>
 
-          {/* Actions */}
+          {/* Assign Pickup Driver form */}
+          {showAssignPickup && !showPickupAssign && (
+            <Button
+              title="Assign Pickup Driver"
+              onPress={() => setShowPickupAssign(true)}
+              icon={<Ionicons name="car-outline" size={18} color={colors.white} />}
+              size="lg"
+            />
+          )}
+
+          {showPickupAssign && (
+            <Card>
+              <Text style={styles.sectionTitle}>Assign Pickup Driver</Text>
+              <Text style={styles.fieldLabel}>Driver</Text>
+              <View style={styles.optionList}>
+                {drivers.map((d) => (
+                  <TouchableOpacity
+                    key={d.id}
+                    style={[styles.optionItem, selectedDriverId === d.id && styles.optionSelected]}
+                    onPress={() => setSelectedDriverId(d.id)}
+                  >
+                    <Text style={[styles.optionText, selectedDriverId === d.id && styles.optionTextSelected]}>
+                      {d.full_name}
+                    </Text>
+                    {selectedDriverId === d.id && (
+                      <Ionicons name="checkmark-circle" size={20} color={colors.primary[500]} />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={[styles.fieldLabel, { marginTop: spacing.md }]}>Vehicle</Text>
+              <View style={styles.optionList}>
+                {vehicles.map((v: any) => (
+                  <TouchableOpacity
+                    key={v.id}
+                    style={[styles.optionItem, selectedVehicleId === v.id && styles.optionSelected]}
+                    onPress={() => setSelectedVehicleId(v.id)}
+                  >
+                    <Text style={[styles.optionText, selectedVehicleId === v.id && styles.optionTextSelected]}>
+                      {v.registration_number} {v.make ? `- ${v.make}` : ''}
+                    </Text>
+                    {selectedVehicleId === v.id && (
+                      <Ionicons name="checkmark-circle" size={20} color={colors.primary[500]} />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <View style={styles.assignActions}>
+                <Button
+                  title="Cancel"
+                  variant="outline"
+                  onPress={() => { setShowPickupAssign(false); setSelectedDriverId(''); setSelectedVehicleId(''); }}
+                  style={{ flex: 1 }}
+                />
+                <Button
+                  title="Assign"
+                  onPress={handleAssignPickup}
+                  loading={assignPickupMutation.isPending}
+                  disabled={!selectedDriverId || !selectedVehicleId}
+                  style={{ flex: 1 }}
+                />
+              </View>
+            </Card>
+          )}
+
+          {/* Assign Return Driver form */}
+          {showAssignReturnBtn && !showReturnAssign && (
+            <Button
+              title="Assign Return Driver"
+              onPress={() => setShowReturnAssign(true)}
+              icon={<Ionicons name="return-down-back-outline" size={18} color={colors.white} />}
+              size="lg"
+            />
+          )}
+
+          {showReturnAssign && (
+            <Card>
+              <Text style={styles.sectionTitle}>Assign Return Driver</Text>
+              <Text style={styles.fieldLabel}>Driver</Text>
+              <View style={styles.optionList}>
+                {drivers.map((d) => (
+                  <TouchableOpacity
+                    key={d.id}
+                    style={[styles.optionItem, selectedDriverId === d.id && styles.optionSelected]}
+                    onPress={() => setSelectedDriverId(d.id)}
+                  >
+                    <Text style={[styles.optionText, selectedDriverId === d.id && styles.optionTextSelected]}>
+                      {d.full_name}
+                    </Text>
+                    {selectedDriverId === d.id && (
+                      <Ionicons name="checkmark-circle" size={20} color={colors.primary[500]} />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={[styles.fieldLabel, { marginTop: spacing.md }]}>Vehicle</Text>
+              <View style={styles.optionList}>
+                {vehicles.map((v: any) => (
+                  <TouchableOpacity
+                    key={v.id}
+                    style={[styles.optionItem, selectedVehicleId === v.id && styles.optionSelected]}
+                    onPress={() => setSelectedVehicleId(v.id)}
+                  >
+                    <Text style={[styles.optionText, selectedVehicleId === v.id && styles.optionTextSelected]}>
+                      {v.registration_number} {v.make ? `- ${v.make}` : ''}
+                    </Text>
+                    {selectedVehicleId === v.id && (
+                      <Ionicons name="checkmark-circle" size={20} color={colors.primary[500]} />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <View style={styles.assignActions}>
+                <Button
+                  title="Cancel"
+                  variant="outline"
+                  onPress={() => { setShowReturnAssign(false); setSelectedDriverId(''); setSelectedVehicleId(''); }}
+                  style={{ flex: 1 }}
+                />
+                <Button
+                  title="Assign"
+                  onPress={handleAssignReturn}
+                  loading={assignReturnMutation.isPending}
+                  disabled={!selectedDriverId || !selectedVehicleId}
+                  style={{ flex: 1 }}
+                />
+              </View>
+            </Card>
+          )}
+
+          {/* Primary actions */}
           <View style={styles.actions}>
-            {isLender && loan.status === 'pending' && (
+            {showAcceptReject && (
               <>
                 <Button title="Accept" onPress={handleAccept} loading={acceptMutation.isPending} size="lg" />
                 <Button title="Reject" onPress={handleReject} variant="danger" loading={rejectMutation.isPending} size="lg" />
               </>
             )}
-            {isBorrower && loan.status === 'accepted' && (
+            {showConfirm && (
               <>
                 <Button title="Confirm Loan" onPress={handleConfirm} loading={confirmMutation.isPending} size="lg" />
                 <Button title="Reject Counter-Offer" onPress={handleReject} variant="outline" loading={rejectMutation.isPending} size="lg" />
               </>
+            )}
+            {showConfirmReceipt && (
+              <Button
+                title="Confirm Receipt"
+                onPress={handleConfirmReceipt}
+                loading={confirmReceiptMutation.isPending}
+                size="lg"
+                icon={<Ionicons name="checkmark-done-outline" size={18} color={colors.white} />}
+              />
+            )}
+            {showInitiateReturn && !showReturnAssign && (
+              <Button
+                title="Start Return"
+                onPress={handleInitiateReturn}
+                loading={initiateReturnMutation.isPending}
+                variant="secondary"
+                size="lg"
+                icon={<Ionicons name="return-down-back-outline" size={18} color={colors.gray[800]} />}
+              />
+            )}
+            {showConfirmReturnBtn && (
+              <Button
+                title="Confirm Return"
+                onPress={handleConfirmReturn}
+                loading={confirmReturnMutation.isPending}
+                size="lg"
+                icon={<Ionicons name="checkmark-done-outline" size={18} color={colors.white} />}
+              />
             )}
           </View>
         </ScrollView>
@@ -201,4 +474,41 @@ const styles = StyleSheet.create({
   notesLabel: { fontSize: fontSize.sm, color: colors.gray[500], marginBottom: spacing.xs },
   notesText: { fontSize: fontSize.sm, color: colors.gray[700] },
   actions: { gap: spacing.md },
+
+  // Assign driver form styles
+  fieldLabel: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
+    color: colors.gray[700],
+    marginBottom: spacing.sm,
+  },
+  optionList: { gap: spacing.xs },
+  optionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    backgroundColor: colors.white,
+  },
+  optionSelected: {
+    borderColor: colors.primary[500],
+    backgroundColor: colors.primary[50],
+  },
+  optionText: {
+    fontSize: fontSize.sm,
+    color: colors.gray[700],
+    flex: 1,
+  },
+  optionTextSelected: {
+    color: colors.primary[700],
+    fontWeight: fontWeight.medium,
+  },
+  assignActions: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginTop: spacing.lg,
+  },
 });

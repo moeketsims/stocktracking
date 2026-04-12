@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/authStore';
 import { useAnalytics } from '../../src/hooks/useReports';
@@ -75,6 +75,7 @@ export default function ReportsHubScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
+      <Stack.Screen options={{ title: 'Reports', headerStyle: { backgroundColor: '#1e1b4b' }, headerTintColor: '#fff' }} />
       <ScrollView contentContainerStyle={styles.content}>
         {/* Period Selector */}
         <View style={styles.periodRow}>

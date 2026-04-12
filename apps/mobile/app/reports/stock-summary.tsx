@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, ScrollView, RefreshControl, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/authStore';
 import { useStockLevels, useShopEfficiency } from '../../src/hooks/useReports';
@@ -35,6 +36,7 @@ export default function StockSummaryScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
+      <Stack.Screen options={{ title: 'Stock Summary', headerStyle: { backgroundColor: '#1e1b4b' }, headerTintColor: '#fff' }} />
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={

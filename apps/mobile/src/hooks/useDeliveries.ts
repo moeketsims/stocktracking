@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Alert } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { deliveriesApi, type ConfirmDeliveryPayload } from '../api/deliveries';
+import { deliveriesApi, type ConfirmDeliveryPayload, type CorrectKmPayload } from '../api/deliveries';
 import { STALE_TIME } from '../constants/config';
 
 export function usePendingDeliveries(params?: { status?: string; location_id?: string }) {
@@ -38,6 +38,40 @@ export function useConfirmDelivery() {
     onError: (error: any) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', error.response?.data?.detail ?? 'Failed to confirm delivery');
+    },
+  });
+}
+
+export function useResendKmEmail() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (deliveryId: string) =>
+      deliveriesApi.resendKmEmail(deliveryId).then((r) => r.data),
+    onSuccess: (data) => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('Email Sent', data.message ?? 'KM submission email resent to driver.');
+    },
+    onError: (error: any) => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Error', error.response?.data?.detail ?? 'Failed to resend KM email');
+    },
+  });
+}
+
+export function useCorrectKm() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ tripId, data }: { tripId: string; data: CorrectKmPayload }) =>
+      deliveriesApi.correctKm(tripId, data).then((r) => r.data),
+    onSuccess: (data) => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      qc.invalidateQueries({ queryKey: ['trips'] });
+      qc.invalidateQueries({ queryKey: ['deliveries'] });
+      Alert.alert('KM Corrected', data.message ?? 'Closing KM has been corrected.');
+    },
+    onError: (error: any) => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Error', error.response?.data?.detail ?? 'Failed to correct KM');
     },
   });
 }
