@@ -740,6 +740,47 @@ async def create_trip_from_request(
 
         created_trip = trip_result.data if isinstance(trip_result.data, dict) else trip_result.data[0]
 
+        # Create trip stops (pickup from origin + dropoff at destination)
+        quantity_kg = existing.data.get("quantity_bags", 0) * 10  # bags to kg
+        stops_data = [
+            {
+                "id": str(uuid4()),
+                "trip_id": created_trip["id"],
+                "stop_order": 1,
+                "stop_type": "pickup",
+                "location_id": trip_request.from_location_id if trip_request.from_location_id else None,
+                "supplier_id": trip_request.supplier_id if trip_request.supplier_id else None,
+                "location_name": origin_name,
+                "planned_qty_kg": quantity_kg,
+                "is_completed": False,
+            },
+            {
+                "id": str(uuid4()),
+                "trip_id": created_trip["id"],
+                "stop_order": 2,
+                "stop_type": "dropoff",
+                "location_id": existing.data["location_id"],
+                "location_name": existing.data["location"]["name"],
+                "planned_qty_kg": quantity_kg,
+                "is_completed": False,
+            },
+        ]
+        try:
+            supabase.table("trip_stops").insert(stops_data).execute()
+        except Exception as stop_err:
+            print(f"[TRIP STOPS] Error creating stops: {stop_err}")
+
+        # Create trip_requests junction record
+        try:
+            supabase.table("trip_requests").insert({
+                "id": str(uuid4()),
+                "trip_id": created_trip["id"],
+                "request_id": request_id,
+                "status": "assigned",
+            }).execute()
+        except Exception as tr_err:
+            print(f"[TRIP REQUESTS] Error creating junction: {tr_err}")
+
         # Update request status
         supabase.table("stock_requests").update({
             "status": request_status,
