@@ -52,6 +52,21 @@ export const colors = {
   },
   white: '#ffffff',
   black: '#000000',
+  // Surface colors — warm tints for different contexts
+  surface: {
+    DEFAULT: '#faf9f7',    // warm off-white (replaces cold gray-50 as page background)
+    card: '#ffffff',         // card background stays white
+    elevated: '#ffffff',     // elevated surfaces
+    muted: '#f5f3f0',       // muted backgrounds (section dividers)
+    brand: '#fff8f3',        // very subtle orange-tinted background
+  },
+  // Status surface tints (for card backgrounds)
+  statusBg: {
+    critical: '#fef2f2',    // red-50 tint
+    low: '#fffbeb',         // amber-50 tint
+    sufficient: '#f0fdf4',  // green-50 tint
+    info: '#eff6ff',        // blue-50 tint
+  },
 } as const;
 
 export const spacing = {
