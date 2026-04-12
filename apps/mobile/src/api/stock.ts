@@ -189,6 +189,22 @@ export interface BatchEditResponse {
   changes: string[];
 }
 
+// Transfer
+export interface TransferStockPayload {
+  from_location_id: string;
+  to_location_id: string;
+  quantity: number;
+  unit: 'kg' | 'bag';
+  item_id?: string;
+  notes?: string;
+}
+
+export interface TransferStockResponse {
+  success: boolean;
+  message: string;
+  transaction_id: string | null;
+}
+
 // Create stock request
 export interface CreateStockRequestPayload {
   location_id?: string;
@@ -217,6 +233,9 @@ export const stockApi = {
 
   return: (data: IssueStockPayload) =>
     api.post<IssueStockResponse>('/api/stock/return', data),
+
+  transfer: (data: TransferStockPayload) =>
+    api.post<TransferStockResponse>('/api/stock/transfer', data),
 
   waste: (data: WastePayload) =>
     api.post<WasteResponse>('/api/stock/waste', data),

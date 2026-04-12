@@ -8,6 +8,7 @@ import {
   type AdjustmentPayload,
   type BatchEditPayload,
   type CreateStockRequestPayload,
+  type TransferStockPayload,
 } from '../api/stock';
 import { useAuthStore } from '../stores/authStore';
 import { STALE_TIME } from '../constants/config';
@@ -81,6 +82,25 @@ export function useReturnStock() {
     onError: (error: any) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', error.response?.data?.detail ?? 'Failed to return stock');
+    },
+  });
+}
+
+// --- Transfer ---
+
+export function useTransferStock() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: TransferStockPayload) =>
+      stockApi.transfer(data).then((r) => r.data),
+    onSuccess: () => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      qc.invalidateQueries({ queryKey: ['stock'] });
+      qc.invalidateQueries({ queryKey: ['transactions'] });
+    },
+    onError: (error: any) => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Error', error.response?.data?.detail ?? 'Failed to transfer stock');
     },
   });
 }

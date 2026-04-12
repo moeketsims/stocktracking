@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { View, Text, FlatList, StyleSheet, RefreshControl, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { useAuthStore } from '../src/stores/authStore';
 import { useLoans } from '../src/hooks/useLoans';
 import { LoanCard } from '../src/components/LoanCard';
 import { Loading } from '../src/components/ui/Loading';
@@ -11,6 +13,8 @@ type Filter = 'active' | 'incoming' | 'outgoing' | 'history';
 
 export default function LoansScreen() {
   const router = useRouter();
+  const user = useAuthStore((s) => s.user);
+  const isManager = user?.role === 'location_manager' || user?.role === 'zone_manager' || user?.role === 'admin';
   const [filter, setFilter] = useState<Filter>('active');
 
   const params = filter === 'incoming'
@@ -31,6 +35,16 @@ export default function LoansScreen() {
           title: 'Loans',
           headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
           headerTintColor: colors.white,
+          headerRight: isManager
+            ? () => (
+                <TouchableOpacity
+                  onPress={() => router.push('/loan/create')}
+                  style={styles.headerBtn}
+                >
+                  <Ionicons name="add-circle-outline" size={24} color={colors.white} />
+                </TouchableOpacity>
+              )
+            : undefined,
         }}
       />
       <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -76,6 +90,7 @@ export default function LoansScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.gray[50] },
+  headerBtn: { marginRight: spacing.sm, padding: spacing.xs },
   filterRow: {
     flexDirection: 'row',
     padding: spacing.md,

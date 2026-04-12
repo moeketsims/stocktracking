@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Slot, useRouter, useSegments } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
@@ -57,7 +57,17 @@ export default function RootLayout() {
     <QueryClientProvider client={queryClient}>
       <AuthGuard>
         <StatusBar style="light" />
-        <Slot />
+        <Stack
+          screenOptions={{
+            headerStyle: { backgroundColor: '#1e1b4b' },
+            headerTintColor: '#ffffff',
+            headerTitleStyle: { fontWeight: '600' },
+            headerBackTitleVisible: false,
+          }}
+        >
+          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        </Stack>
       </AuthGuard>
     </QueryClientProvider>
   );

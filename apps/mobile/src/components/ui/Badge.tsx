@@ -10,10 +10,10 @@ interface BadgeProps {
 }
 
 const variantColors: Record<BadgeVariant, { bg: string; text: string }> = {
-  success: { bg: '#dcfce7', text: '#166534' },
-  warning: { bg: '#fef9c3', text: '#854d0e' },
-  error: { bg: '#fee2e2', text: '#991b1b' },
-  info: { bg: '#dbeafe', text: '#1e40af' },
+  success: { bg: colors.statusBg.sufficient, text: '#166534' },
+  warning: { bg: colors.statusBg.low, text: '#854d0e' },
+  error: { bg: colors.statusBg.critical, text: '#991b1b' },
+  info: { bg: colors.statusBg.info, text: '#1e40af' },
   neutral: { bg: colors.gray[100], text: colors.gray[700] },
   primary: { bg: colors.primary[100], text: colors.primary[800] },
 };

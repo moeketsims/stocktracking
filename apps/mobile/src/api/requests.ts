@@ -4,6 +4,8 @@ import type { StockRequest } from '../types';
 export interface StockRequestsResponse {
   requests: StockRequest[];
   total: number;
+  limit?: number;
+  offset?: number;
 }
 
 export interface AcceptRequestResponse {
@@ -21,6 +23,7 @@ export interface ProposeTimePayload {
 export interface CreateTripPayload {
   vehicle_id: string;
   driver_id?: string;
+  driver_name?: string;
   supplier_id?: string;
   from_location_id?: string;
   notes?: string;
@@ -43,17 +46,41 @@ export interface CreateTripResponse {
   request_id: string;
 }
 
+export interface UpdateRequestPayload {
+  quantity_bags?: number;
+  urgency?: 'urgent' | 'normal';
+  notes?: string;
+}
+
+export interface CancelRequestPayload {
+  reason: string;
+}
+
+export interface DeclineProposalPayload {
+  notes?: string;
+}
+
 export const requestsApi = {
   getAvailable: (limit = 50) =>
     api.get<StockRequestsResponse>('/api/stock-requests/available', {
       params: { limit },
     }),
 
-  list: (params?: { status?: string; limit?: number }) =>
+  list: (params?: { status?: string; limit?: number; offset?: number }) =>
     api.get<StockRequestsResponse>('/api/stock-requests', { params }),
 
+  listActive: () =>
+    api.get<StockRequestsResponse>('/api/stock-requests', {
+      params: { status: 'pending,accepted,trip_created,in_delivery,time_proposed', limit: 50 },
+    }),
+
+  listHistory: (params: { limit?: number; offset?: number } = {}) =>
+    api.get<StockRequestsResponse>('/api/stock-requests', {
+      params: { status: 'delivered,fulfilled,cancelled,expired', limit: params.limit ?? 20, offset: params.offset ?? 0 },
+    }),
+
   get: (id: string) =>
-    api.get<StockRequest>(`/api/stock-requests/${id}`),
+    api.get<{ request: StockRequest }>(`/api/stock-requests/${id}`),
 
   accept: (id: string) =>
     api.post<AcceptRequestResponse>(`/api/stock-requests/${id}/accept`),
@@ -63,4 +90,19 @@ export const requestsApi = {
 
   createTrip: (id: string, data: CreateTripPayload) =>
     api.post<CreateTripResponse>(`/api/stock-requests/${id}/create-trip`, data),
+
+  update: (id: string, data: UpdateRequestPayload) =>
+    api.patch(`/api/stock-requests/${id}`, data),
+
+  cancel: (id: string, data: CancelRequestPayload) =>
+    api.post(`/api/stock-requests/${id}/cancel`, data),
+
+  reRequest: (id: string) =>
+    api.post(`/api/stock-requests/${id}/re-request`),
+
+  acceptProposal: (id: string) =>
+    api.post(`/api/stock-requests/${id}/accept-proposal`),
+
+  declineProposal: (id: string, data: DeclineProposalPayload) =>
+    api.post(`/api/stock-requests/${id}/decline-proposal`, data),
 };

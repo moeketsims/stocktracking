@@ -1,107 +1,123 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { Card } from './ui/Card';
-import { StatusBadge } from './StatusBadge';
+import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { timeAgo } from '../utils/dates';
-import { colors, spacing, fontSize, fontWeight } from '../constants/theme';
 import type { Trip } from '../types';
+
+/*
+ * Trip row — compact, scannable, with deliberate hierarchy.
+ *
+ * Visual structure:
+ *   Left accent line (status colour)
+ *   Route: bold, primary scan target
+ *   Trip# · Vehicle · Time: monospace metadata, lighter
+ *
+ * Status is expressed through the left accent, not repeated text.
+ * Active trips get a stronger accent and slightly warmer row bg.
+ */
+
+const C = {
+  t1:      '#111111',
+  t2:      '#555555',
+  t3:      '#999999',
+  t4:      '#c4c4c4',
+  surface: '#ffffff',
+  warmRow: '#fefdfb',
+  border:  '#f0eee9',
+  planned:    '#946b0a',
+  in_progress:'#1a7a3a',
+  completed:  '#d4d4d4',
+  cancelled:  '#e5a8a8',
+};
+
+const ACCENT: Record<string, string> = {
+  planned: C.planned,
+  in_progress: C.in_progress,
+  completed: C.completed,
+  cancelled: C.cancelled,
+};
+
+const mono = Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' });
 
 interface TripCardProps {
   trip: Trip;
   onPress: () => void;
+  isLast?: boolean;
+  showStatus?: boolean; // show text status label (useful in "All" view)
 }
 
-export function TripCard({ trip, onPress }: TripCardProps) {
-  const vehicle = trip.vehicles;
-  const vehicleLabel = vehicle
-    ? `${vehicle.registration_number}${vehicle.make ? ` (${vehicle.make})` : ''}`
-    : 'No vehicle';
+export function TripCard({ trip, onPress, isLast, showStatus }: TripCardProps) {
+  const origin = trip.origin_description ?? trip.from_location?.name ?? '—';
+  const dest = trip.destination_description ?? trip.to_location?.name ?? '—';
+  const vehicle = trip.vehicles?.registration_number ?? '—';
+  const accent = ACCENT[trip.status] ?? C.t4;
+  const isActive = trip.status === 'planned' || trip.status === 'in_progress';
+  const statusText = trip.status === 'in_progress' ? 'In transit' : trip.status === 'planned' ? 'Planned' : null;
 
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
-      <Card>
-        <View style={styles.header}>
-          <Text style={styles.tripNumber}>{trip.trip_number}</Text>
-          <StatusBadge status={trip.status} type="trip" />
-        </View>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.45}>
+      <View style={[s.row, isActive && s.rowActive, !isLast && s.rowBorder]}>
+        {/* Accent bar */}
+        <View style={[s.accent, { backgroundColor: accent }]} />
 
-        <View style={styles.route}>
-          <View style={styles.routePoint}>
-            <Ionicons name="ellipse" size={10} color={colors.primary[500]} />
-            <Text style={styles.routeText} numberOfLines={1}>
-              {trip.origin_description ?? trip.from_location?.name ?? '—'}
+        <View style={s.body}>
+          {/* Route */}
+          <View style={s.routeRow}>
+            <Text style={[s.route, isActive && s.routeActive]} numberOfLines={1}>
+              {origin}
+            </Text>
+            <Text style={s.arrow}>→</Text>
+            <Text style={[s.route, isActive && s.routeActive]} numberOfLines={1}>
+              {dest}
             </Text>
           </View>
-          <View style={styles.routeLine} />
-          <View style={styles.routePoint}>
-            <Ionicons name="location" size={12} color={colors.error} />
-            <Text style={styles.routeText} numberOfLines={1}>
-              {trip.destination_description ?? trip.to_location?.name ?? '—'}
-            </Text>
-          </View>
+
+          {/* Meta */}
+          <Text style={s.meta} numberOfLines={1}>
+            {trip.trip_number}  ·  {vehicle}  ·  {timeAgo(trip.created_at)}
+            {showStatus && statusText ? `  ·  ${statusText}` : ''}
+          </Text>
         </View>
 
-        <View style={styles.meta}>
-          <View style={styles.metaItem}>
-            <Ionicons name="car" size={14} color={colors.gray[400]} />
-            <Text style={styles.metaText}>{vehicleLabel}</Text>
+        {/* Active indicator */}
+        {isActive && statusText && !showStatus && (
+          <View style={[s.statusChip, { borderColor: accent }]}>
+            <Text style={[s.statusChipText, { color: accent }]}>{statusText}</Text>
           </View>
-          <Text style={styles.timeText}>{timeAgo(trip.created_at)}</Text>
-        </View>
-      </Card>
+        )}
+      </View>
     </TouchableOpacity>
   );
 }
 
-const styles = StyleSheet.create({
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.md,
+const s = StyleSheet.create({
+  row: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: C.surface,
+    paddingRight: 14,
   },
-  tripNumber: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.bold,
-    color: colors.gray[900],
-  },
+  rowActive: { backgroundColor: C.warmRow },
+  rowBorder: { borderBottomWidth: 1, borderBottomColor: C.border },
+
+  accent: { width: 3, alignSelf: 'stretch', borderTopRightRadius: 2, borderBottomRightRadius: 2 },
+
+  body: { flex: 1, paddingVertical: 11, paddingLeft: 12, paddingRight: 8 },
+
+  routeRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   route: {
-    marginBottom: spacing.md,
-    gap: spacing.xs,
+    fontSize: 13, fontWeight: '600', color: C.t1, letterSpacing: -0.1,
+    flexShrink: 1,
   },
-  routePoint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  routeLine: {
-    width: 1,
-    height: 12,
-    backgroundColor: colors.gray[300],
-    marginLeft: 5,
-  },
-  routeText: {
-    fontSize: fontSize.sm,
-    color: colors.gray[700],
-    flex: 1,
-  },
+  routeActive: { color: '#0f0f0f' },
+  arrow: { fontSize: 11, color: C.t4, fontWeight: '400' },
+
   meta: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    fontSize: 11, fontWeight: '400', color: C.t3, marginTop: 3,
+    fontFamily: mono, letterSpacing: -0.2,
   },
-  metaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
+
+  statusChip: {
+    borderWidth: 1, borderRadius: 4,
+    paddingHorizontal: 6, paddingVertical: 2,
   },
-  metaText: {
-    fontSize: fontSize.xs,
-    color: colors.gray[500],
-  },
-  timeText: {
-    fontSize: fontSize.xs,
-    color: colors.gray[400],
-  },
+  statusChipText: { fontSize: 9, fontWeight: '700', letterSpacing: 0.3, textTransform: 'uppercase' },
 });

@@ -18,7 +18,7 @@ import { Button } from '../../../src/components/ui/Button';
 import { Input } from '../../../src/components/ui/Input';
 import { Badge } from '../../../src/components/ui/Badge';
 import { Loading } from '../../../src/components/ui/Loading';
-import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../../src/constants/theme';
+import { brand, colors, spacing, fontSize, fontWeight, borderRadius } from '../../../src/constants/theme';
 
 const STATUS_OPTIONS = [
   { value: 'available', label: 'Available', color: colors.success },
@@ -119,8 +119,8 @@ export default function BatchDetailScreen() {
       <Stack.Screen
         options={{
           title: `Batch #${batch.batch_id_display}`,
-          headerStyle: { backgroundColor: colors.primary[500] },
-          headerTintColor: colors.white,
+          headerStyle: { backgroundColor: brand.gradientStart },
+          headerTintColor: '#fff',
         }}
       />
       <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -190,7 +190,7 @@ export default function BatchDetailScreen() {
                   <Ionicons
                     name={isEditing ? 'close-circle' : 'create-outline'}
                     size={22}
-                    color={isEditing ? colors.error : colors.primary[500]}
+                    color={isEditing ? colors.error : brand.accent}
                   />
                 </TouchableOpacity>
               </View>
@@ -233,14 +233,14 @@ export default function BatchDetailScreen() {
                         key={opt.value}
                         style={[
                           styles.statusChip,
-                          status === opt.value && { backgroundColor: opt.color, borderColor: opt.color },
+                          status === opt.value && { backgroundColor: '#0f172a', borderColor: '#0f172a' },
                         ]}
                         onPress={() => setStatus(opt.value)}
                       >
                         <Text
                           style={[
                             styles.statusText,
-                            status === opt.value && { color: colors.white },
+                            status === opt.value && { color: '#fff' },
                           ]}
                         >
                           {opt.label}
@@ -253,7 +253,7 @@ export default function BatchDetailScreen() {
                     title={editMutation.isPending ? 'Saving...' : 'Save Changes'}
                     onPress={handleSave}
                     loading={editMutation.isPending}
-                    style={{ marginTop: spacing.md }}
+                    style={{ marginTop: spacing.md, backgroundColor: brand.accent }}
                   />
                 </View>
               ) : (
@@ -289,7 +289,7 @@ export default function BatchDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
+  container: { flex: 1, backgroundColor: '#f8fafc' },
   flex: { flex: 1 },
   content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing['3xl'] },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md },
@@ -302,15 +302,16 @@ const styles = StyleSheet.create({
   },
   batchTitle: {
     fontSize: fontSize['2xl'],
-    fontWeight: fontWeight.bold,
-    color: colors.gray[900],
+    fontWeight: '800',
+    color: '#0f172a',
   },
   itemName: { fontSize: fontSize.sm, color: colors.gray[700], marginBottom: 2 },
   supplierName: { fontSize: fontSize.sm, color: colors.gray[500] },
   sectionTitle: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[900],
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0f172a',
+    letterSpacing: -0.2,
     marginBottom: spacing.md,
   },
   statsRow: {
@@ -321,8 +322,8 @@ const styles = StyleSheet.create({
   stat: { alignItems: 'center' },
   statValue: {
     fontSize: fontSize.xl,
-    fontWeight: fontWeight.bold,
-    color: colors.gray[900],
+    fontWeight: '800',
+    color: '#0f172a',
   },
   statLabel: {
     fontSize: fontSize.xs,
@@ -356,15 +357,15 @@ const styles = StyleSheet.create({
   statusChip: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full,
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: colors.gray[300],
-    backgroundColor: colors.white,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#fff',
   },
   statusText: {
     fontSize: fontSize.sm,
-    fontWeight: fontWeight.medium,
-    color: colors.gray[600],
+    fontWeight: '600',
+    color: '#64748b',
   },
   editHint: { fontSize: fontSize.sm, color: colors.gray[400], fontStyle: 'italic' },
   textArea: { minHeight: 60, textAlignVertical: 'top' },

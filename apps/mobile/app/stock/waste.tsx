@@ -16,7 +16,7 @@ import { useLogWaste } from '../../src/hooks/useStock';
 import { Card } from '../../src/components/ui/Card';
 import { Button } from '../../src/components/ui/Button';
 import { Input } from '../../src/components/ui/Input';
-import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
+import { brand, colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
 import type { WasteReason } from '../../src/types';
 
 const WASTE_REASONS: Array<{ value: WasteReason; label: string; icon: string }> = [
@@ -75,8 +75,8 @@ export default function WasteScreen() {
       <Stack.Screen
         options={{
           title: 'Log Waste',
-          headerStyle: { backgroundColor: colors.error },
-          headerTintColor: colors.white,
+          headerStyle: { backgroundColor: brand.gradientStart },
+          headerTintColor: '#fff',
         }}
       />
       <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -131,7 +131,7 @@ export default function WasteScreen() {
                     <Ionicons
                       name={r.icon as any}
                       size={16}
-                      color={reason === r.value ? colors.white : colors.error}
+                      color={reason === r.value ? '#fff' : '#64748b'}
                     />
                     <Text
                       style={[
@@ -167,7 +167,7 @@ export default function WasteScreen() {
               onPress={handleSubmit}
               loading={mutation.isPending}
               disabled={!isValid || mutation.isPending}
-              variant="danger"
+              style={{ backgroundColor: brand.accent }}
             />
           </View>
         </KeyboardAvoidingView>
@@ -177,39 +177,40 @@ export default function WasteScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
+  container: { flex: 1, backgroundColor: '#f8fafc' },
   flex: { flex: 1 },
   content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing['3xl'] },
   sectionTitle: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[900],
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0f172a',
+    letterSpacing: -0.2,
     marginBottom: spacing.md,
   },
   qtyRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
   qtyInput: { flex: 1 },
   unitToggle: {
     flexDirection: 'row',
-    borderRadius: borderRadius.md,
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: colors.gray[300],
+    borderColor: '#e2e8f0',
     overflow: 'hidden',
     marginTop: 2,
   },
   unitBtn: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    backgroundColor: colors.white,
+    backgroundColor: '#fff',
   },
   unitBtnActive: {
-    backgroundColor: colors.error,
+    backgroundColor: '#0f172a',
   },
   unitText: {
     fontSize: fontSize.sm,
-    fontWeight: fontWeight.medium,
-    color: colors.gray[600],
+    fontWeight: '600',
+    color: '#64748b',
   },
-  unitTextActive: { color: colors.white },
+  unitTextActive: { color: '#fff' },
   reasonGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   reasonChip: {
     flexDirection: 'row',
@@ -217,21 +218,21 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full,
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: colors.error,
-    backgroundColor: '#fee2e2',
+    borderColor: '#e2e8f0',
+    backgroundColor: '#fff',
   },
   reasonChipSelected: {
-    backgroundColor: colors.error,
-    borderColor: colors.error,
+    backgroundColor: '#0f172a',
+    borderColor: '#0f172a',
   },
   reasonText: {
     fontSize: fontSize.sm,
-    fontWeight: fontWeight.medium,
-    color: colors.error,
+    fontWeight: '600',
+    color: '#64748b',
   },
-  reasonTextSelected: { color: colors.white },
+  reasonTextSelected: { color: '#fff' },
   textArea: { minHeight: 80, textAlignVertical: 'top' },
   footer: {
     padding: spacing.lg,

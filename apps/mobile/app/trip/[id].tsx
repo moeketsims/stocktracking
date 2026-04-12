@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useTrip, useTripStops, useStartTrip, useCompleteStop, useCompleteTrip } from '../../src/hooks/useTrips';
+import { useTrip, useTripStops, useStartTrip, useCancelTrip, useCompleteStop, useCompleteTrip } from '../../src/hooks/useTrips';
 import { useAuthStore } from '../../src/stores/authStore';
 import { StatusBadge } from '../../src/components/StatusBadge';
 import { Badge } from '../../src/components/ui/Badge';
@@ -14,6 +14,11 @@ import { KmInput } from '../../src/components/KmInput';
 import { formatDateTime } from '../../src/utils/dates';
 import { colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
 import { useSubmitKm } from '../../src/hooks/useTrips';
+
+/* ── Design tokens (matching dashboard) ── */
+const BRAND    = '#1e1b4b';
+const WARM_BG  = '#faf9f7';
+const CARD_R   = 16;
 import type { TripStop } from '../../src/types';
 
 export default function TripDetailScreen() {
@@ -22,7 +27,9 @@ export default function TripDetailScreen() {
   const user = useAuthStore((s) => s.user);
   const { data: trip, isLoading: tripLoading } = useTrip(id);
   const { data: stopsData, isLoading: stopsLoading } = useTripStops(id);
+  const isManager = ['admin', 'zone_manager', 'location_manager', 'vehicle_manager'].includes(user?.role ?? '');
   const startTrip = useStartTrip();
+  const cancelTrip = useCancelTrip();
   const completeStop = useCompleteStop();
   const completeTrip = useCompleteTrip();
   const submitKm = useSubmitKm();
@@ -32,9 +39,11 @@ export default function TripDetailScreen() {
   }
 
   const stops = stopsData?.stops ?? [];
+  const isCancelled = trip.status === 'cancelled';
   const isPlanned = trip.status === 'planned';
   const isInProgress = trip.status === 'in_progress';
   const isCompleted = trip.status === 'completed';
+  const canCancel = isManager && (isPlanned || isInProgress);
   const nextStop = stops.find((s) => !s.is_completed);
   const allStopsComplete = stops.length > 0 && stops.every((s) => s.is_completed);
   const needsKm = isCompleted && (trip as any).odometer_start != null && (trip as any).odometer_end == null;
@@ -62,6 +71,20 @@ export default function TripDetailScreen() {
     }
   };
 
+  const handleCancelTrip = () => {
+    Alert.alert('Cancel Trip', `Are you sure you want to cancel trip ${trip.trip_number}?`, [
+      { text: 'No', style: 'cancel' },
+      {
+        text: 'Cancel Trip',
+        style: 'destructive',
+        onPress: () =>
+          cancelTrip.mutate(trip.id, {
+            onSuccess: () => router.back(),
+          }),
+      },
+    ]);
+  };
+
   const handleCompleteTrip = () => {
     Alert.alert('Complete Trip', 'Mark this trip as complete?', [
       { text: 'Cancel', style: 'cancel' },
@@ -77,8 +100,9 @@ export default function TripDetailScreen() {
       <Stack.Screen
         options={{
           title: trip.trip_number,
-          headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
+          headerStyle: { backgroundColor: BRAND },
           headerTintColor: colors.white,
+          headerTitleStyle: { fontWeight: '600', fontSize: 16 },
         }}
       />
       <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -223,6 +247,15 @@ export default function TripDetailScreen() {
                 size="lg"
               />
             )}
+            {canCancel && (
+              <Button
+                title="Cancel Trip"
+                variant="danger"
+                onPress={handleCancelTrip}
+                loading={cancelTrip.isPending}
+                size="lg"
+              />
+            )}
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -241,7 +274,9 @@ function DetailRow({
 }) {
   return (
     <View style={styles.detailRow}>
-      <Ionicons name={icon} size={16} color={colors.gray[400]} style={{ width: 24 }} />
+      <View style={styles.detailIconBox}>
+        <Ionicons name={icon} size={14} color={colors.gray[400]} />
+      </View>
       <Text style={styles.detailLabel}>{label}</Text>
       <Text style={styles.detailValue}>{value}</Text>
     </View>
@@ -249,47 +284,65 @@ function DetailRow({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
-  content: { padding: spacing.lg, gap: spacing.lg },
+  container: { flex: 1, backgroundColor: WARM_BG },
+  content: { padding: 16, gap: 14, paddingBottom: 48 },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.md,
+    marginBottom: 14,
   },
   tripNumber: {
-    fontSize: fontSize.xl,
-    fontWeight: fontWeight.bold,
-    color: colors.gray[900],
+    fontSize: 20,
+    fontWeight: '700',
+    color: BRAND,
+    letterSpacing: -0.3,
   },
-  route: { marginBottom: spacing.md, gap: spacing.xs },
-  routePoint: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  routeLine: { width: 1, height: 16, backgroundColor: colors.gray[300], marginLeft: 5 },
-  routeText: { fontSize: fontSize.sm, color: colors.gray[700], flex: 1 },
-  details: { gap: spacing.sm },
-  detailRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 2 },
-  detailLabel: { width: 90, fontSize: fontSize.sm, color: colors.gray[500] },
-  detailValue: { flex: 1, fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.gray[900] },
+  route: {
+    marginBottom: 14, gap: 4,
+    backgroundColor: '#f5f3ff',
+    borderRadius: 10, padding: 12,
+  },
+  routePoint: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  routeLine: { width: 1, height: 14, backgroundColor: '#ddd6fe', marginLeft: 5 },
+  routeText: { fontSize: 14, fontWeight: '500', color: colors.gray[700], flex: 1 },
+  details: { gap: 8 },
+  detailRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 6, minHeight: 34,
+  },
+  detailIconBox: {
+    width: 26, height: 26, borderRadius: 7,
+    backgroundColor: '#f5f3ff',
+    alignItems: 'center', justifyContent: 'center',
+    marginRight: 10,
+  },
+  detailLabel: {
+    width: 90, fontSize: 13, fontWeight: '400',
+    color: colors.gray[400], letterSpacing: 0.1,
+  },
+  detailValue: {
+    flex: 1, fontSize: 14, fontWeight: '500',
+    color: colors.gray[900], letterSpacing: -0.1,
+  },
   sectionTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[900],
-    marginBottom: spacing.md,
+    fontSize: 15, fontWeight: '600', color: colors.gray[800],
+    letterSpacing: -0.1, marginBottom: 12,
   },
   stopRow: {
     flexDirection: 'row',
-    paddingVertical: spacing.md,
-    gap: spacing.md,
+    paddingVertical: 12,
+    gap: 12,
   },
   stopBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.gray[200],
+    borderBottomColor: colors.gray[100],
   },
   stopIcon: { paddingTop: 2 },
   stopInfo: { flex: 1 },
   stopHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  stopName: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.gray[900] },
-  stopQty: { fontSize: fontSize.sm, color: colors.gray[600], marginTop: 2 },
-  stopActual: { fontSize: fontSize.sm, color: colors.success, marginTop: 2 },
-  actions: { gap: spacing.md },
+  stopName: { fontSize: 15, fontWeight: '600', color: colors.gray[900], letterSpacing: -0.1 },
+  stopQty: { fontSize: 13, fontWeight: '400', color: colors.gray[500], marginTop: 3 },
+  stopActual: { fontSize: 13, fontWeight: '500', color: '#059669', marginTop: 3 },
+  actions: { gap: 10 },
 });

@@ -12,44 +12,40 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useCreateStockRequest } from '../../src/hooks/useStock';
+import { useIssueStock } from '../../src/hooks/useStock';
 import { Card } from '../../src/components/ui/Card';
 import { Button } from '../../src/components/ui/Button';
 import { Input } from '../../src/components/ui/Input';
 import { brand, colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
 
-type Urgency = 'normal' | 'urgent';
+type Unit = 'bag' | 'kg';
 
-export default function CreateRequestScreen() {
+export default function IssueStockScreen() {
   const router = useRouter();
-  const mutation = useCreateStockRequest();
+  const mutation = useIssueStock();
 
-  const [quantityBags, setQuantityBags] = useState('');
-  const [urgency, setUrgency] = useState<Urgency>('normal');
+  const [quantity, setQuantity] = useState('');
+  const [unit, setUnit] = useState<Unit>('bag');
   const [notes, setNotes] = useState('');
 
-  const isValid = Number(quantityBags) > 0;
+  const qty = Number(quantity);
+  const isValid = qty > 0;
+  const displayKg = unit === 'bag' ? qty * 10 : qty;
 
   const handleSubmit = () => {
     if (!isValid) return;
 
-    const qty = Number(quantityBags);
-    const confirmMsg = `Request ${qty} bag${qty > 1 ? 's' : ''} (${urgency})?\n\nThis will notify available drivers.`;
-
-    Alert.alert('Confirm Request', confirmMsg, [
+    const label = unit === 'bag' ? `${qty} bag${qty > 1 ? 's' : ''}` : `${qty} kg`;
+    Alert.alert('Issue Stock', `Issue ${label} from your location?`, [
       { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Create Request',
+        text: 'Issue',
         onPress: () => {
           mutation.mutate(
-            {
-              quantity_bags: qty,
-              urgency,
-              notes: notes.trim() || undefined,
-            },
+            { quantity: qty, unit, notes: notes.trim() || undefined },
             {
               onSuccess: (data) => {
-                Alert.alert('Request Created', data.message ?? 'Your stock request has been submitted.', [
+                Alert.alert('Success', data.message ?? 'Stock issued successfully.', [
                   { text: 'OK', onPress: () => router.back() },
                 ]);
               },
@@ -64,7 +60,7 @@ export default function CreateRequestScreen() {
     <>
       <Stack.Screen
         options={{
-          title: 'Create Stock Request',
+          title: 'Issue Stock',
           headerStyle: { backgroundColor: brand.gradientStart },
           headerTintColor: '#fff',
         }}
@@ -75,12 +71,11 @@ export default function CreateRequestScreen() {
           style={styles.flex}
         >
           <ScrollView contentContainerStyle={styles.content}>
-            {/* Info banner */}
             <Card style={styles.infoBanner}>
               <View style={styles.infoRow}>
                 <Ionicons name="information-circle" size={20} color={colors.info} />
                 <Text style={styles.infoText}>
-                  Create a replenishment request. Drivers will be notified and can accept the delivery.
+                  Issue stock from your location. This deducts from the oldest batch first (FIFO).
                 </Text>
               </View>
             </Card>
@@ -89,65 +84,37 @@ export default function CreateRequestScreen() {
             <Card>
               <Text style={styles.sectionTitle}>Quantity</Text>
               <Input
-                label="Number of bags"
-                placeholder="e.g. 10"
-                keyboardType="number-pad"
-                value={quantityBags}
-                onChangeText={setQuantityBags}
-                error={quantityBags !== '' && Number(quantityBags) <= 0 ? 'Must be greater than 0' : undefined}
+                label={unit === 'bag' ? 'Number of bags' : 'Kilograms'}
+                placeholder={unit === 'bag' ? 'e.g. 5' : 'e.g. 50'}
+                keyboardType="numeric"
+                value={quantity}
+                onChangeText={setQuantity}
+                error={quantity !== '' && qty <= 0 ? 'Must be greater than 0' : undefined}
               />
-              {Number(quantityBags) > 0 && (
+              {qty > 0 && (
                 <Text style={styles.kgHint}>
-                  = {Number(quantityBags) * 10} kg
+                  = {displayKg} kg
                 </Text>
               )}
             </Card>
 
-            {/* Urgency */}
+            {/* Unit toggle */}
             <Card>
-              <Text style={styles.sectionTitle}>Urgency</Text>
-              <View style={styles.urgencyRow}>
+              <Text style={styles.sectionTitle}>Unit</Text>
+              <View style={styles.unitRow}>
                 <TouchableOpacity
-                  style={[
-                    styles.urgencyOption,
-                    urgency === 'normal' && styles.urgencySelected,
-                  ]}
-                  onPress={() => setUrgency('normal')}
+                  style={[styles.unitOption, unit === 'bag' && styles.unitSelected]}
+                  onPress={() => setUnit('bag')}
                 >
-                  <Ionicons
-                    name="time-outline"
-                    size={20}
-                    color={urgency === 'normal' ? '#fff' : '#94a3b8'}
-                  />
-                  <Text
-                    style={[
-                      styles.urgencyLabel,
-                      urgency === 'normal' && styles.urgencyLabelSelected,
-                    ]}
-                  >
-                    Normal
-                  </Text>
+                  <Ionicons name="cube-outline" size={20} color={unit === 'bag' ? '#fff' : '#94a3b8'} />
+                  <Text style={[styles.unitLabel, unit === 'bag' && styles.unitLabelSelected]}>Bags</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[
-                    styles.urgencyOption,
-                    urgency === 'urgent' && styles.urgencyUrgentSelected,
-                  ]}
-                  onPress={() => setUrgency('urgent')}
+                  style={[styles.unitOption, unit === 'kg' && styles.unitSelected]}
+                  onPress={() => setUnit('kg')}
                 >
-                  <Ionicons
-                    name="flash"
-                    size={20}
-                    color={urgency === 'urgent' ? '#fff' : '#94a3b8'}
-                  />
-                  <Text
-                    style={[
-                      styles.urgencyLabel,
-                      urgency === 'urgent' && styles.urgencyUrgentLabel,
-                    ]}
-                  >
-                    Urgent
-                  </Text>
+                  <Ionicons name="scale-outline" size={20} color={unit === 'kg' ? '#fff' : '#94a3b8'} />
+                  <Text style={[styles.unitLabel, unit === 'kg' && styles.unitLabelSelected]}>Kilograms</Text>
                 </TouchableOpacity>
               </View>
             </Card>
@@ -156,7 +123,7 @@ export default function CreateRequestScreen() {
             <Card>
               <Input
                 label="Notes (optional)"
-                placeholder="Any additional details..."
+                placeholder="Reason for issuing stock..."
                 value={notes}
                 onChangeText={setNotes}
                 multiline
@@ -166,14 +133,13 @@ export default function CreateRequestScreen() {
             </Card>
           </ScrollView>
 
-          {/* Submit button */}
           <View style={styles.footer}>
             <Button
-              title={mutation.isPending ? 'Creating...' : 'Create Request'}
+              title={mutation.isPending ? 'Issuing...' : 'Issue Stock'}
               onPress={handleSubmit}
               loading={mutation.isPending}
               disabled={!isValid || mutation.isPending}
-              style={styles.submitButton}
+              style={{ backgroundColor: brand.accent }}
             />
           </View>
         </KeyboardAvoidingView>
@@ -197,8 +163,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   kgHint: { fontSize: fontSize.xs, color: colors.gray[500], marginTop: spacing.xs },
-  urgencyRow: { flexDirection: 'row', gap: spacing.md },
-  urgencyOption: {
+  unitRow: { flexDirection: 'row', gap: spacing.md },
+  unitOption: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
@@ -210,21 +176,16 @@ const styles = StyleSheet.create({
     borderColor: '#e2e8f0',
     backgroundColor: '#fff',
   },
-  urgencySelected: {
+  unitSelected: {
     borderColor: '#0f172a',
     backgroundColor: '#0f172a',
   },
-  urgencyUrgentSelected: {
-    borderColor: '#0f172a',
-    backgroundColor: '#0f172a',
-  },
-  urgencyLabel: {
+  unitLabel: {
     fontSize: fontSize.sm,
     fontWeight: '600',
     color: '#64748b',
   },
-  urgencyLabelSelected: { color: '#fff' },
-  urgencyUrgentLabel: { color: '#fff' },
+  unitLabelSelected: { color: '#fff' },
   textArea: { minHeight: 80, textAlignVertical: 'top' },
   footer: {
     padding: spacing.lg,
@@ -232,5 +193,4 @@ const styles = StyleSheet.create({
     borderTopColor: colors.gray[200],
     backgroundColor: colors.white,
   },
-  submitButton: { backgroundColor: brand.accent },
 });

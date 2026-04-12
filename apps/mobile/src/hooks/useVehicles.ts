@@ -11,7 +11,7 @@ import { STALE_TIME } from '../constants/config';
 export function useVehicles(activeOnly = false) {
   return useQuery({
     queryKey: ['vehicles', { activeOnly }],
-    queryFn: () => vehiclesApi.list(activeOnly).then((r) => r.data),
+    queryFn: () => vehiclesApi.list(activeOnly).then((r) => r.data.vehicles ?? []),
     staleTime: STALE_TIME,
   });
 }

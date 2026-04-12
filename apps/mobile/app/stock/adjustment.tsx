@@ -18,7 +18,7 @@ import { Button } from '../../src/components/ui/Button';
 import { Input } from '../../src/components/ui/Input';
 import { Badge } from '../../src/components/ui/Badge';
 import { Loading } from '../../src/components/ui/Loading';
-import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
+import { brand, colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
 
 const AMBER = '#f59e0b';
 const AMBER_BG = '#fffbeb';
@@ -96,8 +96,8 @@ export default function AdjustmentScreen() {
       <Stack.Screen
         options={{
           title: 'Stock Adjustment',
-          headerStyle: { backgroundColor: AMBER },
-          headerTintColor: colors.white,
+          headerStyle: { backgroundColor: brand.gradientStart },
+          headerTintColor: '#fff',
         }}
       />
       <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -113,28 +113,28 @@ export default function AdjustmentScreen() {
                 <TouchableOpacity
                   style={[
                     styles.dirOption,
-                    direction === 'positive' && { borderColor: colors.success, backgroundColor: '#dcfce7' },
+                    direction === 'positive' && { borderColor: '#0f172a', backgroundColor: '#0f172a' },
                   ]}
                   onPress={() => setDirection('positive')}
                 >
-                  <Ionicons name="add-circle" size={24} color={direction === 'positive' ? colors.success : colors.gray[400]} />
-                  <Text style={[styles.dirLabel, direction === 'positive' && { color: colors.success }]}>
+                  <Ionicons name="add-circle" size={24} color={direction === 'positive' ? '#fff' : '#94a3b8'} />
+                  <Text style={[styles.dirLabel, direction === 'positive' && { color: '#fff' }]}>
                     Add Stock
                   </Text>
-                  <Text style={styles.dirHint}>Found stock, correction up</Text>
+                  <Text style={[styles.dirHint, direction === 'positive' && { color: 'rgba(255,255,255,0.5)' }]}>Found stock, correction up</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[
                     styles.dirOption,
-                    direction === 'negative' && { borderColor: colors.error, backgroundColor: '#fee2e2' },
+                    direction === 'negative' && { borderColor: '#0f172a', backgroundColor: '#0f172a' },
                   ]}
                   onPress={() => setDirection('negative')}
                 >
-                  <Ionicons name="remove-circle" size={24} color={direction === 'negative' ? colors.error : colors.gray[400]} />
-                  <Text style={[styles.dirLabel, direction === 'negative' && { color: colors.error }]}>
+                  <Ionicons name="remove-circle" size={24} color={direction === 'negative' ? '#fff' : '#94a3b8'} />
+                  <Text style={[styles.dirLabel, direction === 'negative' && { color: '#fff' }]}>
                     Remove Stock
                   </Text>
-                  <Text style={styles.dirHint}>Theft, count error</Text>
+                  <Text style={[styles.dirHint, direction === 'negative' && { color: 'rgba(255,255,255,0.5)' }]}>Theft, count error</Text>
                 </TouchableOpacity>
               </View>
             </Card>
@@ -245,7 +245,7 @@ export default function AdjustmentScreen() {
               onPress={handleSubmit}
               loading={mutation.isPending}
               disabled={!isValid || mutation.isPending}
-              style={{ backgroundColor: AMBER }}
+              style={{ backgroundColor: brand.accent }}
             />
           </View>
         </KeyboardAvoidingView>
@@ -255,13 +255,14 @@ export default function AdjustmentScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
+  container: { flex: 1, backgroundColor: '#f8fafc' },
   flex: { flex: 1 },
   content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing['3xl'] },
   sectionTitle: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[900],
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0f172a',
+    letterSpacing: -0.2,
     marginBottom: spacing.md,
   },
   dirRow: { flexDirection: 'row', gap: spacing.md },
@@ -270,10 +271,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.xs,
     padding: spacing.lg,
-    borderRadius: borderRadius.md,
-    borderWidth: 2,
-    borderColor: colors.gray[200],
-    backgroundColor: colors.white,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#fff',
   },
   dirLabel: {
     fontSize: fontSize.sm,
@@ -289,66 +290,66 @@ const styles = StyleSheet.create({
   qtyInput: { flex: 1 },
   unitToggle: {
     flexDirection: 'row',
-    borderRadius: borderRadius.md,
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: colors.gray[300],
+    borderColor: '#e2e8f0',
     overflow: 'hidden',
     marginTop: 2,
   },
   unitBtn: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    backgroundColor: colors.white,
+    backgroundColor: '#fff',
   },
   unitBtnActive: {
-    backgroundColor: AMBER,
+    backgroundColor: '#0f172a',
   },
   unitText: {
     fontSize: fontSize.sm,
-    fontWeight: fontWeight.medium,
-    color: colors.gray[600],
+    fontWeight: '600',
+    color: '#64748b',
   },
-  unitTextActive: { color: colors.white },
+  unitTextActive: { color: '#fff' },
   reasonGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   reasonChip: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full,
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: AMBER,
-    backgroundColor: AMBER_BG,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#fff',
   },
   reasonChipSelected: {
-    backgroundColor: AMBER,
-    borderColor: AMBER,
+    backgroundColor: '#0f172a',
+    borderColor: '#0f172a',
   },
   reasonText: {
     fontSize: fontSize.sm,
-    fontWeight: fontWeight.medium,
-    color: AMBER,
+    fontWeight: '600',
+    color: '#64748b',
   },
-  reasonTextSelected: { color: colors.white },
+  reasonTextSelected: { color: '#fff' },
   batchHint: { fontSize: fontSize.xs, color: colors.gray[500], marginBottom: spacing.sm },
   batchScroll: { marginTop: spacing.xs },
   batchChip: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full,
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: colors.gray[300],
-    backgroundColor: colors.white,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#fff',
     marginRight: spacing.sm,
   },
   batchChipSelected: {
-    backgroundColor: AMBER,
-    borderColor: AMBER,
+    backgroundColor: '#0f172a',
+    borderColor: '#0f172a',
   },
   batchChipText: {
     fontSize: fontSize.xs,
-    fontWeight: fontWeight.medium,
-    color: colors.gray[600],
+    fontWeight: '600',
+    color: '#64748b',
   },
-  batchChipTextSelected: { color: colors.white },
+  batchChipTextSelected: { color: '#fff' },
   textArea: { minHeight: 80, textAlignVertical: 'top' },
   footer: {
     padding: spacing.lg,

@@ -1,5 +1,9 @@
 import React from 'react';
-import { View, Text, ScrollView, RefreshControl, TouchableOpacity, StyleSheet } from 'react-native';
+import {
+  View, Text, ScrollView, RefreshControl, TouchableOpacity,
+  StyleSheet, Platform,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,277 +11,382 @@ import { useAuthStore } from '../../src/stores/authStore';
 import { useDashboard } from '../../src/hooks/useDashboard';
 import { useAvailableRequests } from '../../src/hooks/useRequests';
 import { usePendingDeliveries } from '../../src/hooks/useDeliveries';
-import { Card } from '../../src/components/ui/Card';
-import { Badge } from '../../src/components/ui/Badge';
-import { Button } from '../../src/components/ui/Button';
 import { Loading } from '../../src/components/ui/Loading';
-import { colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
+import { brand } from '../../src/constants/theme';
+
+const mono = Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' });
 
 export default function DashboardScreen() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const role = user?.role;
 
-  const dashboard = useDashboard(user?.location_id ?? undefined);
+  const isManagerRole = ['admin', 'zone_manager', 'location_manager'].includes(role ?? '');
+  const dashboard = useDashboard(isManagerRole ? undefined : (user?.location_id ?? undefined));
   const available = useAvailableRequests();
   const pending = usePendingDeliveries();
 
   const stats = dashboard.data?.stats;
   const forecast = dashboard.data?.forecast;
   const balances = dashboard.data?.stock_balance ?? [];
+  const isDriver = role === 'driver';
+  const isManager = isManagerRole;
+  const reqCount = available.data?.total ?? 0;
+  const delCount = pending.data?.total ?? 0;
 
-  const greeting = getGreeting();
-  const isLoading = dashboard.isLoading;
-  const isManager = ['admin', 'zone_manager', 'location_manager'].includes(role ?? '');
+  if (dashboard.isLoading) return <Loading fullScreen message="" />;
 
-  if (isLoading) return <Loading fullScreen message="Loading dashboard..." />;
+  const bags = stats?.total_stock_bags ?? 0;
+  const received = stats?.received_today_bags ?? 0;
+  const issued = stats?.issued_today_bags ?? 0;
+  const wasted = stats?.wasted_today_bags ?? 0;
+  const hasUsage = forecast && forecast.avg_daily_usage_bags > 0;
+  const lowCount = balances.filter((b) => {
+    const oh = b.on_hand_bags ?? 0;
+    return oh <= (b.critical_threshold ?? 0) || oh <= (b.low_threshold ?? 0);
+  }).length;
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={$.root} edges={['bottom']}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={$.scroll}
         refreshControl={
           <RefreshControl
             refreshing={dashboard.isRefetching}
-            onRefresh={() => {
-              dashboard.refetch();
-              available.refetch();
-              pending.refetch();
-            }}
+            tintColor="#fff"
+            onRefresh={() => { dashboard.refetch(); available.refetch(); pending.refetch(); }}
           />
         }
       >
-        {/* Welcome */}
-        <View style={styles.welcome}>
-          <Text style={styles.greeting}>{greeting}</Text>
-          <Text style={styles.name}>{user?.full_name ?? user?.email}</Text>
-          <Badge
-            label={formatRole(role ?? 'staff')}
-            variant="primary"
-          />
+        {/* ─── Gradient Hero Zone ─── */}
+        <LinearGradient
+          colors={[brand.gradientStart, brand.gradientEnd]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={$.hero}
+        >
+          <View style={$.heroContent}>
+            <Text style={$.heroGreet}>{greet()}</Text>
+            <Text style={$.heroName}>{user?.full_name ?? user?.email}</Text>
+            <View style={$.heroMeta}>
+              <View style={$.rolePill}>
+                <Text style={$.roleText}>{fmtRole(role ?? 'staff')}</Text>
+              </View>
+              {user?.location_name && (
+                <View style={$.locPill}>
+                  <Ionicons name="location" size={10} color="rgba(255,255,255,0.6)" />
+                  <Text style={$.locText}>{user.location_name}</Text>
+                </View>
+              )}
+            </View>
+          </View>
+
+          {/* Hero KPI strip inside gradient */}
+          <View style={$.heroKpi}>
+            <HeroMetric label="Total Stock" value={bags.toFixed(0)} unit="bags" />
+            <View style={$.heroKpiDivider} />
+            <HeroMetric label="Received" value={received.toFixed(0)} unit="today" highlight />
+            <View style={$.heroKpiDivider} />
+            <HeroMetric label="Issued" value={issued.toFixed(0)} unit="today" />
+          </View>
+        </LinearGradient>
+
+        {/* ─── Overlapping Cards Zone ─── */}
+        <View style={$.body}>
+          {/* Wasted + Low alerts row — overlaps into gradient */}
+          <View style={$.alertRow}>
+            <AlertChip icon="flame-outline" label="Wasted" value={wasted.toFixed(0)} tone={wasted > 0 ? 'danger' : 'neutral'} />
+            <AlertChip icon="warning-outline" label="Low Stock" value={lowCount.toString()} tone={lowCount > 0 ? 'warning' : 'neutral'} />
+            <AlertChip icon="cube-outline" label="Pending" value={delCount.toString()} tone={delCount > 0 ? 'info' : 'neutral'} />
+          </View>
+
+          {/* Priority banner */}
+          {isManager && delCount > 0 && (
+            <TouchableOpacity style={$.banner} activeOpacity={0.7} onPress={() => router.push('/alerts')}>
+              <View style={$.bannerDot} />
+              <Text style={$.bannerText}>{delCount} deliver{delCount !== 1 ? 'ies' : 'y'} pending confirmation</Text>
+              <Ionicons name="chevron-forward" size={16} color={brand.accent} />
+            </TouchableOpacity>
+          )}
+          {isDriver && reqCount > 0 && (
+            <TouchableOpacity style={$.banner} activeOpacity={0.7} onPress={() => router.push('/(tabs)/requests')}>
+              <View style={[$.bannerDot, { backgroundColor: '#22c55e' }]} />
+              <Text style={$.bannerText}>{reqCount} request{reqCount !== 1 ? 's' : ''} available</Text>
+              <Ionicons name="chevron-forward" size={16} color={brand.accent} />
+            </TouchableOpacity>
+          )}
+
+          {/* Quick Actions 2x2 */}
+          {isManager && (
+            <>
+              <Text style={$.sectionTitle}>Quick Actions</Text>
+              <View style={$.qaGrid}>
+                <QACard icon="warning" label="Alerts" tint="#ef4444" onPress={() => router.push('/alerts')} />
+                <QACard icon="stats-chart" label="Reports" tint="#6366f1" onPress={() => router.push('/reports')} />
+                <QACard icon="document-text" label="Requests" tint="#0ea5e9" onPress={() => router.push('/(tabs)/requests')} />
+                <QACard icon="add-circle" label="New Request" tint="#22c55e" onPress={() => router.push('/stock/create-request')} />
+              </View>
+            </>
+          )}
+
+          {/* Forecast */}
+          {hasUsage && (
+            <>
+              <Text style={$.sectionTitle}>Forecast</Text>
+              <View style={$.forecastRow}>
+                <ForecastCard value={Math.min(forecast!.days_of_cover, 999).toFixed(0)} label="Days Cover" />
+                <ForecastCard value={forecast!.avg_daily_usage_bags.toFixed(1)} label="Daily Use" />
+                {forecast!.suggested_order_qty_bags > 0 && (
+                  <ForecastCard value={forecast!.suggested_order_qty_bags.toFixed(0)} label="Order Qty" />
+                )}
+              </View>
+            </>
+          )}
+
+          {/* Locations */}
+          <View style={$.locHeader}>
+            <Text style={$.sectionTitle}>Locations</Text>
+            {isManager && (
+              <TouchableOpacity onPress={() => router.push('/reports')} activeOpacity={0.7}>
+                <Text style={$.locLink}>View all</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          {balances.length > 0 ? (
+            <View style={$.locCard}>
+              {balances.map((b, i) => {
+                const oh = b.on_hand_bags ?? 0;
+                const crit = oh <= (b.critical_threshold ?? 0);
+                const low = !crit && oh <= (b.low_threshold ?? 0);
+                const dot = crit ? '#ef4444' : low ? '#f59e0b' : '#22c55e';
+                return (
+                  <View key={`${b.location_id}-${b.item_id}`} style={[$.locRow, i < balances.length - 1 && $.locBorder]}>
+                    <View style={[$.locDot, { backgroundColor: dot }]} />
+                    <View style={$.locMeta}>
+                      <Text style={$.locName}>{b.location_name}</Text>
+                      <Text style={$.locSub}>{b.item_name}</Text>
+                    </View>
+                    <Text style={$.locQty}>{oh.toFixed(0)}</Text>
+                    <Text style={[$.locStatus, { color: dot }]}>
+                      {crit ? 'Critical' : low ? 'Low' : 'OK'}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          ) : (
+            <View style={$.emptyCard}>
+              <Ionicons name="cube-outline" size={24} color="#cbd5e1" />
+              <Text style={$.emptyText}>No inventory data</Text>
+            </View>
+          )}
         </View>
-
-        {/* Stock Summary */}
-        {stats && (
-          <Card>
-            <Text style={styles.sectionTitle}>Stock Overview</Text>
-            <View style={styles.statGrid}>
-              <StatTile label="Total Stock" value={`${stats.total_stock_bags.toFixed(0)}`} unit="bags" icon="cube" color={colors.primary[500]} />
-              <StatTile label="Received Today" value={`${stats.received_today_bags.toFixed(0)}`} unit="bags" icon="arrow-down" color={colors.success} />
-              <StatTile label="Issued Today" value={`${stats.issued_today_bags.toFixed(0)}`} unit="bags" icon="arrow-up" color={colors.info} />
-              <StatTile label="Wasted Today" value={`${stats.wasted_today_bags.toFixed(0)}`} unit="bags" icon="trash" color={colors.error} />
-            </View>
-          </Card>
-        )}
-
-        {/* Alerts Summary */}
-        {stats && (stats.low_stock_alerts > 0 || stats.reorder_alerts > 0 || stats.expiring_soon_alerts > 0) && (
-          <Card style={styles.alertCard}>
-            <View style={styles.alertHeader}>
-              <Text style={styles.sectionTitle}>Alerts</Text>
-              <Button title="View All" variant="ghost" size="sm" onPress={() => router.push('/alerts')} />
-            </View>
-            <View style={styles.alertRow}>
-              {stats.low_stock_alerts > 0 && (
-                <AlertPill count={stats.low_stock_alerts} label="Low Stock" variant="error" />
-              )}
-              {stats.reorder_alerts > 0 && (
-                <AlertPill count={stats.reorder_alerts} label="Reorder" variant="warning" />
-              )}
-              {stats.expiring_soon_alerts > 0 && (
-                <AlertPill count={stats.expiring_soon_alerts} label="Expiring" variant="info" />
-              )}
-            </View>
-          </Card>
-        )}
-
-        {/* Forecast */}
-        {forecast && forecast.days_of_cover > 0 && (
-          <Card>
-            <Text style={styles.sectionTitle}>Forecast</Text>
-            <View style={styles.forecastRow}>
-              <View style={styles.forecastItem}>
-                <Text style={styles.forecastValue}>{forecast.days_of_cover.toFixed(0)}</Text>
-                <Text style={styles.forecastLabel}>Days of Cover</Text>
-              </View>
-              <View style={styles.forecastItem}>
-                <Text style={styles.forecastValue}>{forecast.avg_daily_usage_bags.toFixed(1)}</Text>
-                <Text style={styles.forecastLabel}>Avg Daily Usage</Text>
-              </View>
-              {forecast.suggested_order_qty_bags > 0 && (
-                <View style={styles.forecastItem}>
-                  <Text style={styles.forecastValue}>{forecast.suggested_order_qty_bags.toFixed(0)}</Text>
-                  <Text style={styles.forecastLabel}>Order Suggested</Text>
-                </View>
-              )}
-            </View>
-            {forecast.stock_out_date && (
-              <Text style={styles.stockOutWarning}>
-                Stock out: {new Date(forecast.stock_out_date).toLocaleDateString()}
-              </Text>
-            )}
-          </Card>
-        )}
-
-        {/* Reports Quick Link (Managers) */}
-        {isManager && (
-          <TouchableOpacity activeOpacity={0.7} onPress={() => router.push('/reports')}>
-            <Card>
-              <View style={styles.reportsLink}>
-                <View style={styles.reportsIconBg}>
-                  <Ionicons name="stats-chart" size={20} color={colors.primary[500]} />
-                </View>
-                <View style={styles.reportsLinkInfo}>
-                  <Text style={styles.reportsLinkTitle}>Reports & Analytics</Text>
-                  <Text style={styles.reportsLinkSub}>Stock trends, usage, deliveries</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.gray[400]} />
-              </View>
-            </Card>
-          </TouchableOpacity>
-        )}
-
-        {/* Driver: Available Requests */}
-        {role === 'driver' && (
-          <Card>
-            <View style={styles.alertHeader}>
-              <Text style={styles.sectionTitle}>Available Requests</Text>
-              <Badge label={`${available.data?.total ?? 0}`} variant="primary" />
-            </View>
-            <Text style={styles.subtitleText}>
-              {(available.data?.total ?? 0) > 0
-                ? 'Pending requests waiting for a driver'
-                : 'No pending requests'}
-            </Text>
-            <Button
-              title="View Requests"
-              variant="outline"
-              size="sm"
-              onPress={() => router.push('/(tabs)/requests')}
-              style={{ marginTop: spacing.md }}
-            />
-          </Card>
-        )}
-
-        {/* Manager: Pending Deliveries */}
-        {(role === 'location_manager' || role === 'zone_manager' || role === 'admin') && (
-          <Card>
-            <View style={styles.alertHeader}>
-              <Text style={styles.sectionTitle}>Pending Deliveries</Text>
-              <Badge label={`${pending.data?.total ?? 0}`} variant={pending.data?.total ? 'warning' : 'neutral'} />
-            </View>
-            {(pending.data?.total ?? 0) > 0 && (
-              <Button
-                title="Review Deliveries"
-                variant="outline"
-                size="sm"
-                onPress={() => router.push('/alerts')}
-                style={{ marginTop: spacing.sm }}
-              />
-            )}
-          </Card>
-        )}
-
-        {/* Stock by location */}
-        {balances.length > 0 && (
-          <Card>
-            <Text style={styles.sectionTitle}>Stock by Location</Text>
-            {balances.map((b) => {
-              const status = b.on_hand_bags <= (b.critical_threshold ?? 0)
-                ? 'error' : b.on_hand_bags <= (b.low_threshold ?? 0) ? 'warning' : 'success';
-              return (
-                <View key={`${b.location_id}-${b.item_id}`} style={styles.balanceRow}>
-                  <View style={styles.balanceInfo}>
-                    <Text style={styles.balanceName}>{b.location_name}</Text>
-                    <Text style={styles.balanceItem}>{b.item_name}</Text>
-                  </View>
-                  <View style={styles.balanceRight}>
-                    <Text style={styles.balanceQty}>{b.on_hand_bags.toFixed(0)} bags</Text>
-                    <Badge label={status === 'error' ? 'Critical' : status === 'warning' ? 'Low' : 'OK'} variant={status} />
-                  </View>
-                </View>
-              );
-            })}
-          </Card>
-        )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function StatTile({ label, value, unit, icon, color }: {
-  label: string; value: string; unit: string;
-  icon: keyof typeof Ionicons.glyphMap; color: string;
-}) {
+/* ─── Sub-components ─── */
+
+function HeroMetric({ label, value, unit, highlight }: { label: string; value: string; unit: string; highlight?: boolean }) {
   return (
-    <View style={styles.statTile}>
-      <Ionicons name={icon} size={18} color={color} />
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statUnit}>{unit}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+    <View style={$.heroMetric}>
+      <Text style={$.heroMetricLabel}>{label}</Text>
+      <Text style={[$.heroMetricValue, highlight && { color: brand.accent }]}>{value}</Text>
+      <Text style={$.heroMetricUnit}>{unit}</Text>
     </View>
   );
 }
 
-function AlertPill({ count, label, variant }: { count: number; label: string; variant: 'error' | 'warning' | 'info' }) {
-  const bgMap = { error: '#fee2e2', warning: '#fef9c3', info: '#dbeafe' };
-  const textMap = { error: '#991b1b', warning: '#854d0e', info: '#1e40af' };
+function AlertChip({ icon, label, value, tone }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string; tone: 'danger' | 'warning' | 'info' | 'neutral' }) {
+  const toneColors = { danger: '#ef4444', warning: '#f59e0b', info: '#3b82f6', neutral: '#94a3b8' };
+  const toneBg = { danger: '#fef2f2', warning: '#fffbeb', info: '#eff6ff', neutral: '#f8fafc' };
+  const c = toneColors[tone];
   return (
-    <View style={[styles.alertPill, { backgroundColor: bgMap[variant] }]}>
-      <Text style={[styles.alertPillCount, { color: textMap[variant] }]}>{count}</Text>
-      <Text style={[styles.alertPillLabel, { color: textMap[variant] }]}>{label}</Text>
+    <View style={[$.alertChip, { backgroundColor: toneBg[tone] }]}>
+      <Ionicons name={icon} size={14} color={c} />
+      <Text style={[$.alertChipVal, { color: c }]}>{value}</Text>
+      <Text style={$.alertChipLabel}>{label}</Text>
     </View>
   );
 }
 
-function getGreeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 12) return 'Good morning';
-  if (hour < 17) return 'Good afternoon';
-  return 'Good evening';
+function QACard({ icon, label, tint, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; tint: string; onPress: () => void }) {
+  return (
+    <TouchableOpacity style={$.qaCard} activeOpacity={0.6} onPress={onPress}>
+      <View style={[$.qaIcon, { backgroundColor: tint + '14' }]}>
+        <Ionicons name={icon} size={22} color={tint} />
+      </View>
+      <Text style={$.qaLabel}>{label}</Text>
+    </TouchableOpacity>
+  );
 }
 
-function formatRole(role: string): string {
-  return role.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+function ForecastCard({ value, label }: { value: string; label: string }) {
+  return (
+    <View style={$.forecastCard}>
+      <Text style={$.forecastVal}>{value}</Text>
+      <Text style={$.forecastLbl}>{label}</Text>
+    </View>
+  );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
-  content: { padding: spacing.lg, gap: spacing.lg },
-  welcome: { gap: spacing.xs },
-  greeting: { fontSize: fontSize.md, color: colors.gray[500] },
-  name: { fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.gray[900] },
-  sectionTitle: { fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.gray[900], marginBottom: spacing.md },
-  subtitleText: { fontSize: fontSize.sm, color: colors.gray[500] },
-  statGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  statTile: { width: '46%', alignItems: 'center', paddingVertical: spacing.md, backgroundColor: colors.gray[50], borderRadius: 8 },
-  statValue: { fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.gray[900], marginTop: spacing.xs },
-  statUnit: { fontSize: fontSize.xs, color: colors.gray[500] },
-  statLabel: { fontSize: fontSize.xs, color: colors.gray[500], marginTop: 2 },
-  alertCard: {},
-  alertHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  alertRow: { flexDirection: 'row', gap: spacing.sm },
-  alertPill: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: 20 },
-  alertPillCount: { fontSize: fontSize.lg, fontWeight: fontWeight.bold },
-  alertPillLabel: { fontSize: fontSize.xs },
-  forecastRow: { flexDirection: 'row', justifyContent: 'space-around' },
-  forecastItem: { alignItems: 'center' },
-  forecastValue: { fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.gray[900] },
-  forecastLabel: { fontSize: fontSize.xs, color: colors.gray[500], marginTop: 2 },
-  stockOutWarning: { fontSize: fontSize.sm, color: colors.error, marginTop: spacing.md, textAlign: 'center', fontWeight: fontWeight.medium },
-  reportsLink: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  reportsIconBg: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: colors.primary[50],
-    alignItems: 'center', justifyContent: 'center',
+function greet(): string {
+  const h = new Date().getHours();
+  return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+}
+
+function fmtRole(r: string): string {
+  return r.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+/* ─── Styles ─── */
+
+const elev = (n: number) => Platform.select({
+  ios: { shadowColor: '#0f172a', shadowOffset: { width: 0, height: n * 2 }, shadowOpacity: 0.04 + n * 0.03, shadowRadius: n * 4 },
+  android: { elevation: n * 2 },
+  default: { shadowColor: '#0f172a', shadowOffset: { width: 0, height: n * 2 }, shadowOpacity: 0.04 + n * 0.03, shadowRadius: n * 4 },
+}) as any;
+
+const $ = StyleSheet.create({
+  root: { flex: 1, backgroundColor: '#f8fafc' },
+  scroll: { paddingBottom: 32 },
+
+  hero: {
+    paddingTop: 8,
+    paddingBottom: 0,
   },
-  reportsLinkInfo: { flex: 1 },
-  reportsLinkTitle: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.gray[900] },
-  reportsLinkSub: { fontSize: fontSize.xs, color: colors.gray[500], marginTop: 1 },
-  balanceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.gray[200] },
-  balanceInfo: { flex: 1 },
-  balanceName: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.gray[900] },
-  balanceItem: { fontSize: fontSize.xs, color: colors.gray[500] },
-  balanceRight: { alignItems: 'flex-end', gap: spacing.xs },
-  balanceQty: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.gray[900] },
+  heroContent: {
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+  },
+  heroGreet: { fontSize: 14, color: 'rgba(255,255,255,0.55)', fontWeight: '500', marginBottom: 6 },
+  heroName: { fontSize: 26, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
+  heroMeta: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  rolePill: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  roleText: { color: 'rgba(255,255,255,0.8)', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8 },
+  locPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  locText: { color: 'rgba(255,255,255,0.6)', fontSize: 12, fontWeight: '500' },
+
+  heroKpi: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    marginHorizontal: 16,
+    borderRadius: 20,
+    paddingVertical: 18,
+    marginBottom: -28,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  heroMetric: { flex: 1, alignItems: 'center' },
+  heroMetricLabel: { fontSize: 10, color: 'rgba(255,255,255,0.5)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  heroMetricValue: { fontSize: 26, fontWeight: '800', color: '#fff', marginTop: 6, fontFamily: mono },
+  heroMetricUnit: { fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: '500', marginTop: 2 },
+  heroKpiDivider: { width: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginVertical: 8 },
+
+  body: { paddingHorizontal: 16, paddingTop: 40 },
+
+  alertRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  alertChip: {
+    flex: 1,
+    borderRadius: 16,
+    paddingVertical: 12,
+    alignItems: 'center',
+    gap: 2,
+    ...elev(1),
+  },
+  alertChipVal: { fontSize: 18, fontWeight: '800', fontFamily: mono },
+  alertChipLabel: { fontSize: 10, color: '#64748b', fontWeight: '600' },
+
+  banner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 10,
+    marginBottom: 20,
+    ...elev(2),
+  },
+  bannerDot: { width: 8, height: 8, borderRadius: 8, backgroundColor: brand.accent },
+  bannerText: { flex: 1, fontSize: 14, fontWeight: '600', color: '#0f172a' },
+
+  sectionTitle: { fontSize: 16, fontWeight: '800', color: '#0f172a', letterSpacing: -0.2, marginBottom: 12, marginTop: 8 },
+
+  qaGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 8 },
+  qaCard: {
+    width: '47%',
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 18,
+    ...elev(2),
+  },
+  qaIcon: {
+    width: 44, height: 44, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 14,
+  },
+  qaLabel: { fontSize: 14, fontWeight: '700', color: '#0f172a' },
+
+  forecastRow: { flexDirection: 'row', gap: 10, marginBottom: 8 },
+  forecastCard: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    paddingVertical: 16,
+    alignItems: 'center',
+    ...elev(1),
+  },
+  forecastVal: { fontSize: 20, fontWeight: '800', color: '#0f172a', fontFamily: mono },
+  forecastLbl: { fontSize: 10, fontWeight: '700', color: '#94a3b8', marginTop: 4, textTransform: 'uppercase', letterSpacing: 0.4 },
+
+  locHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, marginBottom: 12 },
+  locLink: { fontSize: 13, fontWeight: '700', color: brand.accent },
+  locCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    overflow: 'hidden',
+    ...elev(2),
+  },
+  locRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    gap: 12,
+  },
+  locBorder: { borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  locDot: { width: 10, height: 10, borderRadius: 5 },
+  locMeta: { flex: 1 },
+  locName: { fontSize: 15, fontWeight: '700', color: '#0f172a' },
+  locSub: { fontSize: 12, color: '#94a3b8', marginTop: 2 },
+  locQty: { fontSize: 18, fontWeight: '800', color: '#0f172a', fontFamily: mono, minWidth: 48, textAlign: 'right' },
+  locStatus: { fontSize: 12, fontWeight: '700', minWidth: 50, textAlign: 'right' },
+
+  emptyCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    paddingVertical: 40,
+    alignItems: 'center',
+    gap: 8,
+    ...elev(1),
+  },
+  emptyText: { fontSize: 14, color: '#94a3b8', fontWeight: '500' },
 });

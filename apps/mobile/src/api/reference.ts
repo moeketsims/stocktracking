@@ -19,14 +19,26 @@ export interface Supplier {
 
 export const referenceApi = {
   getItems: () =>
-    api.get<Item[]>('/api/reference/items'),
+    api.get<{ items: Item[] }>('/api/reference/items').then((r) => ({
+      ...r,
+      data: r.data.items ?? [],
+    })),
 
   getLocations: () =>
-    api.get<Location[]>('/api/reference/locations'),
+    api.get<{ locations: Location[] }>('/api/reference/locations').then((r) => ({
+      ...r,
+      data: r.data.locations ?? [],
+    })),
 
   getVehicles: () =>
-    api.get<Vehicle[]>('/api/vehicles'),
+    api.get<{ vehicles: Vehicle[]; total: number }>('/api/vehicles').then((r) => ({
+      ...r,
+      data: r.data.vehicles ?? [],
+    })),
 
   getSuppliers: () =>
-    api.get<Supplier[]>('/api/suppliers'),
+    api.get<{ suppliers: Supplier[] }>('/api/suppliers').then((r) => ({
+      ...r,
+      data: r.data.suppliers ?? [],
+    })),
 };

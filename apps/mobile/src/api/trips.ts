@@ -80,7 +80,38 @@ export interface LoanTrip extends Trip {
   };
 }
 
+export interface CreateTripPayload {
+  vehicle_id: string;
+  driver_id?: string;
+  driver_name?: string;
+  trip_type?: string;
+  supplier_id?: string;
+  from_location_id?: string;
+  to_location_id?: string;
+  origin_description?: string;
+  destination_description?: string;
+  notes?: string;
+}
+
+export interface CreateTripResponse {
+  success: boolean;
+  message: string;
+  trip_id: string;
+  trip_number: string;
+}
+
+export interface CancelTripResponse {
+  success: boolean;
+  message: string;
+}
+
 export const tripsApi = {
+  create: (data: CreateTripPayload) =>
+    api.post<CreateTripResponse>('/api/trips', data),
+
+  cancel: (id: string) =>
+    api.post<CancelTripResponse>(`/api/trips/${id}/cancel`),
+
   list: (params?: { status?: string; vehicle_id?: string; from_date?: string; to_date?: string; limit?: number }) =>
     api.get<TripsResponse>('/api/trips', { params }),
 
