@@ -65,11 +65,17 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+});
+
 export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <ErrorBoundary>
         <AuthGuard>
+          <View style={styles.root}>
+          <OfflineBanner />
           <StatusBar style="light" />
           <Stack
             screenOptions={{
@@ -83,6 +89,7 @@ export default function RootLayout() {
             <Stack.Screen name="(auth)" options={{ headerShown: false }} />
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           </Stack>
+          </View>
         </AuthGuard>
       </ErrorBoundary>
     </QueryClientProvider>
