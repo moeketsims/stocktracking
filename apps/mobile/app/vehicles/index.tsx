@@ -15,7 +15,7 @@ import { useAuthStore } from '../../src/stores/authStore';
 import { Badge } from '../../src/components/ui/Badge';
 import { Loading } from '../../src/components/ui/Loading';
 import { Card } from '../../src/components/ui/Card';
-import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
+import { brand, colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
 import type { Vehicle } from '../../src/api/vehicles';
 
 type Filter = 'all' | 'active' | 'inactive';
@@ -75,7 +75,7 @@ export default function VehiclesScreen() {
       <Stack.Screen
         options={{
           title: 'Vehicles',
-          headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
+          headerStyle: { backgroundColor: brand.gradientStart },
           headerTintColor: colors.white,
           headerRight: canManage
             ? () => (

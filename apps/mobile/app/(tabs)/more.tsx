@@ -7,11 +7,10 @@ import { useAuthStore } from '../../src/stores/authStore';
 import { useLogout } from '../../src/hooks/useAuth';
 import { useAlerts } from '../../src/hooks/useAlerts';
 import { usePendingDeliveries } from '../../src/hooks/useDeliveries';
-import { colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
+import { brand, colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
 import { APP_VERSION } from '../../src/constants/config';
 
 /* ── Design tokens (matching dashboard) ── */
-const BRAND    = '#0f172a';
 const WARM_BG  = '#f8fafc';
 const CARD_R   = 16;
 
@@ -171,7 +170,7 @@ const st = StyleSheet.create({
   },
   avatar: {
     width: 50, height: 50, borderRadius: 25,
-    backgroundColor: BRAND,
+    backgroundColor: brand.gradientStart,
     alignItems: 'center', justifyContent: 'center',
   },
   avatarText: { fontSize: 20, fontWeight: '700', color: '#fff', letterSpacing: -0.3 },
@@ -183,7 +182,7 @@ const st = StyleSheet.create({
     backgroundColor: '#ede9fe',
     paddingHorizontal: 9, paddingVertical: 2, borderRadius: 7,
   },
-  roleText: { fontSize: 11, fontWeight: '600', color: BRAND },
+  roleText: { fontSize: 11, fontWeight: '600', color: brand.gradientStart },
   locRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   locText: { fontSize: 11, fontWeight: '400', color: colors.gray[400] },
 
@@ -216,7 +215,7 @@ const st = StyleSheet.create({
   },
   menuRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   badge: {
-    backgroundColor: BRAND,
+    backgroundColor: brand.gradientStart,
     paddingHorizontal: 7, paddingVertical: 1,
     borderRadius: 10, minWidth: 22,
     alignItems: 'center', justifyContent: 'center',

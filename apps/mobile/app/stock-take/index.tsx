@@ -25,7 +25,7 @@ import { Card } from '../../src/components/ui/Card';
 import { Badge } from '../../src/components/ui/Badge';
 import { Button } from '../../src/components/ui/Button';
 import { Loading } from '../../src/components/ui/Loading';
-import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
+import { brand, colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
 import type { UserRole, StockTakeLine, StockTakeStatus } from '../../src/types';
 
 const STATUS_BADGE: Record<StockTakeStatus, { label: string; variant: 'success' | 'warning' | 'neutral' }> = {
@@ -143,7 +143,7 @@ export default function StockTakeScreen() {
       <Stack.Screen
         options={{
           title: 'Stock Take',
-          headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
+          headerStyle: { backgroundColor: brand.gradientStart },
           headerTintColor: colors.white,
           headerTitleStyle: { fontWeight: fontWeight.semibold },
         }}

@@ -25,7 +25,7 @@ import { Button } from '../../src/components/ui/Button';
 import { Input } from '../../src/components/ui/Input';
 import { Badge } from '../../src/components/ui/Badge';
 import { Loading } from '../../src/components/ui/Loading';
-import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
+import { brand, colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
 import type { UserRole } from '../../src/types';
 
 const ROLES: { label: string; value: UserRole }[] = [
@@ -100,7 +100,7 @@ export default function UserDetailScreen() {
         <Stack.Screen
           options={{
             title: 'User Detail',
-            headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
+            headerStyle: { backgroundColor: brand.gradientStart },
             headerTintColor: colors.white,
           }}
         />
@@ -164,7 +164,7 @@ export default function UserDetailScreen() {
       <Stack.Screen
         options={{
           title: user.full_name ?? 'User Detail',
-          headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
+          headerStyle: { backgroundColor: brand.gradientStart },
           headerTintColor: colors.white,
           headerTitleStyle: { fontWeight: fontWeight.semibold },
           headerRight: () =>

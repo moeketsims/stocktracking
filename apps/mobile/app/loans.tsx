@@ -7,7 +7,7 @@ import { useAuthStore } from '../src/stores/authStore';
 import { useLoans } from '../src/hooks/useLoans';
 import { LoanCard } from '../src/components/LoanCard';
 import { Loading } from '../src/components/ui/Loading';
-import { colors, spacing, fontSize, fontWeight } from '../src/constants/theme';
+import { brand, colors, spacing, fontSize, fontWeight } from '../src/constants/theme';
 
 type Filter = 'active' | 'incoming' | 'outgoing' | 'history';
 
@@ -33,7 +33,7 @@ export default function LoansScreen() {
       <Stack.Screen
         options={{
           title: 'Loans',
-          headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
+          headerStyle: { backgroundColor: brand.gradientStart },
           headerTintColor: colors.white,
           headerRight: isManager
             ? () => (
