@@ -512,6 +512,16 @@ export default function RequestDetailScreen() {
             <Card>
               <Text style={styles.sectionTitle}>Accept & Deliver</Text>
 
+              {/* Show where stock is going — not editable */}
+              <View style={styles.deliveryInfoBanner}>
+                <Ionicons name="location" size={16} color={colors.primary[500]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.deliveryInfoLabel}>Delivering to</Text>
+                  <Text style={styles.deliveryInfoValue}>{request.location?.name ?? 'Unknown'}</Text>
+                </View>
+                <Text style={styles.deliveryInfoQty}>{request.quantity_bags} bags</Text>
+              </View>
+
               <Text style={styles.fieldLabel}>Vehicle *</Text>
               {vehiclesQuery.isLoading ? (
                 <ActivityIndicator size="small" color={colors.primary[500]} />
@@ -548,7 +558,7 @@ export default function RequestDetailScreen() {
               )}
 
               {/* Source type */}
-              <Text style={styles.fieldLabel}>Pickup From *</Text>
+              <Text style={styles.fieldLabel}>Where are you picking up from? *</Text>
               <View style={styles.formActions}>
                 <TouchableOpacity
                   style={[styles.pickerChip, { flex: 1, justifyContent: 'center' }, acceptFromType === 'supplier' && styles.pickerChipActive]}
@@ -564,13 +574,16 @@ export default function RequestDetailScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* Source selection */}
-              <Text style={styles.fieldLabel}>{acceptFromType === 'supplier' ? 'Select Supplier *' : 'Select Location *'}</Text>
+              {/* Source selection — exclude the destination shop from warehouse options */}
+              <Text style={styles.fieldLabel}>{acceptFromType === 'supplier' ? 'Select Supplier *' : 'Select Pickup Location *'}</Text>
               {(acceptFromType === 'supplier' ? suppliersQuery.isLoading : locationsQuery.isLoading) ? (
                 <ActivityIndicator size="small" color={brand.accent} />
               ) : (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerRow}>
-                  {(acceptFromType === 'supplier' ? suppliers : locations).map((item: any) => (
+                  {(acceptFromType === 'supplier'
+                    ? suppliers
+                    : locations.filter((l: any) => l.id !== request.location_id)
+                  ).map((item: any) => (
                     <TouchableOpacity
                       key={item.id}
                       style={[styles.pickerChip, acceptFromId === item.id && styles.pickerChipActive]}
@@ -581,8 +594,11 @@ export default function RequestDetailScreen() {
                       </Text>
                     </TouchableOpacity>
                   ))}
-                  {(acceptFromType === 'supplier' ? suppliers : locations).length === 0 && (
-                    <Text style={styles.emptyPickerText}>No {acceptFromType === 'supplier' ? 'suppliers' : 'locations'} found</Text>
+                  {(acceptFromType === 'supplier'
+                    ? suppliers
+                    : locations.filter((l: any) => l.id !== request.location_id)
+                  ).length === 0 && (
+                    <Text style={styles.emptyPickerText}>No {acceptFromType === 'supplier' ? 'suppliers' : 'pickup locations'} found</Text>
                   )}
                 </ScrollView>
               )}
@@ -1057,5 +1073,34 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
     marginTop: spacing.lg,
+  },
+  deliveryInfoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.primary[50],
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.primary[100],
+  },
+  deliveryInfoLabel: {
+    fontSize: fontSize.xs,
+    fontWeight: fontWeight.medium,
+    color: colors.gray[500],
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.3,
+  },
+  deliveryInfoValue: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+    color: colors.gray[900],
+    marginTop: 2,
+  },
+  deliveryInfoQty: {
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.bold,
+    color: colors.primary[600],
   },
 });
