@@ -38,6 +38,14 @@
         {
           "cameraPermission": "Allow Potato Stock to use the camera for barcode scanning."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#f97316",
+          "sounds": []
+        }
       ]
     ]
   }

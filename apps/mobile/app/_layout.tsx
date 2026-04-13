@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { View, StyleSheet } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StatusBar } from 'expo-status-bar';
@@ -8,6 +9,8 @@ import { Loading } from '../src/components/ui/Loading';
 import ErrorBoundary from '../src/components/ErrorBoundary';
 import { STALE_TIME } from '../src/constants/config';
 import { brand } from '../src/constants/theme';
+import { useNotifications } from '../src/hooks/useNotifications';
+import OfflineBanner from '../src/components/OfflineBanner';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -16,6 +19,11 @@ const queryClient = new QueryClient({
     queries: {
       staleTime: STALE_TIME,
       retry: 2,
+      networkMode: 'offlineFirst',
+      gcTime: 1000 * 60 * 30,
+    },
+    mutations: {
+      networkMode: 'offlineFirst',
     },
   },
 });
@@ -28,6 +36,9 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     loadStoredAuth();
   }, [loadStoredAuth]);
+
+  // Register push notifications when authenticated
+  useNotifications();
 
   useEffect(() => {
     if (isLoading) return;
