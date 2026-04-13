@@ -18,7 +18,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Button } from '../../src/components/ui/Button';
 import { Input } from '../../src/components/ui/Input';
 import { Card } from '../../src/components/ui/Card';
-import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
+import { brand, colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
 import type { TripType } from '../../src/types';
 
 const TRIP_TYPES: { value: TripType; label: string }[] = [
@@ -189,7 +189,7 @@ export default function CreateTripScreen() {
       <Stack.Screen
         options={{
           title: 'New Trip',
-          headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
+          headerStyle: { backgroundColor: brand.gradientStart },
           headerTintColor: colors.white,
         }}
       />

@@ -15,7 +15,7 @@ import { referenceApi, type Supplier } from '../../src/api/reference';
 import { Badge } from '../../src/components/ui/Badge';
 import { Card } from '../../src/components/ui/Card';
 import { Loading } from '../../src/components/ui/Loading';
-import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
+import { brand, colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
 import { STALE_TIME } from '../../src/constants/config';
 
 export default function SuppliersScreen() {
@@ -58,7 +58,7 @@ export default function SuppliersScreen() {
       <Stack.Screen
         options={{
           title: 'Suppliers',
-          headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
+          headerStyle: { backgroundColor: brand.gradientStart },
           headerTintColor: colors.white,
         }}
       />

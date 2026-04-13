@@ -23,7 +23,7 @@ import { Card } from '../../src/components/ui/Card';
 import { Loading } from '../../src/components/ui/Loading';
 import { QueryErrorState } from '../../src/components/ui/QueryErrorState';
 import { formatDateTime } from '../../src/utils/dates';
-import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
+import { brand, colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
 
 // Loan flow steps for the progress indicator
 const LOAN_STEPS = [
@@ -187,7 +187,7 @@ export default function LoanDetailScreen() {
       <Stack.Screen
         options={{
           title: 'Loan Detail',
-          headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
+          headerStyle: { backgroundColor: brand.gradientStart },
           headerTintColor: colors.white,
         }}
       />

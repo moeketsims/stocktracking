@@ -34,11 +34,10 @@ import { QueryErrorState } from '../../src/components/ui/QueryErrorState';
 import { useAuthStore } from '../../src/stores/authStore';
 import { formatDateTime, timeAgo } from '../../src/utils/dates';
 import { getUrgencyVariant } from '../../src/utils/status';
-import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
+import { brand, colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 
 /* ── Design tokens (matching dashboard) ── */
-const BRAND    = '#0f172a';
 const WARM_BG  = '#f8fafc';
 const CARD_R   = 16;
 import type { ProposeTimePayload } from '../../src/api/requests';
@@ -367,7 +366,7 @@ export default function RequestDetailScreen() {
       <Stack.Screen
         options={{
           title: 'Request Detail',
-          headerStyle: { backgroundColor: BRAND },
+          headerStyle: { backgroundColor: brand.gradientStart },
           headerTintColor: colors.white,
           headerTitleStyle: { fontWeight: '600', fontSize: 16 },
           headerShadowVisible: false,
@@ -1029,8 +1028,8 @@ const styles = StyleSheet.create({
     marginRight: spacing.sm,
   },
   pickerChipActive: {
-    backgroundColor: BRAND,
-    borderColor: BRAND,
+    backgroundColor: brand.gradientStart,
+    borderColor: brand.gradientStart,
   },
   pickerChipText: {
     fontSize: fontSize.sm,

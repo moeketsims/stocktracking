@@ -18,7 +18,7 @@ import { Card } from '../../src/components/ui/Card';
 import { Input } from '../../src/components/ui/Input';
 import { Badge } from '../../src/components/ui/Badge';
 import { Loading } from '../../src/components/ui/Loading';
-import { colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
+import { brand, colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
 
 export default function VehicleDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -116,7 +116,7 @@ export default function VehicleDetailScreen() {
       <Stack.Screen
         options={{
           title: vehicle.registration_number,
-          headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
+          headerStyle: { backgroundColor: brand.gradientStart },
           headerTintColor: colors.white,
         }}
       />

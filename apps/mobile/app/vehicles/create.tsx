@@ -13,7 +13,7 @@ import { useCreateVehicle } from '../../src/hooks/useVehicles';
 import { Button } from '../../src/components/ui/Button';
 import { Card } from '../../src/components/ui/Card';
 import { Input } from '../../src/components/ui/Input';
-import { colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
+import { brand, colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
 
 export default function CreateVehicleScreen() {
   const router = useRouter();
@@ -68,7 +68,7 @@ export default function CreateVehicleScreen() {
       <Stack.Screen
         options={{
           title: 'Add Vehicle',
-          headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
+          headerStyle: { backgroundColor: brand.gradientStart },
           headerTintColor: colors.white,
         }}
       />

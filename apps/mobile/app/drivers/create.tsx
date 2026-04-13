@@ -14,7 +14,7 @@ import { useAuthStore } from '../../src/stores/authStore';
 import { Card } from '../../src/components/ui/Card';
 import { Input } from '../../src/components/ui/Input';
 import { Button } from '../../src/components/ui/Button';
-import { colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
+import { brand, colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
 import type { UserRole } from '../../src/types';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -74,7 +74,7 @@ export default function CreateDriverScreen() {
       <Stack.Screen
         options={{
           title: 'Add Driver',
-          headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
+          headerStyle: { backgroundColor: brand.gradientStart },
           headerTintColor: colors.white,
           headerTitleStyle: { fontWeight: fontWeight.semibold },
         }}

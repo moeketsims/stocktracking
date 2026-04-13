@@ -19,7 +19,7 @@ import { Card } from '../../src/components/ui/Card';
 import { Button } from '../../src/components/ui/Button';
 import { Input } from '../../src/components/ui/Input';
 import { Loading } from '../../src/components/ui/Loading';
-import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
+import { brand, colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
 import type { UserRole } from '../../src/types';
 
 const ROLES: { label: string; value: UserRole }[] = [
@@ -99,7 +99,7 @@ export default function CreateUserScreen() {
       <Stack.Screen
         options={{
           title: 'Invite User',
-          headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
+          headerStyle: { backgroundColor: brand.gradientStart },
           headerTintColor: colors.white,
           headerTitleStyle: { fontWeight: fontWeight.semibold },
         }}
