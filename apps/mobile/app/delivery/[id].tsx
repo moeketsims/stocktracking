@@ -8,7 +8,7 @@ import { Button } from '../../src/components/ui/Button';
 import { Card } from '../../src/components/ui/Card';
 import { Input } from '../../src/components/ui/Input';
 import { useCompleteStop } from '../../src/hooks/useTrips';
-import { colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
+import { brand, colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
 
 type Mode = 'choose' | 'scan' | 'manual' | 'confirm';
 
@@ -80,7 +80,7 @@ export default function DeliveryScanScreen() {
       <Stack.Screen
         options={{
           title: `Deliver to ${decodeURIComponent(locationName ?? 'Location')}`,
-          headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
+          headerStyle: { backgroundColor: brand.gradientStart },
           headerTintColor: colors.white,
         }}
       />

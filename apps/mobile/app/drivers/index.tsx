@@ -16,7 +16,7 @@ import { Card } from '../../src/components/ui/Card';
 import { Input } from '../../src/components/ui/Input';
 import { Badge } from '../../src/components/ui/Badge';
 import { Loading } from '../../src/components/ui/Loading';
-import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
+import { brand, colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
 import type { UserRole, InvitationStatus } from '../../src/types';
 
 const STATUS_BADGE: Record<InvitationStatus, { label: string; variant: 'success' | 'warning' | 'error' | 'neutral' }> = {
@@ -66,7 +66,7 @@ export default function DriversListScreen() {
       <Stack.Screen
         options={{
           title: 'Drivers',
-          headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
+          headerStyle: { backgroundColor: brand.gradientStart },
           headerTintColor: colors.white,
           headerTitleStyle: { fontWeight: fontWeight.semibold },
           headerRight: () => (

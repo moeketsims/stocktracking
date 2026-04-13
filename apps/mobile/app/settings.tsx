@@ -18,7 +18,7 @@ import { useLogout } from '../src/hooks/useAuth';
 import { useLocations, useLocationThresholds, useUpdateThresholds } from '../src/hooks/useLocations';
 import { Card } from '../src/components/ui/Card';
 import { Button } from '../src/components/ui/Button';
-import { colors, spacing, fontSize, fontWeight, borderRadius } from '../src/constants/theme';
+import { brand, colors, spacing, fontSize, fontWeight, borderRadius } from '../src/constants/theme';
 import { APP_VERSION } from '../src/constants/config';
 
 export default function SettingsScreen() {
@@ -31,7 +31,7 @@ export default function SettingsScreen() {
       <Stack.Screen
         options={{
           title: 'Settings',
-          headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
+          headerStyle: { backgroundColor: brand.gradientStart },
           headerTintColor: colors.white,
           headerShadowVisible: false,
         }}

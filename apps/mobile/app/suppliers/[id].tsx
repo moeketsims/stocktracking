@@ -7,7 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { referenceApi, type Supplier } from '../../src/api/reference';
 import { Card } from '../../src/components/ui/Card';
 import { Loading } from '../../src/components/ui/Loading';
-import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
+import { brand, colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
 import { STALE_TIME } from '../../src/constants/config';
 
 export default function SupplierDetailScreen() {
@@ -34,7 +34,7 @@ export default function SupplierDetailScreen() {
         <Stack.Screen
           options={{
             title: 'Supplier',
-            headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
+            headerStyle: { backgroundColor: brand.gradientStart },
             headerTintColor: colors.white,
           }}
         />
@@ -53,7 +53,7 @@ export default function SupplierDetailScreen() {
       <Stack.Screen
         options={{
           title: supplier.name,
-          headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
+          headerStyle: { backgroundColor: brand.gradientStart },
           headerTintColor: colors.white,
         }}
       />

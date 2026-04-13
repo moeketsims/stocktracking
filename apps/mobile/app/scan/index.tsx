@@ -3,7 +3,7 @@ import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
 import { BarcodeScanner } from '../../src/components/BarcodeScanner';
-import { colors } from '../../src/constants/theme';
+import { brand, colors } from '../../src/constants/theme';
 
 export default function ScanScreen() {
   const router = useRouter();
@@ -13,7 +13,7 @@ export default function ScanScreen() {
       <Stack.Screen
         options={{
           title: 'Barcode Scanner',
-          headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
+          headerStyle: { backgroundColor: brand.gradientStart },
           headerTintColor: colors.white,
         }}
       />

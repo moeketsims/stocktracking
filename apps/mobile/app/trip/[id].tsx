@@ -13,11 +13,10 @@ import { Loading } from '../../src/components/ui/Loading';
 import { QueryErrorState } from '../../src/components/ui/QueryErrorState';
 import { KmInput } from '../../src/components/KmInput';
 import { formatDateTime } from '../../src/utils/dates';
-import { colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
+import { brand, colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
 import { useSubmitKm } from '../../src/hooks/useTrips';
 
 /* ── Design tokens (matching dashboard) ── */
-const BRAND    = '#0f172a';
 const WARM_BG  = '#f8fafc';
 const CARD_R   = 16;
 import type { TripStop } from '../../src/types';
@@ -107,7 +106,7 @@ export default function TripDetailScreen() {
       <Stack.Screen
         options={{
           title: trip.trip_number,
-          headerStyle: { backgroundColor: BRAND },
+          headerStyle: { backgroundColor: brand.gradientStart },
           headerTintColor: colors.white,
           headerTitleStyle: { fontWeight: '600', fontSize: 16 },
           headerShadowVisible: false,
@@ -314,7 +313,7 @@ const styles = StyleSheet.create({
   tripNumber: {
     fontSize: 20,
     fontWeight: '700',
-    color: BRAND,
+    color: brand.gradientStart,
     letterSpacing: -0.3,
   },
   route: {

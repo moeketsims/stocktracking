@@ -10,7 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Input } from '../../src/components/ui/Input';
 import { Button } from '../../src/components/ui/Button';
-import { colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
+import { brand, colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
 import { APP_VERSION } from '../../src/constants/config';
 import { useLogin } from '../../src/hooks/useAuth';
 
@@ -85,7 +85,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.sidebar.DEFAULT,
+    backgroundColor: brand.gradientStart,
   },
   flex: {
     flex: 1,

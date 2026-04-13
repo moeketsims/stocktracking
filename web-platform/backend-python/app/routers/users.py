@@ -99,6 +99,45 @@ def is_user_in_actor_scope(actor_profile: dict, user_profile: dict) -> bool:
     return False
 
 
+@router.post("/push-token")
+async def register_push_token(request_data: dict, user_data: dict = Depends(require_auth)):
+    """Register a push notification token for the current user."""
+    supabase = get_supabase_admin_client()
+    user = user_data["user"]
+
+    token = request_data.get("push_token")
+    platform = request_data.get("platform", "unknown")
+
+    if not token:
+        raise HTTPException(status_code=400, detail="push_token is required")
+
+    try:
+        # Upsert: update if token exists for this user, insert if new
+        existing = supabase.table("push_tokens").select("id").eq("user_id", user.id).execute()
+
+        if existing.data and len(existing.data) > 0:
+            supabase.table("push_tokens").update({
+                "token": token,
+                "platform": platform,
+                "updated_at": datetime.utcnow().isoformat(),
+            }).eq("user_id", user.id).execute()
+        else:
+            supabase.table("push_tokens").insert({
+                "id": str(uuid4()),
+                "user_id": user.id,
+                "token": token,
+                "platform": platform,
+            }).execute()
+
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Fail gracefully — push token registration should not block the app
+        print(f"Push token registration error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to register push token")
+
+
 @router.get("")
 async def list_users(
     role: Optional[str] = Query(None, description="Filter by role"),

@@ -18,7 +18,7 @@ import { Input } from '../../src/components/ui/Input';
 import { Badge } from '../../src/components/ui/Badge';
 import { Button } from '../../src/components/ui/Button';
 import { Loading } from '../../src/components/ui/Loading';
-import { colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
+import { brand, colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
 import type { UserRole, InvitationStatus } from '../../src/types';
 
 const STATUS_BADGE: Record<InvitationStatus, { label: string; variant: 'success' | 'warning' | 'error' | 'neutral' }> = {
@@ -120,7 +120,7 @@ export default function DriverDetailScreen() {
       <Stack.Screen
         options={{
           title: driver.full_name ?? 'Driver Details',
-          headerStyle: { backgroundColor: colors.sidebar.DEFAULT },
+          headerStyle: { backgroundColor: brand.gradientStart },
           headerTintColor: colors.white,
           headerTitleStyle: { fontWeight: fontWeight.semibold },
         }}
