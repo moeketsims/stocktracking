@@ -27,12 +27,17 @@ MAX_REMINDERS = 3
 
 
 async def process_request_escalations():
-    """Process pending stock requests and escalate to zone managers after 48h."""
+    """Process pending stock requests and escalate to zone managers after 48h.
+    Also recovers stuck requests (accepted with no trip for 30+ minutes).
+    """
     logger.info("[ESCALATION JOB] Starting request escalation processing...")
 
     try:
         supabase = get_supabase_admin_client()
         now = datetime.utcnow()
+
+        # ── Safety net: revert stuck accepted-with-no-trip requests ──
+        await recover_stuck_accepted_requests(supabase, now)
 
         # Preflight: verify escalation table is accessible
         table_check = supabase.table("request_escalation_state").select("request_id").limit(1).execute()
@@ -67,6 +72,53 @@ async def process_request_escalations():
 
     except Exception as e:
         logger.error(f"[ESCALATION JOB] Error: {str(e)}")
+
+
+async def recover_stuck_accepted_requests(supabase, now: datetime):
+    """Revert requests stuck in 'accepted' status with no trip for 30+ minutes back to 'pending'.
+
+    This is a safety net for edge cases where accept succeeded but trip creation failed,
+    leaving the request orphaned in 'accepted' with no trip_id.
+    """
+    STUCK_THRESHOLD_MINUTES = 30
+
+    try:
+        cutoff = (now - timedelta(minutes=STUCK_THRESHOLD_MINUTES)).isoformat()
+
+        # Find accepted requests with no trip that were accepted before the cutoff
+        stuck = supabase.table("stock_requests").select("id, accepted_at, accepted_by").eq(
+            "status", "accepted"
+        ).is_("trip_id", "null").lt("accepted_at", cutoff).execute()
+
+        if stuck.error:
+            logger.error(f"[STUCK RECOVERY] Query error: {stuck.error[:200]}")
+            return
+
+        if not stuck.data:
+            return
+
+        reverted_count = 0
+        for req in stuck.data:
+            result = supabase.table("stock_requests").update({
+                "status": "pending",
+                "accepted_by": None,
+                "accepted_at": None,
+            }).eq("id", req["id"]).execute()
+
+            if result.error:
+                logger.error(f"[STUCK RECOVERY] Failed to revert request {req['id']}: {result.error[:200]}")
+            else:
+                reverted_count += 1
+                logger.info(
+                    f"[STUCK RECOVERY] Reverted request {req['id']} from accepted to pending "
+                    f"(was accepted by {req.get('accepted_by', 'unknown')} at {req.get('accepted_at', '?')})"
+                )
+
+        if reverted_count:
+            logger.info(f"[STUCK RECOVERY] Reverted {reverted_count} stuck request(s) back to pending")
+
+    except Exception as e:
+        logger.error(f"[STUCK RECOVERY] Error: {str(e)}")
 
 
 async def process_single_request(supabase, request: dict, now: datetime) -> str:

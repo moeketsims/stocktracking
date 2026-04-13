@@ -196,30 +196,29 @@ export default function RequestDetailScreen() {
       Alert.alert('Required', `Please select a ${acceptFromType === 'supplier' ? 'supplier' : 'pickup location'}.`);
       return;
     }
-    acceptMutation.mutate(request.id, {
-      onSuccess: () => {
-        createTripMutation.mutate(
-          {
-            id: request.id,
-            data: {
-              vehicle_id: selectedVehicleId,
-              driver_id: user?.id,
-              odometer_start: Number(odometerStart),
-              auto_start: true,
-              estimated_arrival_time: estimatedArrival || undefined,
-              supplier_id: acceptFromType === 'supplier' ? acceptFromId : undefined,
-              from_location_id: acceptFromType === 'warehouse' ? acceptFromId : undefined,
-            },
-          },
-          {
-            onSuccess: () => {
-              closeForm();
-              router.back();
-            },
-          },
-        );
+    // Call createTrip directly — the backend endpoint handles accepting
+    // pending requests atomically (sets accepted_by + creates trip in one call),
+    // avoiding the stuck "accepted with no trip" state.
+    createTripMutation.mutate(
+      {
+        id: request.id,
+        data: {
+          vehicle_id: selectedVehicleId,
+          driver_id: user?.id,
+          odometer_start: Number(odometerStart),
+          auto_start: true,
+          estimated_arrival_time: estimatedArrival || undefined,
+          supplier_id: acceptFromType === 'supplier' ? acceptFromId : undefined,
+          from_location_id: acceptFromType === 'warehouse' ? acceptFromId : undefined,
+        },
       },
-    });
+      {
+        onSuccess: () => {
+          closeForm();
+          router.back();
+        },
+      },
+    );
   };
 
   const handleProposeTimeSubmit = () => {
@@ -608,7 +607,7 @@ export default function RequestDetailScreen() {
                 <Button
                   title="Accept & Create Trip"
                   onPress={handleAcceptSubmit}
-                  loading={acceptMutation.isPending || createTripMutation.isPending}
+                  loading={createTripMutation.isPending}
                   style={{ flex: 1 }}
                 />
               </View>
