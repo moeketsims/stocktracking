@@ -96,10 +96,26 @@ jobs:
       - name: Run pytest
         run: pytest -v
 
+  mobile-test:
+    name: "Mobile: Tests"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/mobile/package-lock.json
+      - run: npm ci --legacy-peer-deps
+      - run: npm test
+
   docker-build:
     name: "Docker: Build Verification"
     runs-on: ubuntu-latest
-    needs: [frontend-lint-typecheck, frontend-test, backend-lint, backend-test]
+    needs: [frontend-lint-typecheck, frontend-test, backend-lint, backend-test, mobile-test]
 
     steps:
       - uses: actions/checkout@v4
