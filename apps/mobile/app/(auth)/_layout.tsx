@@ -1,12 +1,12 @@
 import { Stack } from 'expo-router';
-import { brand, colors } from '../../src/constants/theme';
+import { wp } from '../../src/constants/warehousePaper';
 
 export default function AuthLayout() {
   return (
     <Stack
       screenOptions={{
         headerShown: false,
-        contentStyle: { backgroundColor: brand.gradientStart },
+        contentStyle: { backgroundColor: wp.color.paper },
       }}
     />
   );

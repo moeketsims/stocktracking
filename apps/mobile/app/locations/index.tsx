@@ -4,71 +4,89 @@ import {
   Text,
   ScrollView,
   RefreshControl,
-  TouchableOpacity,
+  TextInput,
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/authStore';
 import { useLocations, useZones } from '../../src/hooks/useLocations';
-import { Card } from '../../src/components/ui/Card';
-import { Badge } from '../../src/components/ui/Badge';
-import { Button } from '../../src/components/ui/Button';
 import { Loading } from '../../src/components/ui/Loading';
-import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
+import {
+  PaperBackground,
+  Masthead,
+  TabStrip,
+  LedgerRow,
+  Stamp,
+  MonoText,
+  KickerLabel,
+  InkButton,
+} from '../../src/components/wp';
+import { wp, fmtKickerDate } from '../../src/constants/warehousePaper';
 import type { LocationDetail } from '../../src/api/locations';
 
-type FilterType = 'all' | 'shop' | 'warehouse';
+type Filter = 'all' | 'shop' | 'warehouse';
 
 export default function LocationsListScreen() {
   const router = useRouter();
   const isAdmin = useAuthStore((s) => s.isAdmin());
   const locations = useLocations();
   const zones = useZones();
-  const [filter, setFilter] = useState<FilterType>('all');
+  const [filter, setFilter] = useState<Filter>('all');
+  const [search, setSearch] = useState('');
 
-  // Group locations by zone
-  const grouped = useMemo(() => {
-    const list = locations.data?.locations ?? [];
-    const filtered = filter === 'all' ? list : list.filter((l) => l.type === filter);
-    const zoneMap = new Map<string, { zoneName: string; locations: LocationDetail[] }>();
+  const all = locations.data?.locations ?? [];
 
-    for (const loc of filtered) {
-      const zoneId = loc.zone_id;
-      const zoneName = loc.zone_name ?? 'Unassigned';
-      if (!zoneMap.has(zoneId)) {
-        zoneMap.set(zoneId, { zoneName, locations: [] });
-      }
-      zoneMap.get(zoneId)!.locations.push(loc);
+  const counts = useMemo(() => {
+    let shop = 0, warehouse = 0;
+    for (const l of all) {
+      if (l.type === 'shop') shop++;
+      else if (l.type === 'warehouse') warehouse++;
     }
+    return { all: all.length, shop, warehouse };
+  }, [all]);
 
-    return Array.from(zoneMap.entries()).sort((a, b) =>
+  const grouped = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const filtered = all.filter((l) => {
+      if (filter !== 'all' && l.type !== filter) return false;
+      if (!q) return true;
+      return (
+        l.name.toLowerCase().includes(q) ||
+        (l.address ?? '').toLowerCase().includes(q) ||
+        (l.zone_name ?? '').toLowerCase().includes(q)
+      );
+    });
+    const map = new Map<string, { zoneName: string; items: LocationDetail[] }>();
+    for (const loc of filtered) {
+      const key = loc.zone_id || 'unassigned';
+      const name = loc.zone_name ?? 'Unassigned';
+      if (!map.has(key)) map.set(key, { zoneName: name, items: [] });
+      map.get(key)!.items.push(loc);
+    }
+    return Array.from(map.entries()).sort((a, b) =>
       a[1].zoneName.localeCompare(b[1].zoneName),
     );
-  }, [locations.data, filter]);
+  }, [all, filter, search]);
 
-  if (locations.isLoading) return <Loading fullScreen message="Loading locations..." />;
+  if (locations.isLoading) {
+    return (
+      <PaperBackground>
+        <Stack.Screen options={{ headerShown: false }} />
+        <Loading fullScreen message="" />
+      </PaperBackground>
+    );
+  }
+
+  let rowIdx = 0;
 
   return (
-    <>
-      <Stack.Screen
-        options={{
-          title: 'Locations',
-          headerRight: () =>
-            isAdmin ? (
-              <TouchableOpacity
-                onPress={() => router.push('/locations/create')}
-                hitSlop={8}
-              >
-                <Ionicons name="add-circle" size={26} color={colors.primary[500]} />
-              </TouchableOpacity>
-            ) : null,
-        }}
-      />
-      <SafeAreaView style={styles.container} edges={['bottom']}>
+    <PaperBackground>
+      <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
         <ScrollView
-          contentContainerStyle={styles.content}
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
               refreshing={locations.isRefetching}
@@ -76,134 +94,133 @@ export default function LocationsListScreen() {
                 locations.refetch();
                 zones.refetch();
               }}
+              tintColor={wp.color.ink2}
             />
           }
         >
-          {/* Filter pills */}
-          <View style={styles.filterRow}>
-            {(['all', 'shop', 'warehouse'] as FilterType[]).map((f) => (
-              <TouchableOpacity
-                key={f}
-                style={[styles.filterPill, filter === f && styles.filterActive]}
-                onPress={() => setFilter(f)}
-              >
-                <Text
-                  style={[
-                    styles.filterText,
-                    filter === f && styles.filterTextActive,
-                  ]}
-                >
-                  {f === 'all' ? 'All' : f === 'shop' ? 'Shops' : 'Warehouses'}
-                </Text>
-              </TouchableOpacity>
-            ))}
+          <Masthead
+            kicker={`SITE ROSTER — ${fmtKickerDate()}`}
+            title="Locations"
+            backUseRouter
+          />
+
+          <TabStrip<Filter>
+            items={[
+              { key: 'all', label: 'All', count: counts.all },
+              { key: 'shop', label: 'Shops', count: counts.shop },
+              { key: 'warehouse', label: 'Warehouse', count: counts.warehouse },
+            ]}
+            active={filter}
+            onChange={setFilter}
+          />
+
+          <View style={styles.searchRow}>
+            <View style={styles.search}>
+              <Text allowFontScaling={false} style={styles.searchGlyph}>⌕</Text>
+              <TextInput
+                value={search}
+                onChangeText={setSearch}
+                placeholder="name · address · zone"
+                placeholderTextColor={wp.color.ink3}
+                style={styles.searchInput}
+              />
+            </View>
+            {isAdmin && (
+              <InkButton label="+ New" onPress={() => router.push('/locations/create')} />
+            )}
           </View>
 
-          {/* Count */}
-          <Text style={styles.countText}>
-            {locations.data?.locations?.length ?? 0} location(s)
-          </Text>
-
-          {/* Grouped by zone */}
-          {grouped.length === 0 && (
-            <Card>
-              <Text style={styles.emptyText}>No locations found.</Text>
-            </Card>
-          )}
-
-          {grouped.map(([zoneId, group]) => (
-            <View key={zoneId}>
-              <Text style={styles.zoneHeader}>{group.zoneName}</Text>
-              <Card padded={false}>
-                {group.locations.map((loc, idx) => (
-                  <TouchableOpacity
-                    key={loc.id}
-                    style={[
-                      styles.locationRow,
-                      idx === group.locations.length - 1 && styles.lastRow,
-                    ]}
-                    onPress={() => router.push(`/locations/${loc.id}`)}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons
-                      name={loc.type === 'warehouse' ? 'business' : 'storefront'}
-                      size={20}
-                      color={loc.type === 'warehouse' ? '#d97706' : colors.info}
-                    />
-                    <View style={styles.locationInfo}>
-                      <Text style={styles.locationName}>{loc.name}</Text>
-                      {loc.address ? (
-                        <Text style={styles.locationAddress} numberOfLines={1}>
-                          {loc.address}
-                        </Text>
-                      ) : null}
-                    </View>
-                    <Badge
-                      label={loc.type === 'shop' ? 'Shop' : 'Warehouse'}
-                      variant={loc.type === 'shop' ? 'info' : 'warning'}
-                    />
-                    <Ionicons
-                      name="chevron-forward"
-                      size={18}
-                      color={colors.gray[400]}
-                    />
-                  </TouchableOpacity>
-                ))}
-              </Card>
+          {grouped.length === 0 ? (
+            <View style={styles.empty}>
+              <MonoText size={11} tracking={1} upper color={wp.color.ink3}>
+                {search ? 'No matches' : 'No locations'}
+              </MonoText>
             </View>
-          ))}
+          ) : (
+            grouped.map(([zoneId, group]) => (
+              <View key={zoneId}>
+                <View style={styles.zoneHead}>
+                  <KickerLabel size={10} tracking={2} color={wp.color.ink}>
+                    {group.zoneName}
+                  </KickerLabel>
+                  <KickerLabel size={9} tracking={1.5} color={wp.color.ink3}>
+                    {group.items.length} {group.items.length === 1 ? 'site' : 'sites'}
+                  </KickerLabel>
+                </View>
+                {group.items.map((loc) => {
+                  const i = rowIdx++;
+                  const isShop = loc.type === 'shop';
+                  return (
+                    <LedgerRow
+                      key={loc.id}
+                      idx={i + 1}
+                      primary={loc.name}
+                      secondary={(loc.address ?? '').toUpperCase() || undefined}
+                      trailing={
+                        <Stamp
+                          colorHex={isShop ? '#1F3A8A' : wp.color.amber}
+                          rowIndex={i}
+                        >
+                          {isShop ? 'SHOP' : 'WHSE'}
+                        </Stamp>
+                      }
+                      onPress={() => router.push(`/locations/${loc.id}`)}
+                    />
+                  );
+                })}
+              </View>
+            ))
+          )}
         </ScrollView>
       </SafeAreaView>
-    </>
+    </PaperBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
-  content: { padding: spacing.lg, gap: spacing.lg },
-  filterRow: { flexDirection: 'row', gap: spacing.sm },
-  filterPill: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.gray[100],
-  },
-  filterActive: { backgroundColor: colors.primary[500] },
-  filterText: { fontSize: fontSize.sm, color: colors.gray[600] },
-  filterTextActive: { color: colors.white, fontWeight: fontWeight.semibold },
-  countText: { fontSize: fontSize.sm, color: colors.gray[500] },
-  zoneHeader: {
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[500],
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: spacing.sm,
-  },
-  locationRow: {
+  safe: { flex: 1 },
+  scroll: { paddingBottom: 40 },
+  searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.lg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.gray[100],
-    gap: spacing.md,
+    gap: 10,
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: 14,
+    paddingBottom: 6,
   },
-  lastRow: { borderBottomWidth: 0 },
-  locationInfo: { flex: 1 },
-  locationName: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.medium,
-    color: colors.gray[900],
+  search: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1.5,
+    borderBottomColor: wp.color.lineD,
+    paddingVertical: 6,
+    gap: 8,
   },
-  locationAddress: {
-    fontSize: fontSize.xs,
-    color: colors.gray[500],
-    marginTop: 2,
+  searchGlyph: {
+    fontFamily: wp.font.mono.fontFamily,
+    fontSize: 12,
+    color: wp.color.ink3,
   },
-  emptyText: {
-    fontSize: fontSize.sm,
-    color: colors.gray[500],
-    textAlign: 'center',
+  searchInput: {
+    flex: 1,
+    fontFamily: wp.font.mono.fontFamily,
+    fontSize: 14,
+    color: wp.color.ink,
+    padding: 0,
+  },
+  zoneHead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: 18,
+    paddingBottom: 6,
+    borderTopWidth: 0,
+  },
+  empty: {
+    paddingHorizontal: wp.space.screenH,
+    paddingVertical: 40,
+    alignItems: 'center',
   },
 });

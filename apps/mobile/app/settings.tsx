@@ -5,503 +5,503 @@ import {
   ScrollView,
   StyleSheet,
   TextInput,
-  ActivityIndicator,
   TouchableOpacity,
-  Modal,
-  FlatList,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stack } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { Stack, useRouter } from 'expo-router';
 import { useAuthStore } from '../src/stores/authStore';
 import { useLogout } from '../src/hooks/useAuth';
-import { useLocations, useLocationThresholds, useUpdateThresholds } from '../src/hooks/useLocations';
-import { Card } from '../src/components/ui/Card';
-import { Button } from '../src/components/ui/Button';
-import { brand, colors, spacing, fontSize, fontWeight, borderRadius } from '../src/constants/theme';
+import {
+  useLocations,
+  useLocationThresholds,
+  useUpdateThresholds,
+} from '../src/hooks/useLocations';
+import {
+  PaperBackground,
+  Masthead,
+  KickerLabel,
+  MonoText,
+  InkButton,
+  IntentStrip,
+} from '../src/components/wp';
+import { wp, fmtKickerDate } from '../src/constants/warehousePaper';
 import { APP_VERSION } from '../src/constants/config';
+import { clearPin } from '../src/utils/pin';
+
+function formatRole(role?: string): string {
+  if (!role) return '—';
+  return role.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 export default function SettingsScreen() {
+  const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const isAdmin = useAuthStore((s) => s.isAdmin);
+  const pinEnabled = useAuthStore((s) => s.pinConfigured);
+  const refreshPinConfigured = useAuthStore((s) => s.refreshPinConfigured);
   const logout = useLogout();
 
+  const handleChangePin = () => {
+    router.push('/(auth)/pin-setup?mode=change');
+  };
+
+  const handleDisablePin = () => {
+    Alert.alert(
+      'Turn off PIN?',
+      'You will sign in with email and password every time you open the app. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Turn off',
+          style: 'destructive',
+          onPress: async () => {
+            await clearPin();
+            await refreshPinConfigured();
+          },
+        },
+      ],
+    );
+  };
+
+  const handleSignOut = async () => {
+    // Clear local PIN before backend logout so a future sign-in starts
+    // fresh (forces pin-setup again on the new session).
+    await clearPin();
+    logout.mutate();
+  };
+
   return (
-    <>
-      <Stack.Screen
-        options={{
-          title: 'Settings',
-          headerStyle: { backgroundColor: brand.gradientStart },
-          headerTintColor: colors.white,
-          headerShadowVisible: false,
-        }}
-      />
-      <SafeAreaView style={styles.container} edges={['bottom']}>
-        <ScrollView contentContainerStyle={styles.content}>
-          {/* Profile card */}
-          <Card>
-            <Text style={styles.sectionTitle}>Profile</Text>
-            <Row label="Name" value={user?.full_name ?? '\u2014'} />
-            <Row label="Email" value={user?.email ?? '\u2014'} />
-            <Row
-              label="Role"
-              value={
-                user?.role
-                  ?.replace(/_/g, ' ')
-                  .replace(/\b\w/g, (c) => c.toUpperCase()) ?? '\u2014'
-              }
-            />
-            <Row label="Location" value={user?.location_name ?? 'All locations'} />
-            <Row label="Zone" value={user?.zone_name ?? '\u2014'} />
-          </Card>
-
-          {/* Stock Thresholds -- admin only */}
-          {isAdmin() && <ThresholdsSection />}
-
-          {/* App info */}
-          <Card>
-            <Text style={styles.sectionTitle}>App</Text>
-            <Row label="Version" value={APP_VERSION} />
-          </Card>
-
-          <Button
-            title="Sign Out"
-            onPress={() => logout.mutate()}
-            variant="danger"
-            loading={logout.isPending}
+    <PaperBackground>
+      <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
+        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+          <Masthead
+            kicker={`PREFERENCES — ${fmtKickerDate()}`}
+            title="Settings"
+            backUseRouter
           />
+
+          {/* Profile ID plate */}
+          <View style={styles.body}>
+            <View style={styles.section}>
+              <KickerLabel size={10} tracking={2} color={wp.color.ink}>
+                Identification
+              </KickerLabel>
+            </View>
+            <ProfileRow label="Name" value={user?.full_name ?? '—'} />
+            <ProfileRow label="Email" value={user?.email ?? '—'} mono />
+            <ProfileRow label="Role" value={formatRole(user?.role)} />
+            <ProfileRow label="Location" value={user?.location_name ?? 'All locations'} />
+            <ProfileRow label="Zone" value={user?.zone_name ?? '—'} />
+
+            {isAdmin() && <ThresholdsSection />}
+
+            {/* Security */}
+            <View style={[styles.section, { marginTop: wp.space.block }]}>
+              <KickerLabel size={10} tracking={2} color={wp.color.ink}>
+                Security
+              </KickerLabel>
+            </View>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={handleChangePin}
+              disabled={pinEnabled === false}
+              style={[styles.actionRow, pinEnabled === false && { opacity: 0.4 }]}
+            >
+              <MonoText size={11} tracking={1} upper weight={600} color={wp.color.ink3}>
+                Change PIN
+              </MonoText>
+              <Text allowFontScaling={false} style={styles.actionChev}>
+                ›
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={pinEnabled ? handleDisablePin : handleChangePin}
+              style={styles.actionRow}
+            >
+              <MonoText
+                size={11}
+                tracking={1}
+                upper
+                weight={600}
+                color={pinEnabled ? wp.color.amber : wp.color.ink3}
+              >
+                {pinEnabled === false ? 'Set up a PIN' : 'Turn off PIN'}
+              </MonoText>
+              <Text allowFontScaling={false} style={styles.actionChev}>
+                ›
+              </Text>
+            </TouchableOpacity>
+
+            <View style={[styles.section, { marginTop: wp.space.block }]}>
+              <KickerLabel size={10} tracking={2} color={wp.color.ink}>
+                Application
+              </KickerLabel>
+            </View>
+            <ProfileRow label="Version" value={`v${APP_VERSION}`} mono />
+
+            <View style={styles.signOutWrap}>
+              <View pointerEvents="none" style={styles.signOutShadow} />
+              <TouchableOpacity
+                onPress={handleSignOut}
+                disabled={logout.isPending}
+                activeOpacity={0.85}
+                style={[styles.signOutButton, logout.isPending && { opacity: 0.6 }]}
+              >
+                {logout.isPending ? (
+                  <ActivityIndicator color={wp.color.red} size="small" />
+                ) : (
+                  <Text allowFontScaling={false} style={styles.signOutLabel}>
+                    Sign out
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
         </ScrollView>
       </SafeAreaView>
-    </>
+    </PaperBackground>
   );
 }
 
-// ── Stock Thresholds Section (admin only) ───────────────────────────
+function ProfileRow({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <View style={styles.row}>
+      <MonoText size={11} tracking={1} upper weight={600} color={wp.color.ink3}>
+        {label}
+      </MonoText>
+      <Text
+        allowFontScaling={false}
+        style={[styles.rowValue, mono && styles.rowValueMono]}
+        numberOfLines={1}
+      >
+        {value}
+      </Text>
+    </View>
+  );
+}
 
 function ThresholdsSection() {
   const { data: locationsData, isLoading: locationsLoading } = useLocations();
   const locations = locationsData?.locations ?? [];
 
-  const [selectedLocationId, setSelectedLocationId] = useState('');
-  const [pickerVisible, setPickerVisible] = useState(false);
-  const [criticalThreshold, setCriticalThreshold] = useState('');
-  const [lowThreshold, setLowThreshold] = useState('');
+  const [selectedId, setSelectedId] = useState('');
+  const [critical, setCritical] = useState('');
+  const [low, setLow] = useState('');
   const [error, setError] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
+  const [success, setSuccess] = useState('');
 
-  const { data: thresholdsData, isLoading: thresholdsLoading } = useLocationThresholds(
-    selectedLocationId,
-  );
+  const { data: thresholds, isLoading: thresholdsLoading } =
+    useLocationThresholds(selectedId);
   const updateMutation = useUpdateThresholds();
 
-  const selectedLocation = locations.find((l) => l.id === selectedLocationId);
+  const selected = locations.find((l) => l.id === selectedId);
 
-  // Populate inputs when thresholds load
   useEffect(() => {
-    if (thresholdsData) {
-      setCriticalThreshold(thresholdsData.critical_stock_threshold?.toString() ?? '');
-      setLowThreshold(thresholdsData.low_stock_threshold?.toString() ?? '');
+    if (thresholds) {
+      setCritical(thresholds.critical_stock_threshold?.toString() ?? '');
+      setLow(thresholds.low_stock_threshold?.toString() ?? '');
     }
-  }, [thresholdsData]);
+  }, [thresholds]);
 
-  // Reset when location changes
   useEffect(() => {
-    if (selectedLocationId && !thresholdsData) {
-      setCriticalThreshold('');
-      setLowThreshold('');
-    }
     setError('');
-    setSuccessMessage('');
-  }, [selectedLocationId]);
+    setSuccess('');
+  }, [selectedId]);
 
-  const handleSave = async () => {
+  const handleSave = () => {
     setError('');
-    setSuccessMessage('');
-
-    if (!selectedLocationId) {
-      setError('Please select a location');
-      return;
-    }
-
-    const criticalValue = parseInt(criticalThreshold, 10) || 0;
-    const lowValue = parseInt(lowThreshold, 10) || 0;
-
-    if (!criticalThreshold || !lowThreshold) {
-      setError('Please enter both threshold values');
-      return;
-    }
-
-    if (criticalValue >= lowValue) {
-      setError('Critical threshold must be less than low stock threshold');
-      return;
-    }
-
+    setSuccess('');
+    if (!selectedId) return setError('Pick a site');
+    const c = parseInt(critical, 10);
+    const l = parseInt(low, 10);
+    if (!critical || !low || isNaN(c) || isNaN(l)) return setError('Both values required');
+    if (c >= l) return setError('Critical must be lower than low');
     updateMutation.mutate(
-      {
-        id: selectedLocationId,
-        data: {
-          critical_stock_threshold: criticalValue,
-          low_stock_threshold: lowValue,
-        },
-      },
+      { id: selectedId, data: { critical_stock_threshold: c, low_stock_threshold: l } },
       {
         onSuccess: () => {
-          const name = selectedLocation?.name ?? 'store';
-          setSuccessMessage(`Thresholds updated for ${name}`);
-          setSelectedLocationId('');
+          setSuccess(`Updated — ${selected?.name ?? 'site'}`);
+          setSelectedId('');
         },
         onError: (err: any) => {
-          setError(err.response?.data?.detail ?? 'Failed to update thresholds');
+          setError(err.response?.data?.detail ?? 'Save failed');
         },
       },
     );
   };
 
   return (
-    <Card>
-      <View style={styles.thresholdHeader}>
-        <View style={styles.thresholdIconBox}>
-          <Ionicons name="cube-outline" size={20} color={colors.primary[600]} />
-        </View>
-        <View style={styles.thresholdHeaderText}>
-          <Text style={styles.sectionTitle}>Stock Thresholds</Text>
-          <Text style={styles.thresholdSubtitle}>Configure alert levels for each store</Text>
-        </View>
+    <>
+      <View style={[styles.section, { marginTop: wp.space.block }]}>
+        <KickerLabel size={10} tracking={2} color={wp.color.ink}>
+          Stock thresholds
+        </KickerLabel>
       </View>
+      <View style={styles.thresholdBody}>
+        <IntentStrip>
+          Set the alert levels for each site. Critical triggers a red stamp and
+          pages the zone manager; low stock triggers an amber warning.
+        </IntentStrip>
 
-      {locationsLoading ? (
-        <ActivityIndicator size="small" color={colors.gray[400]} style={styles.loader} />
-      ) : (
-        <View style={styles.thresholdBody}>
-          {/* Success banner */}
-          {successMessage !== '' && (
-            <View style={styles.successBanner}>
-              <Ionicons name="checkmark-circle" size={18} color={colors.success} />
-              <Text style={styles.successText}>{successMessage}</Text>
-            </View>
-          )}
-
-          {/* Location selector */}
-          <Text style={styles.inputLabel}>Select Store</Text>
-          <TouchableOpacity
-            style={styles.selectButton}
-            onPress={() => setPickerVisible(true)}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="storefront-outline" size={18} color={colors.gray[400]} />
-            <Text
-              style={[
-                styles.selectButtonText,
-                !selectedLocationId && styles.selectButtonPlaceholder,
-              ]}
-              numberOfLines={1}
-            >
-              {selectedLocation
-                ? `${selectedLocation.name}${selectedLocation.type === 'warehouse' ? ' (Warehouse)' : ''}`
-                : 'Select a store...'}
-            </Text>
-            <Ionicons name="chevron-down" size={18} color={colors.gray[400]} />
-          </TouchableOpacity>
-
-          {/* Location picker modal */}
-          <Modal visible={pickerVisible} animationType="slide" transparent>
-            <View style={styles.modalOverlay}>
-              <View style={styles.modalContent}>
-                <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>Select Store</Text>
-                  <TouchableOpacity onPress={() => setPickerVisible(false)}>
-                    <Ionicons name="close" size={24} color={colors.gray[600]} />
+        {locationsLoading ? (
+          <ActivityIndicator size="small" color={wp.color.ink3} />
+        ) : (
+          <>
+            {/* Site picker — inline ledger list */}
+            <MonoText size={11} tracking={1} upper weight={600} color={wp.color.ink}>
+              Site
+            </MonoText>
+            <View style={styles.siteList}>
+              {locations.map((loc) => {
+                const active = loc.id === selectedId;
+                return (
+                  <TouchableOpacity
+                    key={loc.id}
+                    activeOpacity={0.7}
+                    onPress={() => setSelectedId(active ? '' : loc.id)}
+                    style={[styles.siteRow, active && styles.siteRowActive]}
+                  >
+                    <MonoText
+                      size={10}
+                      tracking={1}
+                      upper
+                      weight={active ? 700 : 500}
+                      color={active ? wp.color.paper : wp.color.ink}
+                    >
+                      {active ? '■ ' : '□ '}
+                      {loc.name}
+                      {loc.type === 'warehouse' ? ' · WHSE' : ''}
+                    </MonoText>
                   </TouchableOpacity>
-                </View>
-                <FlatList
-                  data={locations}
-                  keyExtractor={(item) => item.id}
-                  renderItem={({ item }) => {
-                    const isSelected = item.id === selectedLocationId;
-                    return (
-                      <TouchableOpacity
-                        style={[styles.modalItem, isSelected && styles.modalItemSelected]}
-                        onPress={() => {
-                          setSelectedLocationId(item.id);
-                          setPickerVisible(false);
-                        }}
-                      >
-                        <Text
-                          style={[
-                            styles.modalItemText,
-                            isSelected && styles.modalItemTextSelected,
-                          ]}
-                        >
-                          {item.name}
-                          {item.type === 'warehouse' ? ' (Warehouse)' : ''}
-                        </Text>
-                        {isSelected && (
-                          <Ionicons name="checkmark" size={20} color={colors.primary[600]} />
-                        )}
-                      </TouchableOpacity>
-                    );
-                  }}
-                  ListEmptyComponent={
-                    <View style={styles.loader}>
-                      <Text style={styles.emptyText}>No locations available</Text>
-                    </View>
-                  }
-                />
-              </View>
+                );
+              })}
             </View>
-          </Modal>
 
-          {/* Threshold inputs -- only when location selected */}
-          {selectedLocationId !== '' && (
-            <>
-              {thresholdsLoading ? (
-                <ActivityIndicator
-                  size="small"
-                  color={colors.gray[400]}
-                  style={styles.loader}
-                />
-              ) : (
-                <>
-                  {selectedLocation && (
-                    <View style={styles.selectedBanner}>
-                      <Text style={styles.selectedBannerText}>
-                        Setting thresholds for:{' '}
-                        <Text style={styles.selectedBannerName}>
-                          {selectedLocation.name}
-                        </Text>
-                      </Text>
+            {selectedId !== '' && (
+              <>
+                {thresholdsLoading ? (
+                  <ActivityIndicator size="small" color={wp.color.ink3} style={{ marginTop: 12 }} />
+                ) : (
+                  <>
+                    <ThresholdInput
+                      label="Critical level · bags"
+                      hint="Below this triggers red-alert pages to the zone manager"
+                      value={critical}
+                      onChange={setCritical}
+                    />
+                    <ThresholdInput
+                      label="Low level · bags"
+                      hint="Below this shows an amber warning on the dashboard"
+                      value={low}
+                      onChange={setLow}
+                    />
+                    {error !== '' && (
+                      <MonoText
+                        size={10}
+                        tracking={1}
+                        upper
+                        weight={600}
+                        color={wp.color.red}
+                        style={{ marginTop: 10 }}
+                      >
+                        {error}
+                      </MonoText>
+                    )}
+                    <View style={{ marginTop: 14 }}>
+                      <InkButton
+                        label={`Save — ${selected?.name ?? ''}`}
+                        variant="solid"
+                        onPress={handleSave}
+                        loading={updateMutation.isPending}
+                      />
                     </View>
-                  )}
+                  </>
+                )}
+              </>
+            )}
 
-                  {/* Critical */}
-                  <Text style={styles.inputLabel}>Critical Stock Level (bags)</Text>
-                  <Text style={styles.inputHint}>
-                    Below this level triggers critical alerts (red zone)
-                  </Text>
-                  <TextInput
-                    style={styles.textInput}
-                    keyboardType="number-pad"
-                    placeholder="e.g. 20"
-                    placeholderTextColor={colors.gray[400]}
-                    value={criticalThreshold}
-                    onChangeText={setCriticalThreshold}
-                    maxLength={4}
-                  />
-
-                  {/* Low */}
-                  <Text style={styles.inputLabel}>Low Stock Level (bags)</Text>
-                  <Text style={styles.inputHint}>
-                    Below this level triggers low stock warnings (amber zone)
-                  </Text>
-                  <TextInput
-                    style={styles.textInput}
-                    keyboardType="number-pad"
-                    placeholder="e.g. 50"
-                    placeholderTextColor={colors.gray[400]}
-                    value={lowThreshold}
-                    onChangeText={setLowThreshold}
-                    maxLength={4}
-                  />
-
-                  {/* Error */}
-                  {error !== '' && (
-                    <View style={styles.errorRow}>
-                      <Ionicons name="warning" size={16} color={colors.error} />
-                      <Text style={styles.errorText}>{error}</Text>
-                    </View>
-                  )}
-
-                  {/* Save */}
-                  <Button
-                    title={`Save Thresholds${selectedLocation ? ` for ${selectedLocation.name}` : ''}`}
-                    onPress={handleSave}
-                    loading={updateMutation.isPending}
-                    disabled={updateMutation.isPending}
-                    icon={
-                      <Ionicons name="save-outline" size={18} color={colors.white} />
-                    }
-                  />
-                </>
-              )}
-            </>
-          )}
-        </View>
-      )}
-    </Card>
+            {success !== '' && (
+              <MonoText
+                size={10}
+                tracking={1}
+                upper
+                weight={600}
+                color={wp.color.green}
+                style={{ marginTop: 10 }}
+              >
+                {success}
+              </MonoText>
+            )}
+          </>
+        )}
+      </View>
+    </>
   );
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────
-
-function Row({ label, value }: { label: string; value: string }) {
+function ThresholdInput({
+  label,
+  hint,
+  value,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
   return (
-    <View style={styles.row}>
-      <Text style={styles.rowLabel}>{label}</Text>
-      <Text style={styles.rowValue}>{value}</Text>
+    <View style={styles.thresholdField}>
+      <MonoText size={11} tracking={1} upper weight={600} color={wp.color.ink}>
+        {label}
+      </MonoText>
+      <TextInput
+        keyboardType="number-pad"
+        value={value}
+        onChangeText={onChange}
+        maxLength={4}
+        placeholder="—"
+        placeholderTextColor={wp.color.ink3}
+        style={styles.thresholdInput}
+      />
+      <MonoText size={9} tracking={0.8} upper color={wp.color.ink3} style={{ marginTop: 4 }}>
+        {hint}
+      </MonoText>
     </View>
   );
 }
 
-// ── Styles ──────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc' },
-  content: { padding: spacing.lg, gap: spacing.lg },
-
-  sectionTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[900],
-    marginBottom: spacing.md,
+  safe: { flex: 1 },
+  scroll: { paddingBottom: 60 },
+  body: {
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: wp.space.block,
+  },
+  section: {
+    paddingTop: 4,
+    paddingBottom: 6,
   },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.gray[200],
+    alignItems: 'baseline',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: wp.color.line,
+    borderStyle: 'dashed',
+    gap: 14,
   },
-  rowLabel: { fontSize: fontSize.sm, color: colors.gray[500] },
   rowValue: {
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.medium,
-    color: colors.gray[900],
+    flex: 1,
+    textAlign: 'right',
+    fontFamily: wp.font.sansSemi.fontFamily,
+    fontWeight: wp.font.sansSemi.fontWeight,
+    fontSize: 14,
+    color: wp.color.ink,
+  },
+  rowValueMono: {
+    fontFamily: wp.font.monoSemi.fontFamily,
+    fontWeight: wp.font.monoSemi.fontWeight,
+    fontSize: 13,
+    letterSpacing: 0.5,
   },
 
-  // ── Thresholds section ──
-  thresholdHeader: {
+  actionRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: spacing.md,
-    marginBottom: spacing.sm,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: wp.color.line,
+    borderStyle: 'dashed',
   },
-  thresholdIconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.primary[50],
+  actionChev: {
+    fontFamily: wp.font.mono.fontFamily,
+    fontSize: 16,
+    color: wp.color.ink3,
+    includeFontPadding: false,
+  },
+
+  thresholdBody: {
+    paddingTop: 8,
+    paddingBottom: 8,
+    gap: 10,
+  },
+  siteList: {
+    borderWidth: 1,
+    borderColor: wp.color.lineD,
+    marginTop: 4,
+  },
+  siteRow: {
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: wp.color.line,
+    borderStyle: 'dashed',
+  },
+  siteRowActive: {
+    backgroundColor: wp.color.ink,
+  },
+  thresholdField: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: wp.color.line,
+    borderStyle: 'dashed',
+  },
+  thresholdInput: {
+    fontFamily: wp.font.monoSemi.fontFamily,
+    fontWeight: wp.font.monoSemi.fontWeight,
+    fontSize: 22,
+    letterSpacing: 1,
+    color: wp.color.ink,
+    padding: 0,
+    marginTop: 6,
+    borderBottomWidth: 1.5,
+    borderBottomColor: wp.color.lineD,
+    paddingBottom: 4,
+  },
+
+  signOutWrap: {
+    marginTop: wp.space.section,
+    position: 'relative',
+    marginRight: 3,
+    marginBottom: 3,
+  },
+  signOutShadow: {
+    position: 'absolute',
+    top: 3,
+    left: 3,
+    right: -3,
+    bottom: -3,
+    backgroundColor: wp.color.red,
+  },
+  signOutButton: {
+    height: 54,
+    backgroundColor: wp.color.paper,
+    borderWidth: 2,
+    borderColor: wp.color.red,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  thresholdHeaderText: { flex: 1 },
-  thresholdSubtitle: {
-    fontSize: fontSize.xs,
-    color: colors.gray[500],
-    marginTop: -spacing.sm,
-  },
-  thresholdBody: { gap: spacing.md },
-
-  loader: { paddingVertical: spacing.lg, alignItems: 'center' },
-
-  // Select button (replaces native Picker)
-  selectButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.gray[200],
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    backgroundColor: colors.white,
-  },
-  selectButtonText: {
-    flex: 1,
-    fontSize: fontSize.sm,
-    color: colors.gray[900],
-  },
-  selectButtonPlaceholder: { color: colors.gray[400] },
-
-  // Modal
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: colors.white,
-    borderTopLeftRadius: borderRadius.xl,
-    borderTopRightRadius: borderRadius.xl,
-    maxHeight: '60%',
-    paddingBottom: spacing['3xl'],
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: spacing.lg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.gray[200],
-  },
-  modalTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[900],
-  },
-  modalItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md + 2,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.gray[100],
-  },
-  modalItemSelected: { backgroundColor: colors.primary[50] },
-  modalItemText: { fontSize: fontSize.md, color: colors.gray[800] },
-  modalItemTextSelected: { color: colors.primary[700], fontWeight: fontWeight.semibold },
-  emptyText: { fontSize: fontSize.sm, color: colors.gray[400] },
-
-  selectedBanner: {
-    backgroundColor: colors.gray[50],
-    borderWidth: 1,
-    borderColor: colors.gray[200],
-    borderRadius: borderRadius.md,
-    padding: spacing.md,
-  },
-  selectedBannerText: { fontSize: fontSize.sm, color: colors.gray[600] },
-  selectedBannerName: { fontWeight: fontWeight.semibold, color: colors.gray[900] },
-
-  inputLabel: {
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.medium,
-    color: colors.gray[700],
-  },
-  inputHint: {
-    fontSize: fontSize.xs,
-    color: colors.gray[500],
-    marginTop: -spacing.sm + 2,
-  },
-  textInput: {
-    borderWidth: 1,
-    borderColor: colors.gray[200],
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    fontSize: fontSize.md,
-    color: colors.gray[900],
-    backgroundColor: colors.white,
-  },
-
-  errorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  errorText: { fontSize: fontSize.sm, color: colors.error, flex: 1 },
-
-  successBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: '#dcfce7',
-    borderRadius: borderRadius.md,
-    padding: spacing.md,
-  },
-  successText: {
-    fontSize: fontSize.sm,
-    color: colors.success,
-    fontWeight: fontWeight.medium,
-    flex: 1,
+  signOutLabel: {
+    fontFamily: wp.font.monoBold.fontFamily,
+    fontWeight: wp.font.monoBold.fontWeight,
+    fontSize: 13,
+    letterSpacing: 2,
+    color: wp.color.red,
+    textTransform: 'uppercase',
   },
 });

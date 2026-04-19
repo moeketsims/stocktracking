@@ -1,14 +1,33 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Alert,
+  TouchableOpacity,
+  TextInput,
+  Platform,
+  ScrollView,
+  KeyboardAvoidingView,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { BarcodeScanner } from '../../src/components/BarcodeScanner';
-import { Button } from '../../src/components/ui/Button';
-import { Card } from '../../src/components/ui/Card';
-import { Input } from '../../src/components/ui/Input';
 import { useCompleteStop } from '../../src/hooks/useTrips';
-import { brand, colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
+import {
+  PaperBackground,
+  Masthead,
+  IntentStrip,
+  DFieldBox,
+  PrimaryBar,
+  MonoText,
+  KickerLabel,
+  Stamp,
+  SerifNumber,
+  HardShadowFrame,
+  InkButton,
+} from '../../src/components/wp';
+import { wp, fmtKickerDate } from '../../src/constants/warehousePaper';
 
 type Mode = 'choose' | 'scan' | 'manual' | 'confirm';
 
@@ -24,6 +43,7 @@ export default function DeliveryScanScreen() {
 
   const plannedKg = parseFloat(planned ?? '0');
   const expectedBags = Math.round(plannedKg / 10);
+  const decodedLocation = decodeURIComponent(locationName ?? 'Location');
 
   const [mode, setMode] = useState<Mode>('choose');
   const [scannedBarcodes, setScannedBarcodes] = useState<string[]>([]);
@@ -47,7 +67,7 @@ export default function DeliveryScanScreen() {
 
     Alert.alert(
       'Confirm Delivery',
-      `Complete stop with ${bags} bags${isScanned ? ` (${bags} scanned)` : ' (manual entry)'}?`,
+      `Complete stop with ${bags} bag${bags > 1 ? 's' : ''}${isScanned ? ` (${bags} scanned)` : ' (manual entry)'}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -63,11 +83,7 @@ export default function DeliveryScanScreen() {
                   scanned_barcodes: isScanned ? scannedBarcodes : undefined,
                 },
               },
-              {
-                onSuccess: () => {
-                  router.back();
-                },
-              },
+              { onSuccess: () => router.back() },
             );
           },
         },
@@ -76,182 +92,436 @@ export default function DeliveryScanScreen() {
   };
 
   return (
-    <>
-      <Stack.Screen
-        options={{
-          title: `Deliver to ${decodeURIComponent(locationName ?? 'Location')}`,
-          headerStyle: { backgroundColor: brand.gradientStart },
-          headerTintColor: colors.white,
-        }}
-      />
-      <SafeAreaView style={styles.container} edges={['bottom']}>
-        {mode === 'choose' && (
-          <View style={styles.chooseContainer}>
-            <Card>
-              <View style={styles.infoRow}>
-                <Ionicons name="location" size={20} color={colors.primary[500]} />
-                <Text style={styles.locationName}>{decodeURIComponent(locationName ?? '')}</Text>
-              </View>
-              <Text style={styles.expectedText}>
-                Expected: {expectedBags} bags ({plannedKg} kg)
-              </Text>
-            </Card>
-
-            <View style={styles.chooseActions}>
-              <Button
-                title="Scan Barcodes"
-                onPress={() => setMode('scan')}
-                size="lg"
-                icon={<Ionicons name="barcode" size={20} color={colors.white} />}
-              />
-              <Button
-                title="Manual Entry"
-                onPress={() => setMode('manual')}
-                variant="outline"
-                size="lg"
-                icon={<Ionicons name="keypad" size={20} color={colors.primary[500]} />}
-              />
-            </View>
-          </View>
-        )}
-
-        {mode === 'scan' && (
-          <BarcodeScanner
-            onScanComplete={handleScanComplete}
-            expectedCount={expectedBags}
+    <PaperBackground>
+      <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.flex}
+        >
+          <Masthead
+            kicker={`DROPOFF — ${fmtKickerDate()}`}
+            title={decodedLocation}
+            backUseRouter
           />
-        )}
 
-        {mode === 'manual' && (
-          <View style={styles.manualContainer}>
-            <Card>
-              <Text style={styles.sectionTitle}>Manual Bag Entry</Text>
-              <Text style={styles.expectedText}>
-                Expected: {expectedBags} bags
-              </Text>
-              <Input
-                label="Actual bags delivered"
-                placeholder="Enter number of bags"
-                value={manualBags}
-                onChangeText={setManualBags}
-                keyboardType="numeric"
-              />
-              <Input
-                label="Notes (optional)"
-                placeholder="Any notes about the delivery"
-                value={notes}
-                onChangeText={setNotes}
-                multiline
-                containerStyle={{ marginTop: spacing.md }}
-              />
-              <View style={styles.manualActions}>
-                <Button
-                  title="Back"
-                  variant="ghost"
-                  onPress={() => setMode('choose')}
-                />
-                <Button
-                  title="Next"
-                  onPress={handleManualSubmit}
-                  disabled={!manualBags || parseInt(manualBags, 10) <= 0}
-                />
-              </View>
-            </Card>
-          </View>
-        )}
+          {mode === 'choose' && (
+            <ChooseMode
+              expectedBags={expectedBags}
+              location={decodedLocation}
+              onScan={() => setMode('scan')}
+              onManual={() => setMode('manual')}
+            />
+          )}
 
-        {mode === 'confirm' && (
-          <View style={styles.confirmContainer}>
-            <Card>
-              <Text style={styles.sectionTitle}>Confirm Delivery</Text>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Location</Text>
-                <Text style={styles.summaryValue}>{decodeURIComponent(locationName ?? '')}</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Expected</Text>
-                <Text style={styles.summaryValue}>{expectedBags} bags</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Actual</Text>
-                <Text style={[styles.summaryValue, styles.actualValue]}>
-                  {scannedBarcodes.length > 0
-                    ? `${scannedBarcodes.length} bags (scanned)`
-                    : `${manualBags} bags (manual)`}
-                </Text>
-              </View>
-              {scannedBarcodes.length > 0 && scannedBarcodes.length !== expectedBags && (
-                <View style={styles.discrepancyBanner}>
-                  <Ionicons name="warning" size={16} color="#854d0e" />
-                  <Text style={styles.discrepancyText}>
-                    Discrepancy: {scannedBarcodes.length - expectedBags > 0 ? '+' : ''}
-                    {scannedBarcodes.length - expectedBags} bags
-                  </Text>
-                </View>
-              )}
-              <Input
-                label="Notes (optional)"
-                placeholder="Any notes"
-                value={notes}
-                onChangeText={setNotes}
-                multiline
-                containerStyle={{ marginTop: spacing.md }}
-              />
-            </Card>
-            <View style={styles.confirmActions}>
-              <Button
-                title="Back"
-                variant="outline"
-                onPress={() =>
-                  scannedBarcodes.length > 0
-                    ? setMode('scan')
-                    : setMode('manual')
-                }
-              />
-              <Button
-                title="Confirm Delivery"
-                onPress={handleConfirmDelivery}
-                loading={completeStop.isPending}
-                style={{ flex: 1 }}
+          {mode === 'scan' && (
+            <View style={styles.flex}>
+              <BarcodeScanner
+                onScanComplete={handleScanComplete}
+                expectedCount={expectedBags}
               />
             </View>
-          </View>
-        )}
+          )}
+
+          {mode === 'manual' && (
+            <ManualMode
+              expectedBags={expectedBags}
+              manualBags={manualBags}
+              setManualBags={setManualBags}
+              notes={notes}
+              setNotes={setNotes}
+              onBack={() => setMode('choose')}
+              onNext={handleManualSubmit}
+            />
+          )}
+
+          {mode === 'confirm' && (
+            <ConfirmMode
+              expectedBags={expectedBags}
+              scannedBarcodes={scannedBarcodes}
+              manualBags={manualBags}
+              notes={notes}
+              setNotes={setNotes}
+              onBack={() => (scannedBarcodes.length > 0 ? setMode('scan') : setMode('manual'))}
+              onConfirm={handleConfirmDelivery}
+              loading={completeStop.isPending}
+            />
+          )}
+        </KeyboardAvoidingView>
       </SafeAreaView>
+    </PaperBackground>
+  );
+}
+
+function ChooseMode({
+  expectedBags,
+  location,
+  onScan,
+  onManual,
+}: {
+  expectedBags: number;
+  location: string;
+  onScan: () => void;
+  onManual: () => void;
+}) {
+  return (
+    <ScrollView contentContainerStyle={styles.content}>
+      <IntentStrip>
+        Scan the barcode on each bag, or tap manual entry if scanning isn't possible.
+      </IntentStrip>
+
+      <HardShadowFrame style={{ marginBottom: 18 }}>
+        <View style={styles.voucher}>
+          <View style={styles.voucherHead}>
+            <KickerLabel size={10} tracking={1.5} color={wp.color.ink3}>
+              DROPOFF
+            </KickerLabel>
+            <Stamp color="amber" rotate={3}>EXPECTED</Stamp>
+          </View>
+          <View style={styles.heroRow}>
+            <SerifNumber size={72} tracking={-2} leading={0.95} color={wp.color.ink} autoShrink>
+              {String(expectedBags)}
+            </SerifNumber>
+            <View style={{ marginLeft: 10 }}>
+              <MonoText size={11} tracking={1.5} color={wp.color.ink3}>BAGS</MonoText>
+              <MonoText size={10} tracking={1} color={wp.color.ink3} style={{ marginTop: 2 }}>
+                FOR {location.toUpperCase()}
+              </MonoText>
+            </View>
+          </View>
+        </View>
+      </HardShadowFrame>
+
+      <View style={styles.chooseActions}>
+        <TouchableOpacity activeOpacity={0.85} onPress={onScan} style={styles.primaryAction}>
+          <Text allowFontScaling={false} style={styles.primaryActionLabel}>
+            SCAN BARCODES
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity activeOpacity={0.7} onPress={onManual} style={styles.secondaryAction}>
+          <Text allowFontScaling={false} style={styles.secondaryActionLabel}>
+            MANUAL ENTRY
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
+  );
+}
+
+function ManualMode({
+  expectedBags,
+  manualBags,
+  setManualBags,
+  notes,
+  setNotes,
+  onBack,
+  onNext,
+}: {
+  expectedBags: number;
+  manualBags: string;
+  setManualBags: (v: string) => void;
+  notes: string;
+  setNotes: (v: string) => void;
+  onBack: () => void;
+  onNext: () => void;
+}) {
+  const qty = parseInt(manualBags, 10);
+  const isValid = !isNaN(qty) && qty > 0;
+
+  return (
+    <>
+      <ScrollView contentContainerStyle={styles.content}>
+        <IntentStrip>
+          Enter the count of bags you delivered. Note any discrepancy from the expected amount.
+        </IntentStrip>
+
+        <DFieldBox label={`Actual bags · expected ${expectedBags}`}>
+          <View style={styles.qtyRow}>
+            <SerifNumber
+              size={56}
+              tracking={-2}
+              leading={1}
+              color={qty > 0 ? wp.color.ink : wp.color.ink3}
+              autoShrink
+              style={{ flexShrink: 1 }}
+            >
+              {qty > 0 ? String(qty) : '—'}
+            </SerifNumber>
+            <TouchableOpacity
+              onPress={() => setManualBags(String(expectedBags))}
+              activeOpacity={0.6}
+              style={[styles.chip, qty === expectedBags && styles.chipActive]}
+            >
+              <MonoText
+                size={11}
+                weight={600}
+                tracking={1}
+                color={qty === expectedBags ? wp.color.paper : wp.color.ink}
+              >
+                AS EXPECTED
+              </MonoText>
+            </TouchableOpacity>
+          </View>
+          <TextInput
+            value={manualBags}
+            onChangeText={setManualBags}
+            keyboardType="number-pad"
+            style={styles.hiddenInput}
+            maxLength={6}
+          />
+          <View style={styles.qtyUnderline} />
+        </DFieldBox>
+
+        <DFieldBox label="Notes · optional" noDivider>
+          <View style={styles.notesBox}>
+            <TextInput
+              placeholder="Any notes about the delivery…"
+              placeholderTextColor={wp.color.ink3}
+              value={notes}
+              onChangeText={setNotes}
+              multiline
+              style={styles.notesInput}
+            />
+          </View>
+        </DFieldBox>
+
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+          <InkButton label="Back" onPress={onBack} />
+        </View>
+      </ScrollView>
+
+      <PrimaryBar label="Continue" onPress={onNext} disabled={!isValid} />
     </>
   );
 }
 
+function ConfirmMode({
+  expectedBags,
+  scannedBarcodes,
+  manualBags,
+  notes,
+  setNotes,
+  onBack,
+  onConfirm,
+  loading,
+}: {
+  expectedBags: number;
+  scannedBarcodes: string[];
+  manualBags: string;
+  notes: string;
+  setNotes: (v: string) => void;
+  onBack: () => void;
+  onConfirm: () => void;
+  loading: boolean;
+}) {
+  const isScanned = scannedBarcodes.length > 0;
+  const actualBags = isScanned ? scannedBarcodes.length : parseInt(manualBags, 10) || 0;
+  const diff = actualBags - expectedBags;
+
+  return (
+    <>
+      <ScrollView contentContainerStyle={styles.content}>
+        <HardShadowFrame style={{ marginBottom: 14 }}>
+          <View style={styles.voucher}>
+            <View style={styles.voucherHead}>
+              <KickerLabel size={10} tracking={1.5} color={wp.color.ink3}>
+                {isScanned ? 'SCANNED' : 'MANUAL ENTRY'}
+              </KickerLabel>
+              <Stamp color={diff !== 0 ? 'amber' : 'green'} rotate={3}>
+                {diff !== 0 ? 'DISCREPANCY' : 'MATCH'}
+              </Stamp>
+            </View>
+
+            <View style={styles.metaLedger}>
+              <MetaRow label="EXPECTED" value={`${expectedBags} bags`} />
+              <MetaRow
+                label={isScanned ? 'SCANNED' : 'COUNTED'}
+                value={`${actualBags} bags`}
+              />
+              {diff !== 0 && (
+                <MetaRow
+                  label="VARIANCE"
+                  value={`${diff > 0 ? '+' : ''}${diff} bags`}
+                  valueColor={diff < 0 ? wp.color.red : wp.color.amber}
+                  last
+                />
+              )}
+            </View>
+          </View>
+        </HardShadowFrame>
+
+        <DFieldBox label="Notes · optional" noDivider>
+          <View style={styles.notesBox}>
+            <TextInput
+              placeholder="Driver notes…"
+              placeholderTextColor={wp.color.ink3}
+              value={notes}
+              onChangeText={setNotes}
+              multiline
+              style={styles.notesInput}
+            />
+          </View>
+        </DFieldBox>
+
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+          <InkButton label="Back" onPress={onBack} />
+        </View>
+      </ScrollView>
+
+      <PrimaryBar
+        label={`Confirm delivery · ${actualBags} bags`}
+        onPress={onConfirm}
+        loading={loading}
+      />
+    </>
+  );
+}
+
+function MetaRow({
+  label,
+  value,
+  valueColor = wp.color.ink,
+  last,
+}: {
+  label: string;
+  value: string;
+  valueColor?: string;
+  last?: boolean;
+}) {
+  return (
+    <View style={[styles.metaRow, !last && styles.metaRowDivider]}>
+      <MonoText size={10} tracking={1.3} upper color={wp.color.ink3}>
+        {label}
+      </MonoText>
+      <MonoText size={14} weight={700} color={valueColor}>
+        {value}
+      </MonoText>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
-  chooseContainer: { flex: 1, padding: spacing.lg, gap: spacing.xl },
-  infoRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
-  locationName: { fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.gray[900] },
-  expectedText: { fontSize: fontSize.sm, color: colors.gray[500] },
-  chooseActions: { gap: spacing.md },
-  manualContainer: { flex: 1, padding: spacing.lg },
-  manualActions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.xl },
-  confirmContainer: { flex: 1, padding: spacing.lg, gap: spacing.lg },
-  sectionTitle: { fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.gray[900], marginBottom: spacing.md },
-  summaryRow: {
+  safe: { flex: 1 },
+  flex: { flex: 1 },
+  content: {
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: 14,
+    paddingBottom: 200,
+  },
+
+  // Voucher
+  voucher: {
+    backgroundColor: wp.color.voucherBg,
+    borderWidth: 1,
+    borderColor: wp.color.lineD,
+    padding: 14,
+  },
+  voucherHead: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.gray[200],
+    alignItems: 'center',
   },
-  summaryLabel: { fontSize: fontSize.sm, color: colors.gray[500] },
-  summaryValue: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.gray[900] },
-  actualValue: { fontWeight: fontWeight.bold, color: colors.primary[600] },
-  discrepancyBanner: {
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    marginTop: 12,
+  },
+
+  metaLedger: {
+    marginTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: wp.color.line,
+    borderStyle: 'dashed',
+    paddingTop: 10,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  metaRowDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: wp.color.line,
+    borderStyle: 'dashed',
+  },
+
+  // Choose mode
+  chooseActions: {
+    gap: 10,
+  },
+  primaryAction: {
+    backgroundColor: wp.color.ink,
+    borderWidth: 2,
+    borderColor: wp.color.lineD,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  primaryActionLabel: {
+    fontFamily: wp.font.monoBold.fontFamily,
+    fontWeight: wp.font.monoBold.fontWeight,
+    fontSize: 13,
+    letterSpacing: 2,
+    color: wp.color.paper,
+  },
+  secondaryAction: {
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+    paddingVertical: 14,
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  secondaryActionLabel: {
+    fontFamily: wp.font.monoSemi.fontFamily,
+    fontWeight: wp.font.monoSemi.fontWeight,
+    fontSize: 12,
+    letterSpacing: 1.5,
+    color: wp.color.ink,
+  },
+
+  // Quantity (manual)
+  qtyRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-    padding: spacing.md,
-    backgroundColor: '#fef9c3',
-    borderRadius: 8,
+    justifyContent: 'space-between',
   },
-  discrepancyText: { fontSize: fontSize.sm, color: '#854d0e' },
-  confirmActions: { flexDirection: 'row', gap: spacing.md },
+  qtyUnderline: {
+    height: 1.5,
+    backgroundColor: wp.color.lineD,
+    marginTop: 8,
+  },
+  chip: {
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+  },
+  chipActive: {
+    backgroundColor: wp.color.ink,
+  },
+  hiddenInput: {
+    position: 'absolute',
+    opacity: 0,
+    width: 0,
+    height: 0,
+  },
+
+  notesBox: {
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+    backgroundColor: wp.color.voucherBg,
+    padding: 12,
+    minHeight: 72,
+  },
+  notesInput: {
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'Georgia' }),
+    fontStyle: 'italic',
+    fontSize: 14,
+    color: wp.color.ink,
+    minHeight: 48,
+    textAlignVertical: 'top',
+    padding: 0,
+  },
 });

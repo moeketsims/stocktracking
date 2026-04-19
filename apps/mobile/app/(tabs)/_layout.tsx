@@ -1,9 +1,9 @@
 import React from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, Text } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/authStore';
-import { brand, colors } from '../../src/constants/theme';
+import { wp } from '../../src/constants/warehousePaper';
 import type { UserRole } from '../../src/types';
 
 type TabConfig = {
@@ -17,35 +17,35 @@ type TabConfig = {
 const TAB_CONFIG: TabConfig[] = [
   {
     name: 'index',
-    title: 'Home',
+    title: 'HOME',
     icon: 'home',
     iconOutline: 'home-outline',
     roles: ['admin', 'zone_manager', 'location_manager', 'vehicle_manager', 'driver', 'staff'],
   },
   {
     name: 'requests',
-    title: 'Requests',
+    title: 'ORDERS',
     icon: 'document-text',
     iconOutline: 'document-text-outline',
     roles: ['admin', 'zone_manager', 'location_manager', 'driver'],
   },
   {
     name: 'trips',
-    title: 'Trips',
+    title: 'TRIPS',
     icon: 'car',
     iconOutline: 'car-outline',
     roles: ['admin', 'zone_manager', 'vehicle_manager', 'driver'],
   },
   {
     name: 'stock',
-    title: 'Stock',
+    title: 'STOCK',
     icon: 'cube',
     iconOutline: 'cube-outline',
     roles: ['admin', 'zone_manager', 'location_manager', 'staff'],
   },
   {
     name: 'more',
-    title: 'More',
+    title: 'MORE',
     icon: 'grid',
     iconOutline: 'grid-outline',
     roles: ['admin', 'zone_manager', 'location_manager', 'vehicle_manager', 'driver', 'staff'],
@@ -78,31 +78,17 @@ export default function TabLayout() {
     <Tabs
       initialRouteName={initialTab}
       screenOptions={{
-        headerStyle: { backgroundColor: brand.gradientStart },
-        headerTintColor: colors.white,
-        headerTitleStyle: { fontWeight: '700', fontSize: 17 },
-        headerShadowVisible: false,
-        tabBarActiveTintColor: brand.accent,
-        tabBarInactiveTintColor: colors.gray[400],
+        headerShown: false,
         tabBarStyle: {
-          backgroundColor: colors.white,
-          borderTopWidth: 0,
+          backgroundColor: wp.color.paper,
+          borderTopWidth: wp.border.mid,
+          borderTopColor: wp.color.lineD,
           paddingTop: 6,
-          paddingBottom: Platform.OS === 'ios' ? 0 : 8,
-          height: Platform.OS === 'ios' ? 88 : 64,
-          ...Platform.select({
-            ios: { shadowColor: '#0f172a', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.06, shadowRadius: 12 },
-            android: { elevation: 12 },
-            default: { shadowColor: '#0f172a', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.06, shadowRadius: 12 },
-          }),
-        },
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '600',
-          letterSpacing: 0.2,
-        },
-        tabBarIconStyle: {
-          marginBottom: -2,
+          paddingBottom: Platform.OS === 'ios' ? 22 : 12,
+          height: Platform.OS === 'ios' ? 80 : 64,
+          // Disable platform shadows — paper aesthetic uses borders only.
+          elevation: 0,
+          shadowOpacity: 0,
         },
       }}
     >
@@ -111,16 +97,25 @@ export default function TabLayout() {
           key={tab.name}
           name={tab.name}
           options={{
-            title: tab.title,
             href: tab.roles.includes(role) ? undefined : null,
-            tabBarIcon: ({ color, focused }) => (
-              <View style={focused ? st.activeIconWrap : undefined}>
-                <Ionicons
-                  name={focused ? tab.icon : tab.iconOutline}
-                  size={22}
-                  color={focused ? brand.accent : color}
-                />
-              </View>
+            tabBarIcon: ({ focused }) => (
+              <Ionicons
+                name={focused ? tab.icon : tab.iconOutline}
+                size={20}
+                color={focused ? wp.color.ink : wp.color.ink3}
+              />
+            ),
+            tabBarLabel: ({ focused }) => (
+              <Text
+                allowFontScaling={false}
+                numberOfLines={1}
+                style={[
+                  styles.label,
+                  focused ? styles.labelActive : styles.labelInactive,
+                ]}
+              >
+                {tab.title}
+              </Text>
             ),
           }}
         />
@@ -129,11 +124,22 @@ export default function TabLayout() {
   );
 }
 
-const st = StyleSheet.create({
-  activeIconWrap: {
-    backgroundColor: brand.accentLight,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 4,
+const styles = StyleSheet.create({
+  label: {
+    fontSize: 9,
+    letterSpacing: 0.8,
+    marginTop: 2,
+    textAlign: 'center',
+    width: 80,
+  },
+  labelActive: {
+    color: wp.color.ink,
+    fontFamily: wp.font.monoBold.fontFamily,
+    fontWeight: wp.font.monoBold.fontWeight,
+  },
+  labelInactive: {
+    color: wp.color.ink3,
+    fontFamily: wp.font.monoMid.fontFamily,
+    fontWeight: wp.font.monoMid.fontWeight,
   },
 });

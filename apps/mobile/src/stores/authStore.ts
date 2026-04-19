@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import type { UserProfile, UserRole } from '../types';
+import { hasPin } from '../utils/pin';
 
 // expo-secure-store doesn't support web — fall back to localStorage
 const storage = {
@@ -32,12 +33,20 @@ interface AuthState {
   isLoading: boolean;
   user: UserProfile | null;
   accessToken: string | null;
+  /** Whether a local unlock PIN is configured. `null` until first checked. */
+  pinConfigured: boolean | null;
 
   // Actions
   setAuth: (user: UserProfile, accessToken: string, refreshToken: string) => Promise<void>;
   clearAuth: () => Promise<void>;
   setUser: (user: UserProfile) => void;
   loadStoredAuth: () => Promise<void>;
+  /**
+   * Re-read whether a PIN is configured. Call from screens that mutate
+   * PIN state (pin-setup after save, settings after disable) so the
+   * AuthGuard sees the new value without waiting for the next auth event.
+   */
+  refreshPinConfigured: () => Promise<void>;
 
   // Role helpers
   hasRole: (...roles: UserRole[]) => boolean;
@@ -52,19 +61,33 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isLoading: true,
   user: null,
   accessToken: null,
+  pinConfigured: null,
 
   setAuth: async (user, accessToken, refreshToken) => {
     await storage.setItem('access_token', accessToken);
     await storage.setItem('refresh_token', refreshToken);
     await storage.setItem('user_profile', JSON.stringify(user));
-    set({ isAuthenticated: true, isLoading: false, user, accessToken });
+    const pinExists = await hasPin();
+    set({
+      isAuthenticated: true,
+      isLoading: false,
+      user,
+      accessToken,
+      pinConfigured: pinExists,
+    });
   },
 
   clearAuth: async () => {
     await storage.deleteItem('access_token');
     await storage.deleteItem('refresh_token');
     await storage.deleteItem('user_profile');
-    set({ isAuthenticated: false, isLoading: false, user: null, accessToken: null });
+    set({
+      isAuthenticated: false,
+      isLoading: false,
+      user: null,
+      accessToken: null,
+      pinConfigured: null,
+    });
   },
 
   setUser: (user) => set({ user }),
@@ -75,13 +98,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const userJson = await storage.getItem('user_profile');
       if (accessToken && userJson) {
         const user = JSON.parse(userJson) as UserProfile;
-        set({ isAuthenticated: true, isLoading: false, user, accessToken });
+        const pinExists = await hasPin();
+        set({
+          isAuthenticated: true,
+          isLoading: false,
+          user,
+          accessToken,
+          pinConfigured: pinExists,
+        });
       } else {
-        set({ isLoading: false });
+        set({ isLoading: false, pinConfigured: null });
       }
     } catch {
       set({ isLoading: false });
     }
+  },
+
+  refreshPinConfigured: async () => {
+    const exists = await hasPin();
+    set({ pinConfigured: exists });
   },
 
   hasRole: (...roles) => {

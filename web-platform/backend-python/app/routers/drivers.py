@@ -8,6 +8,20 @@ from pydantic import BaseModel, Field, EmailStr
 from ..config import get_supabase_admin_client
 from ..routers.auth import require_manager, get_current_user
 from ..email import send_invitation_email
+from ..utils.invite_codes import generate_short_code
+
+
+def _mint_unique_short_code(supabase, attempts: int = 5) -> str:
+    """Generate a short code, retrying on collision against the unique
+    index on user_invitations.short_code."""
+    for _ in range(attempts):
+        candidate = generate_short_code()
+        existing = supabase.table("user_invitations").select("id").eq(
+            "short_code", candidate
+        ).limit(1).execute()
+        if not existing.data:
+            return candidate
+    raise RuntimeError(f"could not mint a unique invite short code after {attempts} attempts")
 
 router = APIRouter(prefix="/drivers", tags=["Drivers"])
 logger = logging.getLogger(__name__)
@@ -268,8 +282,9 @@ async def create_driver(request: CreateDriverRequest, user_data: dict = Depends(
                 detail="A pending invitation already exists for this email"
             )
 
-        # Generate invitation token
+        # Generate invitation token + in-person short code
         token = secrets.token_urlsafe(32)
+        short_code = _mint_unique_short_code(supabase)
         expires_at = datetime.utcnow() + timedelta(days=7)
 
         # Store driver details in invitation metadata (driver record created on acceptance)
@@ -291,6 +306,7 @@ async def create_driver(request: CreateDriverRequest, user_data: dict = Depends(
             "full_name": request.full_name,
             "invited_by": actor_profile["user_id"],
             "token": token,
+            "short_code": short_code,
             "expires_at": expires_at.isoformat(),
             "driver_metadata": driver_metadata
         }
@@ -316,7 +332,9 @@ async def create_driver(request: CreateDriverRequest, user_data: dict = Depends(
             "success": True,
             "message": f"Invitation sent to {request.email}. Driver will be added when they accept.",
             "invitation_id": invitation_id,
-            "email_sent": email_sent
+            "email_sent": email_sent,
+            "short_code": short_code,  # Surface for in-person handoff
+            "expires_at": expires_at.isoformat(),
         }
 
     except HTTPException:
@@ -348,8 +366,9 @@ async def resend_driver_invitation(driver_id: str, user_data: dict = Depends(req
         if not driver.get("email"):
             raise HTTPException(status_code=400, detail="Driver has no email address")
 
-        # Generate new token
+        # Generate new token + in-person short code
         new_token = secrets.token_urlsafe(32)
+        new_short_code = _mint_unique_short_code(supabase)
         new_expires = datetime.utcnow() + timedelta(days=7)
 
         # Check if invitation exists
@@ -357,6 +376,7 @@ async def resend_driver_invitation(driver_id: str, user_data: dict = Depends(req
             # Update existing invitation
             supabase.table("user_invitations").update({
                 "token": new_token,
+                "short_code": new_short_code,
                 "expires_at": new_expires.isoformat()
             }).eq("id", driver["invitation_id"]).execute()
         else:
@@ -371,6 +391,7 @@ async def resend_driver_invitation(driver_id: str, user_data: dict = Depends(req
                 "full_name": driver["full_name"],
                 "invited_by": actor_profile["user_id"],
                 "token": new_token,
+                "short_code": new_short_code,
                 "expires_at": new_expires.isoformat(),
                 "driver_id": driver_id
             }
@@ -394,7 +415,9 @@ async def resend_driver_invitation(driver_id: str, user_data: dict = Depends(req
         return {
             "success": True,
             "message": f"Invitation resent to {driver['email']}",
-            "email_sent": email_sent
+            "email_sent": email_sent,
+            "short_code": new_short_code,
+            "expires_at": new_expires.isoformat(),
         }
 
     except HTTPException:

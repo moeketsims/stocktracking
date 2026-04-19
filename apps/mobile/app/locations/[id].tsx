@@ -6,10 +6,11 @@ import {
   RefreshControl,
   StyleSheet,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/authStore';
 import {
   useLocation,
@@ -18,12 +19,20 @@ import {
   useUpdateThresholds,
   useDeleteLocation,
 } from '../../src/hooks/useLocations';
-import { Card } from '../../src/components/ui/Card';
-import { Badge } from '../../src/components/ui/Badge';
-import { Button } from '../../src/components/ui/Button';
-import { Input } from '../../src/components/ui/Input';
 import { Loading } from '../../src/components/ui/Loading';
-import { colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
+import {
+  PaperBackground,
+  Masthead,
+  KickerLabel,
+  MonoText,
+  SerifNumber,
+  Stamp,
+  HardShadowFrame,
+  ActionStack,
+  MonoInput,
+  IntentStrip,
+} from '../../src/components/wp';
+import { wp } from '../../src/constants/warehousePaper';
 
 export default function LocationDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -47,14 +56,14 @@ export default function LocationDetailScreen() {
   const loc = location.data;
   const thresh = thresholds.data;
 
-  function startEditing() {
+  const startEditing = () => {
     if (!loc) return;
     setEditName(loc.name);
     setEditAddress(loc.address ?? '');
     setEditing(true);
-  }
+  };
 
-  function saveEdit() {
+  const saveEdit = () => {
     if (!loc) return;
     updateLocation.mutate(
       { id: loc.id, data: { name: editName, address: editAddress || undefined } },
@@ -65,29 +74,29 @@ export default function LocationDetailScreen() {
         },
       },
     );
-  }
+  };
 
-  function startEditThresholds() {
+  const startEditThresholds = () => {
     if (!thresh) return;
     setCriticalThreshold(String(thresh.critical_stock_threshold));
     setLowThreshold(String(thresh.low_stock_threshold));
     setEditingThresholds(true);
-  }
+  };
 
-  function saveThresholds() {
+  const saveThresholds = () => {
     if (!loc) return;
-    const critical = parseInt(criticalThreshold, 10);
-    const low = parseInt(lowThreshold, 10);
-    if (isNaN(critical) || isNaN(low)) {
-      Alert.alert('Error', 'Please enter valid numbers');
+    const c = parseInt(criticalThreshold, 10);
+    const l = parseInt(lowThreshold, 10);
+    if (isNaN(c) || isNaN(l)) {
+      Alert.alert('Error', 'Enter valid numbers');
       return;
     }
-    if (critical >= low) {
-      Alert.alert('Error', 'Critical threshold must be less than low stock threshold');
+    if (c >= l) {
+      Alert.alert('Error', 'Critical must be less than low');
       return;
     }
     updateThresholds.mutate(
-      { id: loc.id, data: { critical_stock_threshold: critical, low_stock_threshold: low } },
+      { id: loc.id, data: { critical_stock_threshold: c, low_stock_threshold: l } },
       {
         onSuccess: () => {
           setEditingThresholds(false);
@@ -95,255 +104,260 @@ export default function LocationDetailScreen() {
         },
       },
     );
-  }
+  };
 
-  function confirmDelete() {
+  const confirmDelete = () => {
     if (!loc) return;
-    Alert.alert(
-      'Delete Location',
-      `Are you sure you want to delete "${loc.name}"? This cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () =>
-            deleteLocation.mutate(loc.id, {
-              onSuccess: () => router.back(),
-            }),
-        },
-      ],
+    Alert.alert('Delete location', `Delete "${loc.name}"? This cannot be undone.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => deleteLocation.mutate(loc.id, { onSuccess: () => router.back() }),
+      },
+    ]);
+  };
+
+  if (location.isLoading) {
+    return (
+      <PaperBackground>
+        <Stack.Screen options={{ headerShown: false }} />
+        <Loading fullScreen message="" />
+      </PaperBackground>
     );
   }
-
-  if (location.isLoading) return <Loading fullScreen message="Loading location..." />;
 
   if (!loc) {
     return (
-      <SafeAreaView style={styles.container}>
-        <Text style={styles.errorText}>Location not found.</Text>
-      </SafeAreaView>
+      <PaperBackground>
+        <Stack.Screen options={{ headerShown: false }} />
+        <SafeAreaView style={styles.safe}>
+          <Masthead kicker="LOCATION" title="Not found" backUseRouter />
+        </SafeAreaView>
+      </PaperBackground>
     );
   }
 
+  const recordNumber = (loc.id ?? '').slice(-4).toUpperCase();
+  const isShop = loc.type === 'shop';
+  const stamp = isShop
+    ? { label: 'SHOP', color: '#1F3A8A' }
+    : { label: 'WHSE', color: wp.color.amber };
+
   return (
-    <>
-      <Stack.Screen options={{ title: loc.name }} />
-      <SafeAreaView style={styles.container} edges={['bottom']}>
-        <ScrollView
-          contentContainerStyle={styles.content}
-          refreshControl={
-            <RefreshControl
-              refreshing={location.isRefetching}
-              onRefresh={() => {
-                location.refetch();
-                thresholds.refetch();
-              }}
-            />
-          }
+    <PaperBackground>
+      <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          {/* Header */}
-          <Card>
-            <View style={styles.headerRow}>
-              <Ionicons
-                name={loc.type === 'warehouse' ? 'business' : 'storefront'}
-                size={28}
-                color={loc.type === 'warehouse' ? '#d97706' : colors.info}
+          <ScrollView
+            contentContainerStyle={styles.scroll}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={location.isRefetching}
+                onRefresh={() => {
+                  location.refetch();
+                  thresholds.refetch();
+                }}
+                tintColor={wp.color.ink2}
               />
-              <View style={styles.headerInfo}>
-                <Text style={styles.headerName}>{loc.name}</Text>
-                <Badge
-                  label={loc.type === 'shop' ? 'Shop' : 'Warehouse'}
-                  variant={loc.type === 'shop' ? 'info' : 'warning'}
-                />
+            }
+          >
+            <Masthead
+              kicker={`LOCATION · ${recordNumber}`}
+              title={loc.name}
+              backUseRouter
+            />
+
+            <View style={styles.heroWrap}>
+              <HardShadowFrame>
+                <View style={styles.hero}>
+                  <View style={styles.heroTop}>
+                    <KickerLabel size={10} tracking={2} color={wp.color.ink3}>
+                      RECORD N° {recordNumber}
+                    </KickerLabel>
+                    <Stamp colorHex={stamp.color} rotate={-3}>
+                      {stamp.label}
+                    </Stamp>
+                  </View>
+                  <SerifNumber size={26} tracking={-1} leading={1.05} style={styles.heroName}>
+                    {loc.name}
+                  </SerifNumber>
+                  <View style={styles.metaList}>
+                    <MetaRow label="Zone" value={loc.zone_name ?? '—'} />
+                    <MetaRow label="Address" value={loc.address ?? 'Not set'} />
+                    <MetaRow
+                      label="Critical"
+                      value={
+                        thresh?.critical_stock_threshold != null
+                          ? `${thresh.critical_stock_threshold} bags`
+                          : '—'
+                      }
+                    />
+                    <MetaRow
+                      label="Low"
+                      value={
+                        thresh?.low_stock_threshold != null
+                          ? `${thresh.low_stock_threshold} bags`
+                          : '—'
+                      }
+                    />
+                  </View>
+                </View>
+              </HardShadowFrame>
+            </View>
+
+            {editing && isAdmin && (
+              <View style={styles.formWrap}>
+                <IntentStrip>Update the site name or street address.</IntentStrip>
+                <MonoInput label="Name" value={editName} onChangeText={setEditName} />
+                <MonoInput label="Address" value={editAddress} onChangeText={setEditAddress} />
               </View>
-            </View>
+            )}
 
-            <View style={styles.detailGrid}>
-              <DetailRow label="Zone" value={loc.zone_name ?? '—'} />
-              <DetailRow label="Address" value={loc.address ?? 'Not set'} />
-            </View>
-          </Card>
-
-          {/* Edit form */}
-          {editing && isAdmin && (
-            <Card>
-              <Text style={styles.sectionTitle}>Edit Location</Text>
-              <Input
-                label="Name"
-                value={editName}
-                onChangeText={setEditName}
-              />
-              <Input
-                label="Address"
-                value={editAddress}
-                onChangeText={setEditAddress}
-                containerStyle={{ marginTop: spacing.md }}
-              />
-              <View style={styles.buttonRow}>
-                <Button
-                  title="Cancel"
-                  variant="ghost"
-                  size="sm"
-                  onPress={() => setEditing(false)}
-                />
-                <Button
-                  title="Save"
-                  size="sm"
-                  onPress={saveEdit}
-                  loading={updateLocation.isPending}
-                />
-              </View>
-            </Card>
-          )}
-
-          {/* Thresholds */}
-          <Card>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Stock Thresholds</Text>
-              {!editingThresholds && isAdmin && (
-                <Button
-                  title="Edit"
-                  variant="ghost"
-                  size="sm"
-                  onPress={startEditThresholds}
-                />
-              )}
-            </View>
-
-            {editingThresholds ? (
-              <>
-                <Input
-                  label="Critical threshold (bags)"
+            {editingThresholds && isAdmin && (
+              <View style={styles.formWrap}>
+                <IntentStrip>
+                  Critical triggers a red-alert page; low triggers an amber warning.
+                </IntentStrip>
+                <MonoInput
+                  label="Critical · bags"
                   value={criticalThreshold}
                   onChangeText={setCriticalThreshold}
                   keyboardType="number-pad"
                 />
-                <Input
-                  label="Low stock threshold (bags)"
+                <MonoInput
+                  label="Low · bags"
                   value={lowThreshold}
                   onChangeText={setLowThreshold}
                   keyboardType="number-pad"
-                  containerStyle={{ marginTop: spacing.md }}
-                />
-                <View style={styles.buttonRow}>
-                  <Button
-                    title="Cancel"
-                    variant="ghost"
-                    size="sm"
-                    onPress={() => setEditingThresholds(false)}
-                  />
-                  <Button
-                    title="Save"
-                    size="sm"
-                    onPress={saveThresholds}
-                    loading={updateThresholds.isPending}
-                  />
-                </View>
-              </>
-            ) : (
-              <View style={styles.detailGrid}>
-                <DetailRow
-                  label="Critical"
-                  value={`${thresh?.critical_stock_threshold ?? 20} bags`}
-                />
-                <DetailRow
-                  label="Low Stock"
-                  value={`${thresh?.low_stock_threshold ?? 50} bags`}
                 />
               </View>
             )}
-          </Card>
 
-          {/* Admin actions */}
-          {isAdmin && (
-            <Card>
-              <Text style={styles.sectionTitle}>Actions</Text>
-              <View style={styles.actionButtons}>
-                {!editing && (
-                  <Button
-                    title="Edit Location"
-                    variant="outline"
-                    onPress={startEditing}
-                    icon={<Ionicons name="pencil" size={16} color={colors.primary[500]} />}
+            {isAdmin && (
+              <View style={styles.actionsWrap}>
+                {editing ? (
+                  <ActionStack
+                    actions={[
+                      {
+                        label: 'Save changes',
+                        onPress: saveEdit,
+                        filled: true,
+                        loading: updateLocation.isPending,
+                      },
+                      { label: 'Cancel', onPress: () => setEditing(false), color: wp.color.ink3 },
+                    ]}
+                  />
+                ) : editingThresholds ? (
+                  <ActionStack
+                    actions={[
+                      {
+                        label: 'Save thresholds',
+                        onPress: saveThresholds,
+                        filled: true,
+                        loading: updateThresholds.isPending,
+                      },
+                      {
+                        label: 'Cancel',
+                        onPress: () => setEditingThresholds(false),
+                        color: wp.color.ink3,
+                      },
+                    ]}
+                  />
+                ) : (
+                  <ActionStack
+                    actions={[
+                      { label: 'Edit location', onPress: startEditing },
+                      {
+                        label: 'Edit thresholds',
+                        onPress: startEditThresholds,
+                        color: wp.color.amber,
+                      },
+                      {
+                        label: 'Delete location',
+                        onPress: confirmDelete,
+                        color: wp.color.red,
+                        loading: deleteLocation.isPending,
+                      },
+                    ]}
                   />
                 )}
-                <Button
-                  title="Delete Location"
-                  variant="danger"
-                  onPress={confirmDelete}
-                  loading={deleteLocation.isPending}
-                  icon={<Ionicons name="trash" size={16} color={colors.white} />}
-                />
               </View>
-            </Card>
-          )}
-        </ScrollView>
+            )}
+          </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
-    </>
+    </PaperBackground>
   );
 }
 
-function DetailRow({ label, value }: { label: string; value: string }) {
+function MetaRow({ label, value }: { label: string; value: string }) {
   return (
-    <View style={styles.detailRow}>
-      <Text style={styles.detailLabel}>{label}</Text>
-      <Text style={styles.detailValue}>{value}</Text>
+    <View style={styles.metaRow}>
+      <MonoText
+        size={10}
+        tracking={1.5}
+        upper
+        weight={600}
+        color={wp.color.ink3}
+        style={{ width: 80 }}
+      >
+        {label}
+      </MonoText>
+      <Text allowFontScaling={false} style={styles.metaValue}>
+        {value}
+      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
-  content: { padding: spacing.lg, gap: spacing.lg },
-  errorText: {
-    fontSize: fontSize.md,
-    color: colors.error,
-    textAlign: 'center',
-    marginTop: spacing['3xl'],
+  safe: { flex: 1 },
+  flex: { flex: 1 },
+  scroll: { paddingBottom: 60 },
+  heroWrap: {
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: wp.space.block,
   },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.lg,
-    marginBottom: spacing.lg,
+  hero: {
+    borderWidth: wp.border.mid,
+    borderColor: wp.color.lineD,
+    backgroundColor: wp.color.voucherBg,
+    padding: 16,
   },
-  headerInfo: { flex: 1, gap: spacing.xs },
-  headerName: {
-    fontSize: fontSize.xl,
-    fontWeight: fontWeight.bold,
-    color: colors.gray[900],
-  },
-  sectionHeader: {
+  heroTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  sectionTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[900],
-    marginBottom: spacing.md,
-  },
-  detailGrid: { gap: spacing.sm },
-  detailRow: {
+  heroName: { marginTop: 10 },
+  metaList: { marginTop: 14, gap: 8 },
+  metaRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.xs,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: wp.color.line,
+    borderStyle: 'dashed',
+    alignItems: 'baseline',
   },
-  detailLabel: { fontSize: fontSize.sm, color: colors.gray[500] },
-  detailValue: {
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.medium,
-    color: colors.gray[900],
-    maxWidth: '60%',
-    textAlign: 'right',
+  metaValue: {
+    flex: 1,
+    fontFamily: wp.font.sansSemi.fontFamily,
+    fontWeight: wp.font.sansSemi.fontWeight,
+    fontSize: 14,
+    color: wp.color.ink,
   },
-  buttonRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
+  formWrap: {
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: wp.space.block,
+    gap: 4,
   },
-  actionButtons: { gap: spacing.md },
+  actionsWrap: {
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: wp.space.section,
+  },
 });

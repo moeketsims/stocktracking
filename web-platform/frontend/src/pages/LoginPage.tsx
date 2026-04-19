@@ -5,6 +5,7 @@ import { useLogin } from '../hooks/useAuth';
 
 interface LoginPageProps {
   onForgotPassword?: () => void;
+  onAcceptInviteCode?: () => void;
 }
 
 function BackgroundPattern() {
@@ -90,7 +91,7 @@ function BackgroundPattern() {
   );
 }
 
-export default function LoginPage({ onForgotPassword }: LoginPageProps) {
+export default function LoginPage({ onForgotPassword, onAcceptInviteCode }: LoginPageProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -171,15 +172,26 @@ export default function LoginPage({ onForgotPassword }: LoginPageProps) {
             Sign In
           </Button>
 
-          {onForgotPassword && (
-            <div className="text-center">
-              <button
-                type="button"
-                onClick={onForgotPassword}
-                className="text-sm text-indigo-600 hover:text-indigo-700 hover:underline"
-              >
-                Forgot your password?
-              </button>
+          {(onForgotPassword || onAcceptInviteCode) && (
+            <div className="text-center space-y-2">
+              {onAcceptInviteCode && (
+                <button
+                  type="button"
+                  onClick={onAcceptInviteCode}
+                  className="text-sm font-semibold text-indigo-600 hover:text-indigo-700 hover:underline block w-full"
+                >
+                  Have an invite code?
+                </button>
+              )}
+              {onForgotPassword && (
+                <button
+                  type="button"
+                  onClick={onForgotPassword}
+                  className="text-sm text-gray-500 hover:text-gray-700 hover:underline"
+                >
+                  Forgot your password?
+                </button>
+              )}
             </div>
           )}
         </form>

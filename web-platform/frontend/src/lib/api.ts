@@ -268,8 +268,8 @@ export const invitationsApi = {
 
 // Auth Extensions
 export const authExtApi = {
-  validateInvite: (token: string) => api.get(`/api/auth/validate-invite/${token}`),
-  acceptInvite: (data: { token: string; password: string }) =>
+  validateInvite: (value: string) => api.get(`/api/auth/validate-invite/${value}`),
+  acceptInvite: (data: { token?: string; short_code?: string; password: string }) =>
     api.post('/api/auth/accept-invite', data),
   forgotPassword: (email: string) => api.post('/api/auth/forgot-password', { email }),
   resetPassword: (data: { token: string; password: string }) =>

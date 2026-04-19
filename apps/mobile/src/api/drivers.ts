@@ -16,10 +16,14 @@ export const driversApi = {
     api.get<Driver>(`/api/drivers/${id}`),
 
   create: (data: CreateDriverPayload) =>
-    api.post<{ success: boolean; message: string; invitation_id: string; email_sent: boolean }>(
-      '/api/drivers',
-      data,
-    ),
+    api.post<{
+      success: boolean;
+      message: string;
+      invitation_id: string;
+      email_sent: boolean;
+      short_code: string;
+      expires_at: string;
+    }>('/api/drivers', data),
 
   update: (id: string, data: UpdateDriverPayload) =>
     api.patch<{ success: boolean; message: string; driver: Driver }>(
@@ -31,7 +35,11 @@ export const driversApi = {
     api.delete<{ success: boolean; message: string }>(`/api/drivers/${id}`),
 
   resendInvitation: (id: string) =>
-    api.post<{ success: boolean; message: string; email_sent: boolean }>(
-      `/api/drivers/${id}/resend-invitation`,
-    ),
+    api.post<{
+      success: boolean;
+      message: string;
+      email_sent: boolean;
+      short_code: string;
+      expires_at: string;
+    }>(`/api/drivers/${id}/resend-invitation`),
 };

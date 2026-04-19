@@ -5,24 +5,25 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
+  TextInput,
   Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { useCreateAdjustment, useAdjustmentReasons, useBatches } from '../../src/hooks/useStock';
-import { Card } from '../../src/components/ui/Card';
-import { Button } from '../../src/components/ui/Button';
-import { Input } from '../../src/components/ui/Input';
-import { Badge } from '../../src/components/ui/Badge';
 import { Loading } from '../../src/components/ui/Loading';
-import { brand, colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
-
-const AMBER = '#f59e0b';
-const AMBER_BG = '#fffbeb';
-const AMBER_BORDER = '#fcd34d';
+import {
+  PaperBackground,
+  Masthead,
+  IntentStrip,
+  DFieldBox,
+  PrimaryBar,
+  MonoText,
+  QuantityField,
+} from '../../src/components/wp';
+import { wp, fmtKickerDate } from '../../src/constants/warehousePaper';
 
 type Direction = 'positive' | 'negative';
 
@@ -34,31 +35,24 @@ export default function AdjustmentScreen() {
 
   const [direction, setDirection] = useState<Direction>('positive');
   const [quantity, setQuantity] = useState('');
-  const [unit, setUnit] = useState<'bag' | 'kg'>('bag');
   const [reason, setReason] = useState<string | null>(null);
   const [selectedBatch, setSelectedBatch] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
 
   const reasons = reasonsQuery.data?.reasons ?? [];
   const batches = batchesQuery.data?.batches ?? [];
-
-  // We need an item_id for the adjustment. Use the first available batch's item_id or first item
   const defaultItemId = batches.length > 0 ? batches[0].item_id : '';
-
-  const isValid = Number(quantity) > 0 && reason !== null && defaultItemId !== '';
+  const qty = Number(quantity);
+  const isValid = qty > 0 && reason !== null && defaultItemId !== '';
 
   const handleSubmit = () => {
     if (!isValid || !reason) return;
-
-    const qty = Number(quantity);
     const signedQty = direction === 'negative' ? -qty : qty;
-    const displayQty = unit === 'bag' ? `${qty} bag${qty > 1 ? 's' : ''}` : `${qty} kg`;
-    const sign = direction === 'positive' ? '+' : '-';
+    const sign = direction === 'positive' ? '+' : '−';
     const reasonLabel = reasons.find((r) => r.value === reason)?.label ?? reason;
-
     Alert.alert(
       'Confirm Adjustment',
-      `${sign}${displayQty} (${reasonLabel})?\n\nThis will update stock levels.`,
+      `${sign}${qty} bag${qty > 1 ? 's' : ''} (${reasonLabel})?\n\nThis will update stock levels.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -68,7 +62,7 @@ export default function AdjustmentScreen() {
               {
                 item_id: defaultItemId,
                 quantity: signedQty,
-                unit,
+                unit: 'bag',
                 reason: reason as any,
                 batch_id: selectedBatch ?? undefined,
                 notes: notes.trim() || undefined,
@@ -88,273 +82,296 @@ export default function AdjustmentScreen() {
   };
 
   if (reasonsQuery.isLoading || batchesQuery.isLoading) {
-    return <Loading fullScreen message="Loading..." />;
+    return <Loading fullScreen message="" />;
   }
 
   return (
-    <>
-      <Stack.Screen
-        options={{
-          title: 'Stock Adjustment',
-          headerStyle: { backgroundColor: brand.gradientStart },
-          headerTintColor: '#fff',
-        }}
-      />
-      <SafeAreaView style={styles.container} edges={['bottom']}>
+    <PaperBackground>
+      <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.flex}
         >
+          <Masthead
+            kicker={`ADJUSTMENT — ${fmtKickerDate()}`}
+            title="Reconcile stock"
+            backUseRouter
+          />
+
           <ScrollView contentContainerStyle={styles.content}>
-            {/* Direction */}
-            <Card style={{ borderLeftWidth: 3, borderLeftColor: AMBER }}>
-              <Text style={styles.sectionTitle}>Adjustment Type</Text>
+            <IntentStrip>
+              Correct a mismatch between counted and recorded stock. Creates an audit trail.
+            </IntentStrip>
+
+            {/* Direction — two tiles */}
+            <DFieldBox label="Adjustment">
               <View style={styles.dirRow}>
-                <TouchableOpacity
-                  style={[
-                    styles.dirOption,
-                    direction === 'positive' && { borderColor: '#0f172a', backgroundColor: '#0f172a' },
-                  ]}
+                <DirTile
+                  label="Add stock"
+                  sub="Found / returned"
+                  selected={direction === 'positive'}
                   onPress={() => setDirection('positive')}
-                >
-                  <Ionicons name="add-circle" size={24} color={direction === 'positive' ? '#fff' : '#94a3b8'} />
-                  <Text style={[styles.dirLabel, direction === 'positive' && { color: '#fff' }]}>
-                    Add Stock
-                  </Text>
-                  <Text style={[styles.dirHint, direction === 'positive' && { color: 'rgba(255,255,255,0.5)' }]}>Found stock, correction up</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.dirOption,
-                    direction === 'negative' && { borderColor: '#0f172a', backgroundColor: '#0f172a' },
-                  ]}
+                />
+                <DirTile
+                  label="Remove"
+                  labelColor={wp.color.red}
+                  sub="Count error / loss"
+                  selected={direction === 'negative'}
                   onPress={() => setDirection('negative')}
-                >
-                  <Ionicons name="remove-circle" size={24} color={direction === 'negative' ? '#fff' : '#94a3b8'} />
-                  <Text style={[styles.dirLabel, direction === 'negative' && { color: '#fff' }]}>
-                    Remove Stock
-                  </Text>
-                  <Text style={[styles.dirHint, direction === 'negative' && { color: 'rgba(255,255,255,0.5)' }]}>Theft, count error</Text>
-                </TouchableOpacity>
+                />
               </View>
-            </Card>
+            </DFieldBox>
 
             {/* Quantity */}
-            <Card>
-              <Text style={styles.sectionTitle}>Quantity</Text>
-              <View style={styles.qtyRow}>
-                <View style={styles.qtyInput}>
-                  <Input
-                    placeholder="0"
-                    keyboardType="decimal-pad"
-                    value={quantity}
-                    onChangeText={setQuantity}
-                    error={quantity !== '' && Number(quantity) <= 0 ? 'Must be > 0' : undefined}
-                  />
-                </View>
-                <View style={styles.unitToggle}>
-                  <TouchableOpacity
-                    style={[styles.unitBtn, unit === 'bag' && styles.unitBtnActive]}
-                    onPress={() => setUnit('bag')}
-                  >
-                    <Text style={[styles.unitText, unit === 'bag' && styles.unitTextActive]}>Bags</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.unitBtn, unit === 'kg' && styles.unitBtnActive]}
-                    onPress={() => setUnit('kg')}
-                  >
-                    <Text style={[styles.unitText, unit === 'kg' && styles.unitTextActive]}>kg</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </Card>
+            <DFieldBox label="Quantity · bags">
+              <QuantityField
+                value={quantity}
+                onChangeText={setQuantity}
+                prefix={direction === 'negative' ? '−' : '+'}
+                color={direction === 'negative' ? wp.color.red : wp.color.ink}
+              />
+              <View style={styles.qtyUnderline} />
+              <MonoText size={9} tracking={1.5} upper color={wp.color.ink3} style={{ marginTop: 6 }}>
+                Tap to type
+              </MonoText>
+            </DFieldBox>
 
-            {/* Reason */}
-            <Card>
-              <Text style={styles.sectionTitle}>Reason</Text>
+            {/* Reason — stamp chips */}
+            <DFieldBox label="Reason">
               <View style={styles.reasonGrid}>
-                {reasons.map((r) => (
-                  <TouchableOpacity
-                    key={r.value}
-                    style={[
-                      styles.reasonChip,
-                      reason === r.value && styles.reasonChipSelected,
-                    ]}
-                    onPress={() => setReason(r.value)}
-                  >
-                    <Text
-                      style={[
-                        styles.reasonText,
-                        reason === r.value && styles.reasonTextSelected,
-                      ]}
-                    >
-                      {r.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </Card>
-
-            {/* Batch selection (optional) */}
-            {batches.length > 0 && (
-              <Card>
-                <Text style={styles.sectionTitle}>Batch (optional)</Text>
-                <Text style={styles.batchHint}>Select a specific batch to adjust, or leave empty for general adjustment.</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.batchScroll}>
-                  <TouchableOpacity
-                    style={[styles.batchChip, selectedBatch === null && styles.batchChipSelected]}
-                    onPress={() => setSelectedBatch(null)}
-                  >
-                    <Text style={[styles.batchChipText, selectedBatch === null && styles.batchChipTextSelected]}>
-                      None
-                    </Text>
-                  </TouchableOpacity>
-                  {batches.slice(0, 10).map((b) => (
+                {reasons.map((r) => {
+                  const selected = reason === r.value;
+                  return (
                     <TouchableOpacity
-                      key={b.id}
-                      style={[styles.batchChip, selectedBatch === b.id && styles.batchChipSelected]}
-                      onPress={() => setSelectedBatch(b.id)}
+                      key={r.value}
+                      activeOpacity={0.65}
+                      onPress={() => setReason(r.value)}
+                      style={[styles.chip, selected && styles.chipSelected]}
                     >
-                      <Text style={[styles.batchChipText, selectedBatch === b.id && styles.batchChipTextSelected]}>
-                        #{b.batch_id_display} ({b.remaining_qty.toFixed(0)} kg)
+                      <Text
+                        allowFontScaling={false}
+                        style={[styles.chipLabel, selected && styles.chipLabelSelected]}
+                      >
+                        {r.label}
                       </Text>
                     </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </Card>
+                  );
+                })}
+              </View>
+            </DFieldBox>
+
+            {/* Batch (optional) */}
+            {batches.length > 0 && (
+              <DFieldBox label="Batch · optional">
+                <View style={styles.reasonGrid}>
+                  <TouchableOpacity
+                    activeOpacity={0.65}
+                    onPress={() => setSelectedBatch(null)}
+                    style={[styles.chip, !selectedBatch && styles.chipSelected]}
+                  >
+                    <Text
+                      allowFontScaling={false}
+                      style={[styles.chipLabel, !selectedBatch && styles.chipLabelSelected]}
+                    >
+                      Any
+                    </Text>
+                  </TouchableOpacity>
+                  {batches.slice(0, 6).map((b) => {
+                    const selected = selectedBatch === b.id;
+                    return (
+                      <TouchableOpacity
+                        key={b.id}
+                        activeOpacity={0.65}
+                        onPress={() => setSelectedBatch(b.id)}
+                        style={[styles.chip, selected && styles.chipSelected]}
+                      >
+                        <Text
+                          allowFontScaling={false}
+                          style={[styles.chipLabel, selected && styles.chipLabelSelected]}
+                        >
+                          {b.batch_id_display}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </DFieldBox>
             )}
 
             {/* Notes */}
-            <Card>
-              <Input
-                label="Notes (optional)"
-                placeholder="Explain the adjustment..."
-                value={notes}
-                onChangeText={setNotes}
-                multiline
-                numberOfLines={3}
-                style={styles.textArea}
-              />
-            </Card>
+            <DFieldBox label="Notes · optional" noDivider>
+              <View style={styles.notesBox}>
+                <TextInput
+                  placeholder="Evidence, context, or witness…"
+                  placeholderTextColor={wp.color.ink3}
+                  value={notes}
+                  onChangeText={setNotes}
+                  multiline
+                  style={styles.notesInput}
+                />
+              </View>
+            </DFieldBox>
           </ScrollView>
-
-          {/* Submit */}
-          <View style={styles.footer}>
-            <Button
-              title={mutation.isPending ? 'Saving...' : 'Record Adjustment'}
-              onPress={handleSubmit}
-              loading={mutation.isPending}
-              disabled={!isValid || mutation.isPending}
-              style={{ backgroundColor: brand.accent }}
-            />
-          </View>
         </KeyboardAvoidingView>
+
+        <PrimaryBar
+          label="Record adjustment"
+          onPress={handleSubmit}
+          disabled={!isValid}
+          loading={mutation.isPending}
+        />
       </SafeAreaView>
-    </>
+    </PaperBackground>
+  );
+}
+
+function DirTile({
+  label,
+  labelColor = wp.color.ink,
+  sub,
+  selected,
+  onPress,
+}: {
+  label: string;
+  labelColor?: string;
+  sub: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <View style={styles.tileWrap}>
+      {selected && <View pointerEvents="none" style={styles.tileShadow} />}
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={onPress}
+        style={[styles.tile, selected && styles.tileSelected]}
+      >
+        <Text
+          allowFontScaling={false}
+          style={[
+            styles.tileTitle,
+            { color: selected ? wp.color.paper : labelColor },
+          ]}
+        >
+          {label}
+        </Text>
+        <MonoText
+          size={9}
+          tracking={1.5}
+          upper
+          color={selected ? wp.color.paper : wp.color.ink3}
+          weight={500}
+          style={{ marginTop: 2 }}
+        >
+          {sub}
+        </MonoText>
+      </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc' },
+  safe: { flex: 1 },
   flex: { flex: 1 },
-  content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing['3xl'] },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#0f172a',
-    letterSpacing: -0.2,
-    marginBottom: spacing.md,
+  content: {
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: 14,
+    paddingBottom: 200,
   },
-  dirRow: { flexDirection: 'row', gap: spacing.md },
-  dirOption: {
-    flex: 1,
+
+  // Direction tiles
+  dirRow: { flexDirection: 'row', gap: 10 },
+  tileWrap: { flex: 1, position: 'relative' },
+  tileShadow: {
+    position: 'absolute',
+    top: 2,
+    left: 2,
+    right: -2,
+    bottom: -2,
+    backgroundColor: wp.color.lineD,
+  },
+  tile: {
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+    paddingVertical: 14,
+    paddingHorizontal: 10,
     alignItems: 'center',
-    gap: spacing.xs,
-    padding: spacing.lg,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#fff',
+    backgroundColor: 'transparent',
   },
-  dirLabel: {
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[500],
+  tileSelected: {
+    borderWidth: 2,
+    backgroundColor: wp.color.ink,
   },
-  dirHint: {
-    fontSize: fontSize.xs,
-    color: colors.gray[400],
-    textAlign: 'center',
+  tileTitle: {
+    fontFamily: wp.font.serifBold.fontFamily,
+    fontWeight: wp.font.serifBold.fontWeight,
+    fontStyle: 'italic',
+    fontSize: 20,
+    letterSpacing: -0.5,
   },
-  qtyRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
-  qtyInput: { flex: 1 },
-  unitToggle: {
+
+  // Quantity
+  qtyRow: {
     flexDirection: 'row',
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    overflow: 'hidden',
-    marginTop: 2,
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  unitBtn: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    backgroundColor: '#fff',
+  qtyUnderline: {
+    height: 1.5,
+    backgroundColor: wp.color.lineD,
+    marginTop: 8,
   },
-  unitBtnActive: {
-    backgroundColor: '#0f172a',
+  hiddenInput: {
+    position: 'absolute',
+    opacity: 0,
+    width: 0,
+    height: 0,
   },
-  unitText: {
-    fontSize: fontSize.sm,
-    fontWeight: '600',
-    color: '#64748b',
+
+  // Reason / batch chips
+  reasonGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
   },
-  unitTextActive: { color: '#fff' },
-  reasonGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  reasonChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#fff',
+  chip: {
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: 'transparent',
   },
-  reasonChipSelected: {
-    backgroundColor: '#0f172a',
-    borderColor: '#0f172a',
+  chipSelected: {
+    backgroundColor: wp.color.ink,
   },
-  reasonText: {
-    fontSize: fontSize.sm,
-    fontWeight: '600',
-    color: '#64748b',
+  chipLabel: {
+    fontFamily: wp.font.monoSemi.fontFamily,
+    fontWeight: wp.font.monoSemi.fontWeight,
+    fontSize: 11,
+    letterSpacing: 1,
+    color: wp.color.ink,
+    textTransform: 'uppercase',
   },
-  reasonTextSelected: { color: '#fff' },
-  batchHint: { fontSize: fontSize.xs, color: colors.gray[500], marginBottom: spacing.sm },
-  batchScroll: { marginTop: spacing.xs },
-  batchChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#fff',
-    marginRight: spacing.sm,
+  chipLabelSelected: {
+    color: wp.color.paper,
   },
-  batchChipSelected: {
-    backgroundColor: '#0f172a',
-    borderColor: '#0f172a',
+
+  // Notes
+  notesBox: {
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+    backgroundColor: wp.color.voucherBg,
+    padding: 12,
+    minHeight: 72,
   },
-  batchChipText: {
-    fontSize: fontSize.xs,
-    fontWeight: '600',
-    color: '#64748b',
-  },
-  batchChipTextSelected: { color: '#fff' },
-  textArea: { minHeight: 80, textAlignVertical: 'top' },
-  footer: {
-    padding: spacing.lg,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.gray[200],
-    backgroundColor: colors.white,
+  notesInput: {
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'Georgia' }),
+    fontStyle: 'italic',
+    fontSize: 14,
+    color: wp.color.ink,
+    minHeight: 48,
+    textAlignVertical: 'top',
+    padding: 0,
   },
 });
