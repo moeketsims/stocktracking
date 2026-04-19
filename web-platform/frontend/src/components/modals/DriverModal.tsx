@@ -3,6 +3,14 @@ import { AlertCircle, Mail } from 'lucide-react';
 import { Modal, Button, Input } from '../ui';
 import { useCreateDriver, useUpdateDriver } from '../../hooks/useData';
 import type { Driver, CreateDriverForm } from '../../types';
+import InviteCodeReveal from '../InviteCodeReveal';
+
+interface RevealedInvite {
+  code: string;
+  recipient: string;
+  phone?: string;
+  emailSent: boolean;
+}
 
 interface DriverModalProps {
   isOpen: boolean;
@@ -26,6 +34,7 @@ export default function DriverModal({
     notes: '',
   });
   const [error, setError] = useState('');
+  const [revealed, setRevealed] = useState<RevealedInvite | null>(null);
 
   const createMutation = useCreateDriver();
   const updateMutation = useUpdateDriver();
@@ -53,6 +62,7 @@ export default function DriverModal({
         });
       }
       setError('');
+      setRevealed(null);
     }
   }, [isOpen, driver]);
 
@@ -95,15 +105,50 @@ export default function DriverModal({
         // Don't send email when updating - it can't be changed
         const { email, ...updateData } = form;
         await updateMutation.mutateAsync({ id: driver.id, data: updateData });
+        onSuccess();
+        onClose();
       } else {
-        await createMutation.mutateAsync(form);
+        const result: any = await createMutation.mutateAsync(form);
+        const shortCode: string | undefined = result?.short_code;
+        if (shortCode) {
+          setRevealed({
+            code: shortCode,
+            recipient: form.full_name?.trim() || form.email.trim(),
+            phone: form.phone?.trim() || undefined,
+            emailSent: !!result?.email_sent,
+          });
+          // Refresh the drivers list immediately so it's up to date
+          // when the manager taps Done.
+          onSuccess();
+        } else {
+          onSuccess();
+          onClose();
+        }
       }
-      onSuccess();
-      onClose();
     } catch (err: any) {
       setError(err.response?.data?.detail || `Failed to ${isEditing ? 'update' : 'add'} driver`);
     }
   };
+
+  const handleDoneAfterReveal = () => {
+    setRevealed(null);
+    onClose();
+  };
+
+  if (revealed) {
+    return (
+      <Modal isOpen={isOpen} onClose={handleDoneAfterReveal} title="Driver invited">
+        <InviteCodeReveal
+          code={revealed.code}
+          recipient={revealed.recipient}
+          role="driver"
+          phone={revealed.phone}
+          emailSent={revealed.emailSent}
+          onDone={handleDoneAfterReveal}
+        />
+      </Modal>
+    );
+  }
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={isEditing ? 'Edit Driver' : 'Add Driver'}>
