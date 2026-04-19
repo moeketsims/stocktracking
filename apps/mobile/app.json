@@ -23,7 +23,8 @@
         "backgroundColor": "#0f172a"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.potatostock.mobile"
+      "package": "com.potatostock.mobile",
+      "versionCode": 1
     },
     "web": {
       "favicon": "./assets/favicon.png",
