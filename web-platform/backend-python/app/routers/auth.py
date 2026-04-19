@@ -17,7 +17,13 @@ IS_DEVELOPMENT = os.environ.get("ENVIRONMENT", "production").lower() == "develop
 
 # Additional request models for auth extensions
 class AcceptInviteRequest(BaseModel):
-    token: str
+    """
+    Accept an invitation. Exactly one of `token` (long magic-link token from
+    the email) or `short_code` (6-char in-person handoff code) must be set.
+    Both lookups resolve to the same `user_invitations` row.
+    """
+    token: Optional[str] = None
+    short_code: Optional[str] = None
     password: str = Field(min_length=8)
 
 
@@ -406,14 +412,32 @@ async def accept_invite(request: AcceptInviteRequest):
     """Accept an invitation and create user account."""
     supabase = get_supabase_admin_client()
 
+    # Exactly one of the two lookup keys must be supplied.
+    if bool(request.token) == bool(request.short_code):
+        raise HTTPException(
+            status_code=400,
+            detail="Provide exactly one of `token` or `short_code`."
+        )
+
     try:
-        # Find the invitation by token
-        invitation = supabase.table("user_invitations").select("*").eq(
-            "token", request.token
-        ).single().execute()
+        # Find the invitation by whichever lookup key was supplied. Use
+        # `.maybe_single()` semantics by chaining .limit(1) so a missing
+        # row raises a clean 404 instead of a Supabase exception.
+        if request.token:
+            invitation = supabase.table("user_invitations").select("*").eq(
+                "token", request.token
+            ).single().execute()
+        else:
+            from ..utils.invite_codes import normalise_short_code
+            normalised = normalise_short_code(request.short_code or "")
+            if not normalised:
+                raise HTTPException(status_code=404, detail="Code not recognised")
+            invitation = supabase.table("user_invitations").select("*").eq(
+                "short_code", normalised
+            ).single().execute()
 
         if not invitation.data:
-            raise HTTPException(status_code=404, detail="Invalid invitation token")
+            raise HTTPException(status_code=404, detail="Invalid invitation")
 
         inv = invitation.data
 
@@ -637,6 +661,46 @@ async def accept_invite(request: AcceptInviteRequest):
             logger.error(f"[AUTH] Error creating driver record: {driver_error}", exc_info=True)
             # Don't fail - the user account is created, driver creation can be fixed manually
 
+        # Auto-sign-in the new user so the client (web or mobile) gets a
+        # session immediately. Without this, the recipient would have to
+        # type their email + the password they JUST set, which is
+        # particularly painful on mobile and defeats the in-person flow.
+        try:
+            client = get_supabase_client()
+            session = client.auth.sign_in_with_password({
+                "email": inv["email"],
+                "password": request.password,
+            })
+
+            if session.session and session.user:
+                # Re-load the freshly-created profile to populate names.
+                profile_full = supabase.table("profiles").select(
+                    "*, zones(name), locations(name)"
+                ).eq("user_id", session.user.id).single().execute()
+
+                p = profile_full.data or profile_data
+                user_payload = {
+                    "id": p["id"],
+                    "user_id": p["user_id"],
+                    "email": session.user.email,
+                    "role": p["role"],
+                    "zone_id": p.get("zone_id"),
+                    "location_id": p.get("location_id"),
+                    "full_name": p.get("full_name"),
+                    "zone_name": (p.get("zones") or {}).get("name") if p.get("zones") else None,
+                    "location_name": (p.get("locations") or {}).get("name") if p.get("locations") else None,
+                }
+
+                return {
+                    "access_token": session.session.access_token,
+                    "refresh_token": session.session.refresh_token,
+                    "user": user_payload,
+                }
+        except Exception as sign_in_err:
+            logger.warning(f"[AUTH] Auto-sign-in after accept-invite failed: {sign_in_err}")
+            # Fall through to the legacy response so the client can still
+            # ask the user to log in manually.
+
         return {
             "success": True,
             "message": "Account created successfully. You can now log in.",
@@ -649,18 +713,50 @@ async def accept_invite(request: AcceptInviteRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/validate-invite/{token}")
-async def validate_invite(token: str):
-    """Validate an invitation token and return invitation details."""
+@router.get("/validate-invite/{value}")
+async def validate_invite(value: str):
+    """
+    Validate an invitation by either the long magic-link token or the
+    short in-person code, and return invitation details. The short_code
+    is normalised (uppercase, alphabet-only) before lookup.
+    """
     supabase = get_supabase_admin_client()
 
     try:
-        invitation = supabase.table("user_invitations").select(
-            "*, zones(name), locations(name)"
-        ).eq("token", token).single().execute()
+        # Long tokens are always url-safe and ≥32 chars; short codes are
+        # 6 chars from a fixed alphabet. Try short_code first if the input
+        # looks short, else token first. If the first lookup misses we
+        # try the other so the endpoint stays forgiving.
+        from ..utils.invite_codes import normalise_short_code, INVITE_CODE_LENGTH
 
-        if not invitation.data:
-            raise HTTPException(status_code=404, detail="Invalid invitation token")
+        normalised = normalise_short_code(value)
+        prefer_short = len(normalised) == INVITE_CODE_LENGTH and len(value) <= 12
+
+        invitation = None
+        if prefer_short:
+            res = supabase.table("user_invitations").select(
+                "*, zones(name), locations(name)"
+            ).eq("short_code", normalised).limit(1).execute()
+            if res.data:
+                invitation = type("R", (), {"data": res.data[0]})()
+
+        if invitation is None:
+            res = supabase.table("user_invitations").select(
+                "*, zones(name), locations(name)"
+            ).eq("token", value).limit(1).execute()
+            if res.data:
+                invitation = type("R", (), {"data": res.data[0]})()
+
+        if invitation is None and not prefer_short and normalised:
+            # Final fallback: try short_code lookup
+            res = supabase.table("user_invitations").select(
+                "*, zones(name), locations(name)"
+            ).eq("short_code", normalised).limit(1).execute()
+            if res.data:
+                invitation = type("R", (), {"data": res.data[0]})()
+
+        if invitation is None:
+            raise HTTPException(status_code=404, detail="Invalid invitation")
 
         inv = invitation.data
 

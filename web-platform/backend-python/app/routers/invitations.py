@@ -6,7 +6,23 @@ from datetime import datetime, timedelta
 import secrets
 from ..config import get_supabase_admin_client
 from ..email import send_invitation_email
+from ..utils.invite_codes import generate_short_code
 from .users import require_admin_or_zone_manager, require_manager, can_manage_role
+
+
+def _mint_unique_short_code(supabase, attempts: int = 5) -> str:
+    """Generate a short code, retrying on the (vanishingly rare) collision
+    against the unique index. After `attempts` tries we give up and let
+    the caller decide whether to proceed without a short code."""
+    last_error = None
+    for _ in range(attempts):
+        candidate = generate_short_code()
+        existing = supabase.table("user_invitations").select("id").eq(
+            "short_code", candidate
+        ).limit(1).execute()
+        if not existing.data:
+            return candidate
+    raise RuntimeError(f"could not mint a unique invite short code after {attempts} attempts: {last_error}")
 
 router = APIRouter(prefix="/invitations", tags=["User Invitations"])
 
@@ -185,6 +201,7 @@ async def create_invitation(
 
         # Create invitation
         token = secrets.token_urlsafe(32)
+        short_code = _mint_unique_short_code(supabase)
         expires_at = datetime.utcnow() + timedelta(days=7)
 
         invitation_data = {
@@ -196,6 +213,7 @@ async def create_invitation(
             "full_name": request.full_name,
             "invited_by": actor_profile["id"],
             "token": token,
+            "short_code": short_code,
             "expires_at": expires_at.isoformat(),
         }
 
@@ -220,7 +238,8 @@ async def create_invitation(
                 "email": request.email,
                 "role": request.role,
                 "expires_at": expires_at.isoformat(),
-                "token": token  # Include for testing; remove in production
+                "token": token,  # Long token, used by the email magic link
+                "short_code": short_code,  # In-person handoff code; surfaced in manager UI
             }
         }
 
@@ -323,12 +342,14 @@ async def resend_invitation(
                     detail="You can only resend invitations for your zone"
                 )
 
-        # Generate new token and expiry
+        # Generate new token, short code, and expiry
         new_token = secrets.token_urlsafe(32)
+        new_short_code = _mint_unique_short_code(supabase)
         new_expires = datetime.utcnow() + timedelta(days=7)
 
         supabase.table("user_invitations").update({
             "token": new_token,
+            "short_code": new_short_code,
             "expires_at": new_expires.isoformat()
         }).eq("id", invitation_id).execute()
 
@@ -339,7 +360,8 @@ async def resend_invitation(
                 "id": invitation_id,
                 "email": invitation["email"],
                 "expires_at": new_expires.isoformat(),
-                "token": new_token  # Include for testing
+                "token": new_token,
+                "short_code": new_short_code,
             }
         }
 
