@@ -1,239 +1,239 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import {
+  View,
+  ScrollView,
+  RefreshControl,
+  StyleSheet,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/authStore';
 import { useAnalytics } from '../../src/hooks/useReports';
-import { Card } from '../../src/components/ui/Card';
 import { Loading } from '../../src/components/ui/Loading';
-import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
+import {
+  PaperBackground,
+  Masthead,
+  ChipStrip,
+  LedgerRow,
+  SerifNumber,
+  MonoText,
+  KickerLabel,
+  Stamp,
+  HardShadowFrame,
+  FloatingFrameLabel,
+} from '../../src/components/wp';
+import { wp, fmtKickerDate } from '../../src/constants/warehousePaper';
 import type { PeriodDays } from '../../src/api/reports';
 
-const PERIOD_OPTIONS: { label: string; value: PeriodDays }[] = [
-  { label: '7 Days', value: 7 },
-  { label: '14 Days', value: 14 },
-  { label: '30 Days', value: 30 },
-];
+const PERIODS = ['7D', '14D', '30D'] as const;
+type PeriodKey = (typeof PERIODS)[number];
 
-interface ReportCardProps {
-  icon: keyof typeof Ionicons.glyphMap;
-  title: string;
-  subtitle: string;
-  color: string;
-  onPress: () => void;
-  value?: string;
-  valueColor?: string;
-}
-
-function ReportCard({ icon, title, subtitle, color, onPress, value, valueColor }: ReportCardProps) {
-  return (
-    <TouchableOpacity activeOpacity={0.7} onPress={onPress}>
-      <Card>
-        <View style={styles.reportCardRow}>
-          <View style={[styles.reportIconBg, { backgroundColor: color + '18' }]}>
-            <Ionicons name={icon} size={24} color={color} />
-          </View>
-          <View style={styles.reportCardInfo}>
-            <Text style={styles.reportCardTitle}>{title}</Text>
-            <Text style={styles.reportCardSubtitle}>{subtitle}</Text>
-          </View>
-          <View style={styles.reportCardRight}>
-            {value && (
-              <Text style={[styles.reportCardValue, valueColor ? { color: valueColor } : undefined]}>
-                {value}
-              </Text>
-            )}
-            <Ionicons name="chevron-forward" size={18} color={colors.gray[400]} />
-          </View>
-        </View>
-      </Card>
-    </TouchableOpacity>
-  );
-}
+const PERIOD_MAP: Record<PeriodKey, PeriodDays> = { '7D': 7, '14D': 14, '30D': 30 };
 
 export default function ReportsHubScreen() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
-  const [period, setPeriod] = useState<PeriodDays>(7);
+  const [period, setPeriod] = useState<PeriodKey>('7D');
+  const days = PERIOD_MAP[period];
 
-  const analytics = useAnalytics(period, user?.location_id ?? undefined);
+  const analytics = useAnalytics(days, user?.location_id ?? undefined);
   const summary = analytics.data?.summary;
   const waste = analytics.data?.waste_analysis;
 
-  const trendColor = summary?.trend_direction === 'up'
-    ? colors.error
-    : summary?.trend_direction === 'down'
-      ? colors.success
-      : colors.gray[500];
-
-  const trendIcon = summary?.trend_direction === 'up'
-    ? 'trending-up'
-    : summary?.trend_direction === 'down'
-      ? 'trending-down'
-      : 'remove-outline';
+  const trendDir = summary?.trend_direction;
+  const trendSign = trendDir === 'up' ? '▲' : trendDir === 'down' ? '▼' : '–';
+  const trendColor =
+    trendDir === 'up' ? wp.color.red : trendDir === 'down' ? wp.color.green : wp.color.ink3;
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <Stack.Screen options={{ title: 'Reports', headerStyle: { backgroundColor: '#0f172a' }, headerTintColor: '#fff', headerShadowVisible: false }} />
-      <ScrollView contentContainerStyle={styles.content}>
-        {/* Period Selector */}
-        <View style={styles.periodRow}>
-          {PERIOD_OPTIONS.map((opt) => (
-            <TouchableOpacity
-              key={opt.value}
-              style={[styles.periodBtn, period === opt.value && styles.periodBtnActive]}
-              onPress={() => setPeriod(opt.value)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.periodText, period === opt.value && styles.periodTextActive]}>
-                {opt.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Quick Stats */}
+    <PaperBackground>
+      <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
         {analytics.isLoading ? (
-          <Loading message="Loading analytics..." />
-        ) : summary ? (
-          <Card>
-            <Text style={styles.sectionTitle}>Quick Overview</Text>
-            <View style={styles.quickStatsRow}>
-              <View style={styles.quickStatItem}>
-                <Text style={styles.quickStatValue}>{summary.total_bags_7_days}</Text>
-                <Text style={styles.quickStatLabel}>Bags Used ({period}d)</Text>
-              </View>
-              <View style={styles.quickStatItem}>
-                <Text style={styles.quickStatValue}>{summary.daily_average.toFixed(1)}</Text>
-                <Text style={styles.quickStatLabel}>Daily Average</Text>
-              </View>
-              <View style={styles.quickStatItem}>
-                <View style={styles.trendRow}>
-                  <Ionicons name={trendIcon as keyof typeof Ionicons.glyphMap} size={16} color={trendColor} />
-                  <Text style={[styles.quickStatValue, { color: trendColor }]}>
-                    {Math.abs(summary.trend_pct).toFixed(1)}%
-                  </Text>
-                </View>
-                <Text style={styles.quickStatLabel}>Trend</Text>
-              </View>
-            </View>
-          </Card>
-        ) : null}
+          <Loading fullScreen message="" />
+        ) : (
+          <ScrollView
+            contentContainerStyle={styles.scroll}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={analytics.isRefetching}
+                onRefresh={() => analytics.refetch()}
+                tintColor={wp.color.ink2}
+              />
+            }
+          >
+            <Masthead
+              kicker={`ANALYTICS — ${fmtKickerDate()}`}
+              title="Reports"
+              backUseRouter
+            />
 
-        {/* Report Links */}
-        <Text style={styles.sectionHeader}>Reports</Text>
+            <ChipStrip<PeriodKey> items={PERIODS} active={period} onChange={setPeriod} />
 
-        <ReportCard
-          icon="layers"
-          title="Stock Summary"
-          subtitle="Current stock levels across locations"
-          color={colors.primary[500]}
-          onPress={() => router.push('/reports/stock-summary')}
-        />
-
-        <ReportCard
-          icon="bar-chart"
-          title="Usage Trends"
-          subtitle="Daily consumption and patterns"
-          color={colors.info}
-          onPress={() => router.push('/reports/usage')}
-          value={summary ? `${summary.daily_average.toFixed(1)} bags/day` : undefined}
-        />
-
-        <ReportCard
-          icon="car"
-          title="Delivery Performance"
-          subtitle="Delivery metrics and efficiency"
-          color={colors.success}
-          onPress={() => router.push('/reports/deliveries')}
-        />
-
-        <ReportCard
-          icon="receipt"
-          title="Transaction History"
-          subtitle="All stock movements and operations"
-          color={colors.brown[500]}
-          onPress={() => router.push('/reports/transactions')}
-        />
-
-        {waste && waste.total_wasted_kg > 0 && (
-          <Card style={styles.wasteCard}>
-            <View style={styles.wasteHeader}>
-              <Ionicons name="warning" size={18} color={colors.warning} />
-              <Text style={styles.wasteTitle}>Waste Summary</Text>
-            </View>
-            <View style={styles.wasteRow}>
-              <View style={styles.wasteItem}>
-                <Text style={styles.wasteValue}>{waste.total_wasted_bags.toFixed(1)}</Text>
-                <Text style={styles.wasteLabel}>Bags Wasted</Text>
-              </View>
-              <View style={styles.wasteItem}>
-                <Text style={[styles.wasteValue, { color: waste.waste_rate_pct > 5 ? colors.error : colors.gray[900] }]}>
-                  {waste.waste_rate_pct.toFixed(1)}%
-                </Text>
-                <Text style={styles.wasteLabel}>Waste Rate</Text>
-              </View>
-            </View>
-            {waste.breakdown.length > 0 && (
-              <View style={styles.wasteBreakdown}>
-                {waste.breakdown.slice(0, 3).map((item) => (
-                  <View key={item.reason} style={styles.wasteBreakdownItem}>
-                    <Text style={styles.wasteBreakdownName}>{item.display_name}</Text>
-                    <Text style={styles.wasteBreakdownPct}>{item.percentage.toFixed(0)}%</Text>
+            {/* Quick stats voucher */}
+            {summary && (
+              <View style={styles.statsWrap}>
+                <HardShadowFrame>
+                  <View style={styles.statsCard}>
+                    <View style={styles.statsRow}>
+                      <View style={styles.statsCol}>
+                        <KickerLabel size={9} tracking={1.5} color={wp.color.ink3}>
+                          Bags used
+                        </KickerLabel>
+                        <SerifNumber size={48} tracking={-1.5} leading={1} autoShrink>
+                          {String(summary.total_bags_7_days)}
+                        </SerifNumber>
+                      </View>
+                      <View style={styles.statsColRight}>
+                        <View style={styles.statsMini}>
+                          <KickerLabel size={9} tracking={1.5} color={wp.color.ink3}>
+                            Daily avg
+                          </KickerLabel>
+                          <MonoText size={22} weight={700} tracking={-0.5} color={wp.color.ink}>
+                            {summary.daily_average.toFixed(1)}
+                          </MonoText>
+                        </View>
+                        <View style={styles.statsMini}>
+                          <KickerLabel size={9} tracking={1.5} color={wp.color.ink3}>
+                            Trend
+                          </KickerLabel>
+                          <MonoText size={22} weight={700} tracking={-0.5} color={trendColor}>
+                            {trendSign} {Math.abs(summary.trend_pct).toFixed(1)}%
+                          </MonoText>
+                        </View>
+                      </View>
+                    </View>
                   </View>
-                ))}
+                </HardShadowFrame>
               </View>
             )}
-          </Card>
+
+            {/* Report ledger */}
+            <View style={styles.sectionHead}>
+              <KickerLabel size={10} tracking={2} color={wp.color.ink}>
+                Reports
+              </KickerLabel>
+            </View>
+
+            <LedgerRow
+              idx={1}
+              primary="Stock summary"
+              secondary="CURRENT LEVELS ACROSS LOCATIONS"
+              onPress={() => router.push('/reports/stock-summary')}
+            />
+            <LedgerRow
+              idx={2}
+              primary="Usage trends"
+              secondary={
+                summary
+                  ? `${summary.daily_average.toFixed(1)} BAGS/DAY · ${days}D AVG`
+                  : 'DAILY CONSUMPTION · HOURLY PATTERN'
+              }
+              onPress={() => router.push('/reports/usage')}
+            />
+            <LedgerRow
+              idx={3}
+              primary="Delivery performance"
+              secondary="METRICS · EFFICIENCY · WASTE"
+              onPress={() => router.push('/reports/deliveries')}
+            />
+            <LedgerRow
+              idx={4}
+              primary="Transaction history"
+              secondary="ALL STOCK MOVEMENTS"
+              onPress={() => router.push('/reports/transactions')}
+            />
+
+            {/* Waste flag */}
+            {waste && waste.total_wasted_kg > 0 && (
+              <View style={styles.wasteWrap}>
+                <FloatingFrameLabel color={wp.color.red}>Waste</FloatingFrameLabel>
+                <View style={styles.wasteCard}>
+                  <View style={styles.wasteRow}>
+                    <View>
+                      <KickerLabel size={9} tracking={1.5} color={wp.color.ink3}>
+                        Wasted
+                      </KickerLabel>
+                      <MonoText size={26} weight={700} tracking={-0.5} color={wp.color.red}>
+                        {waste.total_wasted_bags.toFixed(1)}
+                      </MonoText>
+                      <KickerLabel size={9} tracking={1.2} color={wp.color.ink3}>
+                        BAGS
+                      </KickerLabel>
+                    </View>
+                    <View>
+                      <KickerLabel size={9} tracking={1.5} color={wp.color.ink3}>
+                        Rate
+                      </KickerLabel>
+                      <MonoText
+                        size={26}
+                        weight={700}
+                        tracking={-0.5}
+                        color={waste.waste_rate_pct > 5 ? wp.color.red : wp.color.ink}
+                      >
+                        {waste.waste_rate_pct.toFixed(1)}%
+                      </MonoText>
+                    </View>
+                    <Stamp colorHex={wp.color.red} rotate={-4}>
+                      {waste.waste_rate_pct > 5 ? 'ABOVE TARGET' : 'ON TARGET'}
+                    </Stamp>
+                  </View>
+                </View>
+              </View>
+            )}
+          </ScrollView>
         )}
-      </ScrollView>
-    </SafeAreaView>
+      </SafeAreaView>
+    </PaperBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
-  content: { padding: spacing.lg, gap: spacing.md },
-  periodRow: { flexDirection: 'row', gap: spacing.sm },
-  periodBtn: {
-    flex: 1,
-    paddingVertical: spacing.sm,
+  safe: { flex: 1 },
+  scroll: { paddingBottom: 40 },
+
+  statsWrap: {
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: 14,
+    paddingBottom: wp.space.block,
+  },
+  statsCard: {
+    borderWidth: wp.border.mid,
+    borderColor: wp.color.lineD,
+    backgroundColor: wp.color.voucherBg,
+    padding: 16,
+  },
+  statsRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.gray[200],
+    gap: 16,
   },
-  periodBtnActive: {
-    backgroundColor: colors.primary[500],
-    borderColor: colors.primary[500],
+  statsCol: { flex: 1 },
+  statsColRight: { gap: 12 },
+  statsMini: {},
+
+  sectionHead: {
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: 12,
+    paddingBottom: 4,
   },
-  periodText: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.gray[600] },
-  periodTextActive: { color: colors.white },
-  sectionTitle: { fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.gray[900], marginBottom: spacing.md },
-  sectionHeader: { fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.gray[900], marginTop: spacing.sm },
-  quickStatsRow: { flexDirection: 'row', justifyContent: 'space-around' },
-  quickStatItem: { alignItems: 'center' },
-  quickStatValue: { fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.gray[900] },
-  quickStatLabel: { fontSize: fontSize.xs, color: colors.gray[500], marginTop: 2 },
-  trendRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  reportCardRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  reportIconBg: { width: 44, height: 44, borderRadius: borderRadius.md, alignItems: 'center', justifyContent: 'center' },
-  reportCardInfo: { flex: 1 },
-  reportCardTitle: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.gray[900] },
-  reportCardSubtitle: { fontSize: fontSize.xs, color: colors.gray[500], marginTop: 2 },
-  reportCardRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  reportCardValue: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.gray[600] },
-  wasteCard: { borderLeftWidth: 3, borderLeftColor: colors.warning },
-  wasteHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md },
-  wasteTitle: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.gray[900] },
-  wasteRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: spacing.md },
-  wasteItem: { alignItems: 'center' },
-  wasteValue: { fontSize: fontSize.xl, fontWeight: fontWeight.bold, color: colors.gray[900] },
-  wasteLabel: { fontSize: fontSize.xs, color: colors.gray[500], marginTop: 2 },
-  wasteBreakdown: { gap: spacing.xs },
-  wasteBreakdownItem: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: spacing.xs },
-  wasteBreakdownName: { fontSize: fontSize.sm, color: colors.gray[700] },
-  wasteBreakdownPct: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.gray[600] },
+
+  wasteWrap: {
+    marginHorizontal: wp.space.screenH,
+    marginTop: wp.space.section,
+    position: 'relative',
+  },
+  wasteCard: {
+    borderWidth: 2,
+    borderColor: wp.color.red,
+    padding: 16,
+    backgroundColor: wp.color.criticalCallout,
+  },
+  wasteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 14,
+  },
 });

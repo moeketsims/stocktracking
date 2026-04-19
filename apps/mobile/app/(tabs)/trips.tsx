@@ -1,60 +1,45 @@
 import React, { useState, useMemo } from 'react';
 import {
-  View, Text, SectionList, StyleSheet, RefreshControl,
-  TouchableOpacity, TextInput, Platform,
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  RefreshControl,
+  TouchableOpacity,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { useTrips } from '../../src/hooks/useTrips';
 import { useAuthStore } from '../../src/stores/authStore';
-import { TripCard } from '../../src/components/TripCard';
 import { Loading } from '../../src/components/ui/Loading';
 import { QueryErrorState } from '../../src/components/ui/QueryErrorState';
-import type { Trip } from '../../src/types';
+import {
+  PaperBackground,
+  Masthead,
+  SummaryBand,
+  TabStrip,
+  MonoText,
+  KickerLabel,
+  Stamp,
+  HardShadowFrame,
+} from '../../src/components/wp';
+import { wp, fmtKickerDate } from '../../src/constants/warehousePaper';
+import { timeAgo } from '../../src/utils/dates';
+import type { Trip, TripStatus } from '../../src/types';
 
-/*
- * Trips — retrieval screen with search, filtering, and date grouping.
- *
- * Active trips: one section, status shown per-row via accent + chip.
- * Completed trips: grouped by Today / This week / This month / Older.
- * All: mixed, status shown inline in metadata.
- */
+type Filter = 'active' | 'done' | 'all';
 
-const C = {
-  bg:      '#f5f5f0',
-  surface: '#ffffff',
-  border:  '#e8e6e1',
-  borderL: '#f0eee9',
-  t1:      '#111111',
-  t2:      '#555555',
-  t3:      '#999999',
+const STATUS_STAMP: Record<TripStatus, { label: string; color: string }> = {
+  planned: { label: 'PLANNED', color: wp.color.amber },
+  in_progress: { label: 'IN TRANSIT', color: wp.color.pipeline.in_delivery ?? '#5B2CA5' },
+  completed: { label: 'DONE', color: wp.color.green },
+  cancelled: { label: 'CANCEL', color: wp.color.ink3 },
 };
 
-type Filter = 'active' | 'completed' | 'all';
-
-function groupCompleted(trips: Trip[]): { title: string; data: Trip[] }[] {
-  const now = new Date();
-  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const weekAgo = new Date(startOfDay.getTime() - 7 * 86400000);
-  const monthAgo = new Date(startOfDay.getTime() - 30 * 86400000);
-
-  const buckets: { key: string; items: Trip[] }[] = [
-    { key: 'Today', items: [] },
-    { key: 'This week', items: [] },
-    { key: 'This month', items: [] },
-    { key: 'Older', items: [] },
-  ];
-
-  for (const t of trips) {
-    const d = new Date(t.completed_at ?? t.created_at);
-    if (d >= startOfDay) buckets[0].items.push(t);
-    else if (d >= weekAgo) buckets[1].items.push(t);
-    else if (d >= monthAgo) buckets[2].items.push(t);
-    else buckets[3].items.push(t);
-  }
-
-  return buckets.filter(b => b.items.length > 0).map(b => ({ title: b.key, data: b.items }));
+function shortTripNumber(n: string): string {
+  const m = n.match(/\d+/);
+  return m ? m[0].slice(-4) : n.slice(-4).toUpperCase();
 }
 
 export default function TripsScreen() {
@@ -64,188 +49,368 @@ export default function TripsScreen() {
   const [filter, setFilter] = useState<Filter>('active');
   const [search, setSearch] = useState('');
   const trips = useTrips();
-  const allTrips = trips.data?.trips ?? [];
+  const all = trips.data?.trips ?? [];
 
-  const counts = useMemo(() => ({
-    active: allTrips.filter(t => t.status === 'planned' || t.status === 'in_progress').length,
-    completed: allTrips.filter(t => t.status === 'completed').length,
-    all: allTrips.length,
-  }), [allTrips]);
+  const counts = useMemo(() => {
+    const wkAgo = Date.now() - 7 * 86400000;
+    const monAgo = Date.now() - 30 * 86400000;
+    let active = 0, doneWk = 0, doneMo = 0, cancel = 0;
+    for (const t of all) {
+      if (t.status === 'planned' || t.status === 'in_progress') active++;
+      else if (t.status === 'cancelled') cancel++;
+      else if (t.status === 'completed') {
+        const d = new Date(t.completed_at ?? t.created_at).getTime();
+        if (d >= wkAgo) doneWk++;
+        if (d >= monAgo) doneMo++;
+      }
+    }
+    return { active, doneWk, doneMo, cancel, all: all.length };
+  }, [all]);
 
-  const sections = useMemo(() => {
-    let list = allTrips;
-    if (filter === 'active') list = list.filter(t => t.status === 'planned' || t.status === 'in_progress');
-    else if (filter === 'completed') list = list.filter(t => t.status === 'completed');
-
-    if (search.trim()) {
+  const { activeList, doneList } = useMemo(() => {
+    const matches = (t: Trip) => {
+      if (!search.trim()) return true;
       const q = search.toLowerCase();
-      list = list.filter(t =>
+      return (
         t.trip_number.toLowerCase().includes(q) ||
-        (t.origin_description ?? t.from_location?.name ?? '').toLowerCase().includes(q) ||
-        (t.destination_description ?? t.to_location?.name ?? '').toLowerCase().includes(q) ||
+        (t.from_location?.name ?? '').toLowerCase().includes(q) ||
+        (t.to_location?.name ?? '').toLowerCase().includes(q) ||
         (t.vehicles?.registration_number ?? '').toLowerCase().includes(q) ||
         (t.driver_name ?? '').toLowerCase().includes(q)
       );
+    };
+    const a: Trip[] = [];
+    const d: Trip[] = [];
+    for (const t of all) {
+      if (!matches(t)) continue;
+      if (t.status === 'planned' || t.status === 'in_progress') a.push(t);
+      else d.push(t);
     }
+    return { activeList: a, doneList: d };
+  }, [all, search]);
 
-    if (filter === 'completed') return groupCompleted(list);
-    if (list.length === 0) return [];
-
-    const label = filter === 'active'
-      ? `${counts.active} active trip${counts.active !== 1 ? 's' : ''}`
-      : `${list.length} trip${list.length !== 1 ? 's' : ''}`;
-    return [{ title: label, data: list }];
-  }, [allTrips, filter, search, counts]);
+  const visibleActive = filter === 'done' ? [] : activeList;
+  const visibleDone = filter === 'active' ? [] : doneList;
 
   return (
-    <SafeAreaView style={s.safe} edges={['bottom']}>
-      {/* ── Controls ── */}
-      <View style={s.controls}>
-        {/* Search */}
-        <View style={s.search}>
-          <Ionicons name="search-outline" size={15} color={C.t3} />
-          <TextInput
-            style={s.searchInput}
-            placeholder="Search trips"
-            placeholderTextColor="#bbb"
-            value={search}
-            onChangeText={setSearch}
-            returnKeyType="search"
-          />
-          {search.length > 0 && (
-            <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-              <Ionicons name="close" size={14} color={C.t3} />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* Filter */}
-        <View style={s.filterBar}>
-          {(['active', 'completed', 'all'] as Filter[]).map(f => {
-            const active = filter === f;
-            return (
-              <TouchableOpacity
-                key={f}
-                style={[s.filterItem, active && s.filterItemActive]}
-                onPress={() => setFilter(f)}
-                activeOpacity={0.5}
-              >
-                <Text style={[s.filterLabel, active && s.filterLabelActive]}>
-                  {f === 'active' ? 'Active' : f === 'completed' ? 'Completed' : 'All'}
-                </Text>
-                <View style={[s.filterBadge, active && s.filterBadgeActive]}>
-                  <Text style={[s.filterBadgeText, active && s.filterBadgeTextActive]}>
-                    {counts[f]}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </View>
-
-      {/* ── List ── */}
-      {trips.isLoading ? (
-        <Loading fullScreen message="" />
-      ) : trips.isError ? (
-        <QueryErrorState error={trips.error} onRetry={() => trips.refetch()} />
-      ) : (
-        <SectionList
-          sections={sections}
-          keyExtractor={item => item.id}
-          stickySectionHeadersEnabled
-          contentContainerStyle={{ flexGrow: 1 }}
-          refreshControl={
-            <RefreshControl refreshing={trips.isRefetching} onRefresh={() => trips.refetch()} tintColor={C.t3} />
-          }
-          renderSectionHeader={({ section }) => (
-            <View style={s.sectionHead}>
-              <Text style={s.sectionText}>{section.title}</Text>
-            </View>
-          )}
-          renderItem={({ item, index, section }) => (
-            <TripCard
-              trip={item}
-              onPress={() => router.push(`/trip/${item.id}`)}
-              isLast={index === section.data.length - 1}
-              showStatus={filter === 'all'}
+    <PaperBackground>
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
+        {trips.isLoading ? (
+          <Loading fullScreen message="" />
+        ) : trips.isError ? (
+          <QueryErrorState error={trips.error} onRetry={() => trips.refetch()} />
+        ) : (
+          <ScrollView
+            contentContainerStyle={styles.scroll}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={trips.isRefetching}
+                onRefresh={() => trips.refetch()}
+                tintColor={wp.color.ink2}
+              />
+            }
+          >
+            <Masthead
+              kicker={`DISPATCH LOG — ${fmtKickerDate()}`}
+              title="Trips"
             />
-          )}
-          ListEmptyComponent={
-            <View style={s.empty}>
-              <Text style={s.emptyText}>
-                {search ? 'No trips match' : filter === 'active' ? 'No active trips' : 'No trips'}
-              </Text>
-            </View>
-          }
-        />
-      )}
 
-      {/* ── Create ── */}
-      {isManager && (
-        <TouchableOpacity style={s.fab} activeOpacity={0.6} onPress={() => router.push('/trip/create')}>
-          <Ionicons name="add" size={22} color="#fff" />
-        </TouchableOpacity>
-      )}
-    </SafeAreaView>
+            <SummaryBand
+              items={[
+                { label: 'Active', value: counts.active },
+                { label: 'Done this wk', value: counts.doneWk },
+                { label: 'This mo', value: counts.doneMo },
+                { label: 'Cancel', value: counts.cancel, color: wp.color.red },
+              ]}
+            />
+
+            <TabStrip<Filter>
+              items={[
+                { key: 'active', label: 'Active', count: counts.active },
+                { key: 'done', label: 'Completed', count: counts.doneWk + counts.doneMo },
+                { key: 'all', label: 'All' },
+              ]}
+              active={filter}
+              onChange={setFilter}
+            />
+
+            {/* Search + New */}
+            <View style={styles.searchRow}>
+              <View style={styles.search}>
+                <Text allowFontScaling={false} style={styles.searchGlyph}>⌕</Text>
+                <TextInput
+                  value={search}
+                  onChangeText={setSearch}
+                  placeholder="trip # · reg · driver"
+                  placeholderTextColor={wp.color.ink3}
+                  style={styles.searchInput}
+                />
+              </View>
+              {isManager && (
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => router.push('/trip/create')}
+                  style={styles.newPill}
+                >
+                  <MonoText size={10} weight={700} tracking={1.5} upper color={wp.color.ink}>
+                    + New
+                  </MonoText>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Active section */}
+            {filter !== 'done' && (
+              <>
+                <View style={styles.sectionHead}>
+                  <KickerLabel size={10} tracking={2} color={wp.color.ink}>
+                    On the road
+                  </KickerLabel>
+                  <KickerLabel size={9} tracking={1.5} color={wp.color.ink3}>
+                    {activeList.length} {activeList.length === 1 ? 'trip' : 'trips'}
+                  </KickerLabel>
+                </View>
+                <View style={styles.list}>
+                  {visibleActive.length === 0 ? (
+                    <EmptyRow label={search ? 'No matches' : 'No active trips'} />
+                  ) : (
+                    visibleActive.map((t, i) => (
+                      <TripVoucher
+                        key={t.id}
+                        trip={t}
+                        rowIndex={i}
+                        onPress={() => router.push(`/trip/${t.id}`)}
+                      />
+                    ))
+                  )}
+                </View>
+              </>
+            )}
+
+            {/* Completed section */}
+            {filter !== 'active' && (
+              <>
+                <View style={[styles.sectionHead, styles.sectionHeadRule]}>
+                  <KickerLabel size={10} tracking={2} color={wp.color.ink}>
+                    Completed · recent
+                  </KickerLabel>
+                  <KickerLabel size={9} tracking={1.5} color={wp.color.ink3}>
+                    {doneList.length} entries
+                  </KickerLabel>
+                </View>
+                <View style={styles.list}>
+                  {visibleDone.length === 0 ? (
+                    <EmptyRow label={search ? 'No matches' : 'No completed trips yet'} />
+                  ) : (
+                    visibleDone.map((t, i) => (
+                      <TripVoucher
+                        key={t.id}
+                        trip={t}
+                        rowIndex={i}
+                        faded
+                        onPress={() => router.push(`/trip/${t.id}`)}
+                      />
+                    ))
+                  )}
+                </View>
+              </>
+            )}
+          </ScrollView>
+        )}
+      </SafeAreaView>
+    </PaperBackground>
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: C.bg },
+function TripVoucher({
+  trip,
+  rowIndex,
+  faded,
+  onPress,
+}: {
+  trip: Trip;
+  rowIndex: number;
+  faded?: boolean;
+  onPress: () => void;
+}) {
+  const stamp = STATUS_STAMP[trip.status] ?? STATUS_STAMP.planned;
+  const from = trip.origin_description ?? trip.from_location?.name ?? '—';
+  const to = trip.destination_description ?? trip.to_location?.name ?? '—';
+  const vehicle = trip.vehicles?.registration_number ?? '—';
+  const driver = trip.driver_name ?? 'Unassigned';
+  const when = trip.completed_at
+    ? new Date(trip.completed_at).toLocaleDateString('en-US', { day: '2-digit', month: 'short' }).toUpperCase()
+    : timeAgo(trip.created_at).toUpperCase();
 
-  /* Controls */
-  controls: { backgroundColor: C.surface, borderBottomWidth: 1, borderBottomColor: C.border },
-  search: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    marginHorizontal: 14, marginTop: 10, marginBottom: 10,
-    backgroundColor: '#f5f5f0', borderRadius: 8,
-    paddingHorizontal: 10, height: 36,
-  },
-  searchInput: { flex: 1, fontSize: 13, fontWeight: '400', color: C.t1, padding: 0 },
+  return (
+    <HardShadowFrame style={{ marginBottom: 10, opacity: faded ? 0.75 : 1 }}>
+      <TouchableOpacity activeOpacity={0.75} onPress={onPress} style={styles.voucher}>
+        <View style={styles.stub}>
+          <MonoText size={9} color={wp.color.ink3}>N°</MonoText>
+          <MonoText size={12} weight={700} color={wp.color.ink}>
+            {shortTripNumber(trip.trip_number)}
+          </MonoText>
+        </View>
+        <View style={styles.stubDivider}>
+          <View style={styles.stubDividerLine} />
+        </View>
+        <View style={styles.body}>
+          <View style={styles.routeRow}>
+            <Text allowFontScaling={false} style={styles.routeText} numberOfLines={1}>
+              {from}
+            </Text>
+            <MonoText size={12} color={wp.color.ink3} style={styles.arrow}>
+              →
+            </MonoText>
+            <Text allowFontScaling={false} style={styles.routeText} numberOfLines={1}>
+              {to}
+            </Text>
+          </View>
+          <MonoText
+            size={9}
+            tracking={1.2}
+            upper
+            color={wp.color.ink3}
+            numberOfLines={1}
+            style={{ marginTop: 4 }}
+          >
+            {vehicle} · {driver} · {when}
+          </MonoText>
+        </View>
+        <Stamp colorHex={stamp.color} rowIndex={rowIndex}>
+          {stamp.label}
+        </Stamp>
+      </TouchableOpacity>
+    </HardShadowFrame>
+  );
+}
 
-  filterBar: {
+function EmptyRow({ label }: { label: string }) {
+  return (
+    <View style={styles.empty}>
+      <MonoText size={11} tracking={1} upper color={wp.color.ink3}>
+        {label}
+      </MonoText>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  safe: { flex: 1 },
+  scroll: { paddingBottom: 40 },
+
+  // Search row
+  searchRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: 14,
   },
-  filterItem: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    paddingVertical: 10,
-    borderBottomWidth: 2, borderBottomColor: 'transparent',
+  search: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1.5,
+    borderBottomColor: wp.color.lineD,
+    paddingVertical: 6,
+    gap: 8,
   },
-  filterItemActive: { borderBottomColor: C.t1 },
-  filterLabel: { fontSize: 13, fontWeight: '500', color: C.t3 },
-  filterLabelActive: { fontWeight: '600', color: C.t1 },
-  filterBadge: {
-    backgroundColor: '#eeece8', borderRadius: 4,
-    paddingHorizontal: 5, paddingVertical: 1,
-    minWidth: 20, alignItems: 'center',
+  searchGlyph: {
+    fontFamily: wp.font.mono.fontFamily,
+    fontSize: 12,
+    color: wp.color.ink3,
   },
-  filterBadgeActive: { backgroundColor: C.t1 },
-  filterBadgeText: { fontSize: 10, fontWeight: '700', color: C.t3 },
-  filterBadgeTextActive: { color: '#fff' },
+  searchInput: {
+    flex: 1,
+    fontFamily: wp.font.mono.fontFamily,
+    fontSize: 14,
+    color: wp.color.ink,
+    padding: 0,
+  },
+  newPill: {
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+  },
 
-  /* Section */
+  // Section heads
   sectionHead: {
-    backgroundColor: C.bg,
-    paddingHorizontal: 16, paddingVertical: 7,
-    borderBottomWidth: 1, borderBottomColor: C.borderL,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: 18,
+    paddingBottom: 8,
   },
-  sectionText: { fontSize: 11, fontWeight: '600', color: C.t3, letterSpacing: 0.2 },
+  sectionHeadRule: {
+    marginTop: 10,
+    paddingTop: 12,
+    borderTopWidth: wp.border.mid,
+    borderTopColor: wp.color.lineD,
+  },
 
-  /* Empty */
-  empty: { paddingVertical: 48, alignItems: 'center' },
-  emptyText: { fontSize: 13, color: C.t3 },
+  // Voucher list
+  list: {
+    paddingHorizontal: wp.space.screenH,
+  },
+  voucher: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 12,
+    backgroundColor: wp.color.voucherBg,
+    borderWidth: 1,
+    borderColor: wp.color.lineD,
+    paddingVertical: 12,
+    paddingLeft: 8,
+    paddingRight: 14,
+    minHeight: 72,
+  },
+  stub: {
+    width: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  stubDivider: {
+    width: 1,
+    justifyContent: 'center',
+  },
+  stubDividerLine: {
+    width: 1,
+    height: 48,
+    borderLeftWidth: 1,
+    borderLeftColor: wp.color.line,
+    borderStyle: 'dashed',
+  },
+  body: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+    paddingLeft: 6,
+  },
+  routeRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  routeText: {
+    fontFamily: wp.font.serifMid.fontFamily,
+    fontWeight: wp.font.serifMid.fontWeight,
+    fontStyle: 'italic',
+    fontSize: 15,
+    color: wp.color.ink,
+    flexShrink: 1,
+  },
+  arrow: {
+    includeFontPadding: false,
+  },
 
-  /* FAB */
-  fab: {
-    position: 'absolute', right: 16, bottom: 20,
-    width: 48, height: 48, borderRadius: 24,
-    backgroundColor: C.t1,
-    alignItems: 'center', justifyContent: 'center',
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.12, shadowRadius: 6 },
-      android: { elevation: 4 },
-      default: { shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.12, shadowRadius: 6 },
-    }),
+  empty: {
+    paddingVertical: 32,
+    alignItems: 'center',
   },
 });

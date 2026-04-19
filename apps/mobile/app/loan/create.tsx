@@ -5,229 +5,385 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
+  TextInput,
   Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { useCreateLoan, useLoanLocations } from '../../src/hooks/useLoans';
-import { Card } from '../../src/components/ui/Card';
-import { Button } from '../../src/components/ui/Button';
-import { Input } from '../../src/components/ui/Input';
 import { Loading } from '../../src/components/ui/Loading';
-import { brand, colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
+import {
+  PaperBackground,
+  Masthead,
+  IntentStrip,
+  DFieldBox,
+  PrimaryBar,
+  MonoText,
+  QuantityField,
+} from '../../src/components/wp';
+import { wp, fmtKickerDate } from '../../src/constants/warehousePaper';
+
+const QUICK_CHIPS = [10, 20, 50, 100];
+
+function addDaysIso(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function formatPartsFromDays(days: number): { day: string; mon: string; year: string } {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  const day = String(d.getDate()).padStart(2, '0');
+  const mon = d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
+  const year = String(d.getFullYear());
+  return { day, mon, year };
+}
 
 export default function CreateLoanScreen() {
   const router = useRouter();
   const mutation = useCreateLoan();
   const { data: locationsData, isLoading: locationsLoading } = useLoanLocations();
-
-  const locations = locationsData?.locations ?? [];
+  const locations: any[] = locationsData?.locations ?? [];
 
   const [lenderLocationId, setLenderLocationId] = useState('');
   const [quantity, setQuantity] = useState('');
-  const [returnDays, setReturnDays] = useState('7');
+  const [returnDays, setReturnDays] = useState(7);
   const [notes, setNotes] = useState('');
 
   const qty = Number(quantity);
   const isValid = qty > 0 && lenderLocationId !== '';
   const selectedLocation = locations.find((l) => l.id === lenderLocationId);
+  const available = selectedLocation?.available_bags ?? selectedLocation?.on_hand_bags ?? 0;
+  const dateParts = formatPartsFromDays(returnDays);
+
+  const handleChangeDate = (delta: number) => {
+    setReturnDays(Math.max(1, Math.min(60, returnDays + delta)));
+  };
 
   const handleSubmit = () => {
     if (!isValid) return;
-
-    const days = Number(returnDays) || 7;
-    const returnDate = new Date();
-    returnDate.setDate(returnDate.getDate() + days);
-
-    Alert.alert(
-      'Request Loan',
-      `Borrow ${qty} bag${qty > 1 ? 's' : ''} from ${selectedLocation?.name ?? 'selected location'}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Request',
-          onPress: () => {
-            mutation.mutate(
-              {
-                lender_location_id: lenderLocationId,
-                quantity_requested: qty,
-                estimated_return_date: returnDate.toISOString().split('T')[0],
-                notes: notes.trim() || undefined,
-              },
-              { onSuccess: () => router.back() },
-            );
-          },
-        },
-      ],
+    mutation.mutate(
+      {
+        lender_location_id: lenderLocationId,
+        quantity_requested: qty,
+        estimated_return_date: addDaysIso(returnDays),
+        notes: notes.trim() || undefined,
+      },
+      {
+        onSuccess: () => router.back(),
+      },
     );
   };
 
   if (locationsLoading) {
-    return <Loading fullScreen message="Loading locations..." />;
+    return <Loading fullScreen message="" />;
   }
 
   return (
-    <>
-      <Stack.Screen
-        options={{
-          title: 'Request Loan',
-          headerStyle: { backgroundColor: brand.gradientStart },
-          headerTintColor: colors.white,
-        }}
-      />
-      <SafeAreaView style={styles.container} edges={['bottom']}>
+    <PaperBackground>
+      <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.flex}
         >
+          <Masthead
+            kicker={`NEW LOAN — ${fmtKickerDate()}`}
+            title="Borrow stock"
+            backUseRouter
+          />
+
           <ScrollView contentContainerStyle={styles.content}>
-            <Card style={styles.infoBanner}>
-              <View style={styles.infoRow}>
-                <Ionicons name="information-circle" size={20} color={colors.info} />
-                <Text style={styles.infoText}>
-                  Request to borrow stock from another location. The lender must approve before stock is dispatched.
-                </Text>
-              </View>
-            </Card>
+            <IntentStrip>
+              Request bags from another location. They'll approve or decline; once approved, a driver delivers to you.
+            </IntentStrip>
 
             {/* Lender location */}
-            <Card>
-              <Text style={styles.sectionTitle}>Borrow From</Text>
-              {locations.length === 0 ? (
-                <Text style={styles.emptyText}>No locations available to borrow from</Text>
-              ) : (
-                <View style={styles.locationList}>
-                  {locations.map((loc) => (
-                    <TouchableOpacity
-                      key={loc.id}
-                      style={[
-                        styles.locationOption,
-                        lenderLocationId === loc.id && styles.locationSelected,
-                      ]}
-                      onPress={() => setLenderLocationId(loc.id)}
-                    >
-                      <View style={styles.locationInfo}>
-                        <Text style={[
-                          styles.locationName,
-                          lenderLocationId === loc.id && styles.locationNameSelected,
-                        ]}>
-                          {loc.name}
+            <DFieldBox label="Lender location">
+              <View style={styles.list}>
+                {locations.length === 0 ? (
+                  <View style={styles.listEmpty}>
+                    <MonoText size={10} tracking={1} upper color={wp.color.ink3}>
+                      No lender locations available
+                    </MonoText>
+                  </View>
+                ) : (
+                  locations.map((l: any, i: number) => {
+                    const selected = l.id === lenderLocationId;
+                    const isLast = i === locations.length - 1;
+                    const onHand = l.available_bags ?? l.on_hand_bags ?? 0;
+                    return (
+                      <TouchableOpacity
+                        key={l.id}
+                        activeOpacity={0.65}
+                        onPress={() => setLenderLocationId(l.id)}
+                        style={[
+                          styles.listRow,
+                          !isLast && styles.listRowDivider,
+                          selected && styles.listRowSelected,
+                        ]}
+                      >
+                        <View style={[styles.checkbox, selected && styles.checkboxChecked]}>
+                          {selected && (
+                            <Text allowFontScaling={false} style={styles.checkMark}>✓</Text>
+                          )}
+                        </View>
+                        <Text allowFontScaling={false} style={styles.locName}>
+                          {l.name}
                         </Text>
-                        <Text style={styles.locationStock}>
-                          {loc.current_stock_bags} bags available
-                        </Text>
-                      </View>
-                      {lenderLocationId === loc.id && (
-                        <Ionicons name="checkmark-circle" size={22} color={colors.primary[500]} />
-                      )}
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-            </Card>
+                        <MonoText size={9} tracking={1} upper color={wp.color.ink3}>
+                          {onHand.toLocaleString()} ON HAND
+                        </MonoText>
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
+              </View>
+            </DFieldBox>
 
             {/* Quantity */}
-            <Card>
-              <Text style={styles.sectionTitle}>Quantity</Text>
-              <Input
-                label="Number of bags"
-                placeholder="e.g. 5"
-                keyboardType="number-pad"
+            <DFieldBox label="Quantity · bags">
+              <QuantityField
                 value={quantity}
                 onChangeText={setQuantity}
-                error={quantity !== '' && qty <= 0 ? 'Must be greater than 0' : undefined}
+                size={52}
+                trailing={
+                  <MonoText size={10} color={wp.color.ink3}>
+                    / {available.toLocaleString()} available
+                  </MonoText>
+                }
               />
-              {qty > 0 && (
-                <Text style={styles.kgHint}>= {qty * 10} kg</Text>
-              )}
-            </Card>
+              <View style={styles.chipRow}>
+                {QUICK_CHIPS.map((n) => {
+                  const on = qty === n;
+                  return (
+                    <TouchableOpacity
+                      key={n}
+                      activeOpacity={0.6}
+                      onPress={() => setQuantity(String(n))}
+                      style={[styles.chip, on && styles.chipActive]}
+                    >
+                      <MonoText
+                        size={11}
+                        weight={600}
+                        tracking={1}
+                        color={on ? wp.color.paper : wp.color.ink}
+                      >
+                        {n}
+                      </MonoText>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <MonoText size={9} tracking={1.5} upper color={wp.color.ink3} style={{ marginTop: 6 }}>
+                Tap to type · or pick a stamp
+              </MonoText>
+            </DFieldBox>
 
-            {/* Return days */}
-            <Card>
-              <Text style={styles.sectionTitle}>Return Period</Text>
-              <Input
-                label="Days until return"
-                placeholder="e.g. 7"
-                keyboardType="number-pad"
-                value={returnDays}
-                onChangeText={setReturnDays}
-              />
-              {Number(returnDays) > 0 && (
-                <Text style={styles.kgHint}>
-                  Return by: {new Date(Date.now() + Number(returnDays) * 86400000).toLocaleDateString()}
-                </Text>
-              )}
-            </Card>
+            {/* Return date — 3-column paper scroller */}
+            <DFieldBox label="Estimated return">
+              <View style={styles.dateScroller}>
+                <DateCol label="Day" value={dateParts.day} onInc={() => handleChangeDate(1)} onDec={() => handleChangeDate(-1)} />
+                <View style={styles.dateDivider} />
+                <DateCol label="Month" value={dateParts.mon} onInc={() => handleChangeDate(30)} onDec={() => handleChangeDate(-30)} />
+                <View style={styles.dateDivider} />
+                <DateCol label="Year" value={dateParts.year} onInc={() => handleChangeDate(365)} onDec={() => handleChangeDate(-365)} />
+              </View>
+              <MonoText size={9} tracking={1.5} upper color={wp.color.ink3} style={{ marginTop: 8 }}>
+                Tap ↑ or ↓ to adjust
+              </MonoText>
+            </DFieldBox>
 
             {/* Notes */}
-            <Card>
-              <Input
-                label="Notes (optional)"
-                placeholder="Reason for borrowing..."
-                value={notes}
-                onChangeText={setNotes}
-                multiline
-                numberOfLines={3}
-                style={styles.textArea}
-              />
-            </Card>
+            <DFieldBox label="Notes · optional" noDivider>
+              <View style={styles.notesBox}>
+                <TextInput
+                  value={notes}
+                  onChangeText={setNotes}
+                  placeholder="Any additional details…"
+                  placeholderTextColor={wp.color.ink3}
+                  multiline
+                  style={styles.notesInput}
+                />
+              </View>
+            </DFieldBox>
           </ScrollView>
-
-          <View style={styles.footer}>
-            <Button
-              title={mutation.isPending ? 'Requesting...' : 'Request Loan'}
-              onPress={handleSubmit}
-              loading={mutation.isPending}
-              disabled={!isValid || mutation.isPending}
-            />
-          </View>
         </KeyboardAvoidingView>
+
+        <PrimaryBar
+          label={qty > 0 ? `Request ${qty} bag${qty > 1 ? 's' : ''} →` : 'Request loan'}
+          onPress={handleSubmit}
+          disabled={!isValid}
+          loading={mutation.isPending}
+        />
       </SafeAreaView>
-    </>
+    </PaperBackground>
+  );
+}
+
+function DateCol({
+  label,
+  value,
+  onInc,
+  onDec,
+}: {
+  label: string;
+  value: string;
+  onInc: () => void;
+  onDec: () => void;
+}) {
+  return (
+    <View style={styles.dateCol}>
+      <MonoText size={9} tracking={1.5} upper color={wp.color.ink3}>
+        {label}
+      </MonoText>
+      <TouchableOpacity activeOpacity={0.6} onPress={onInc} style={styles.dateArrow}>
+        <Text allowFontScaling={false} style={styles.dateArrowText}>↑</Text>
+      </TouchableOpacity>
+      <MonoText size={22} weight={700} color={wp.color.ink} style={styles.dateValue}>
+        {value}
+      </MonoText>
+      <TouchableOpacity activeOpacity={0.6} onPress={onDec} style={styles.dateArrow}>
+        <Text allowFontScaling={false} style={styles.dateArrowText}>↓</Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
+  safe: { flex: 1 },
   flex: { flex: 1 },
-  content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing['3xl'] },
-  infoBanner: { borderLeftWidth: 3, borderLeftColor: colors.info },
-  infoRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
-  infoText: { flex: 1, fontSize: fontSize.sm, color: colors.gray[600], lineHeight: 20 },
-  sectionTitle: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[900],
-    marginBottom: spacing.md,
+  content: {
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: 14,
+    paddingBottom: 200,
   },
-  locationList: { gap: spacing.sm },
-  locationOption: {
+
+  // List
+  list: {
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+  },
+  listEmpty: {
+    padding: 16,
+    alignItems: 'center',
+  },
+  listRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing.md,
-    borderRadius: borderRadius.md,
-    borderWidth: 2,
-    borderColor: colors.gray[200],
-    backgroundColor: colors.white,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    gap: 12,
   },
-  locationSelected: {
-    borderColor: colors.primary[500],
-    backgroundColor: colors.primary[50],
+  listRowDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: wp.color.line,
+    borderStyle: 'dashed',
   },
-  locationInfo: { flex: 1 },
-  locationName: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.gray[700] },
-  locationNameSelected: { color: colors.primary[700] },
-  locationStock: { fontSize: fontSize.xs, color: colors.gray[400], marginTop: 2 },
-  emptyText: { fontSize: fontSize.sm, color: colors.gray[400] },
-  kgHint: { fontSize: fontSize.xs, color: colors.gray[500], marginTop: spacing.xs },
-  textArea: { minHeight: 80, textAlignVertical: 'top' },
-  footer: {
-    padding: spacing.lg,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.gray[200],
-    backgroundColor: colors.white,
+  listRowSelected: {
+    backgroundColor: 'rgba(26,25,22,0.05)',
+  },
+  checkbox: {
+    width: 14,
+    height: 14,
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: wp.color.ink,
+  },
+  checkMark: {
+    color: wp.color.paper,
+    fontSize: 10,
+    fontWeight: '900',
+    lineHeight: 12,
+  },
+  locName: {
+    flex: 1,
+    fontFamily: wp.font.serifMid.fontFamily,
+    fontWeight: wp.font.serifMid.fontWeight,
+    fontStyle: 'italic',
+    fontSize: 16,
+    color: wp.color.ink,
+  },
+
+  // Quantity
+  qtyRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 10,
+  },
+  hiddenInput: {
+    position: 'absolute',
+    opacity: 0,
+    width: 0,
+    height: 0,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 10,
+  },
+  chip: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+    paddingVertical: 6,
+    alignItems: 'center',
+  },
+  chipActive: {
+    backgroundColor: wp.color.ink,
+  },
+
+  // Date scroller
+  dateScroller: {
+    flexDirection: 'row',
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+    backgroundColor: wp.color.voucherBg,
+  },
+  dateCol: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+    gap: 4,
+  },
+  dateDivider: {
+    width: 1.5,
+    backgroundColor: wp.color.lineD,
+  },
+  dateArrow: {
+    padding: 2,
+  },
+  dateArrowText: {
+    fontFamily: wp.font.mono.fontFamily,
+    fontSize: 14,
+    color: wp.color.ink3,
+  },
+  dateValue: {
+    letterSpacing: -0.5,
+  },
+
+  // Notes
+  notesBox: {
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+    backgroundColor: wp.color.voucherBg,
+    padding: 12,
+    minHeight: 72,
+  },
+  notesInput: {
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'Georgia' }),
+    fontStyle: 'italic',
+    fontSize: 14,
+    color: wp.color.ink,
+    minHeight: 48,
+    textAlignVertical: 'top',
+    padding: 0,
   },
 });

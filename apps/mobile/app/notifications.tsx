@@ -1,191 +1,285 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import React, { useMemo } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  RefreshControl,
+  TouchableOpacity,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stack } from 'expo-router';
-import * as Notifications from 'expo-notifications';
-import { brand, colors, spacing, fontSize, fontWeight } from '../src/constants/theme';
-import { registerForPushNotifications } from '../src/utils/notifications';
+import { Stack, useRouter } from 'expo-router';
+import {
+  PaperBackground,
+  Masthead,
+  KickerLabel,
+  MonoText,
+  InkButton,
+  Stamp,
+} from '../src/components/wp';
+import { wp, fmtKickerDate } from '../src/constants/warehousePaper';
+import { Loading } from '../src/components/ui/Loading';
+import {
+  useNotificationFeed,
+  useMarkNotificationRead,
+  useMarkAllNotificationsRead,
+} from '../src/hooks/useNotifications';
+import type { NotificationItem } from '../src/api/notifications';
+import { timeAgo } from '../src/utils/dates';
+
+const TYPE_COLOR: Record<string, string> = {
+  delivery_arrived: wp.color.green,
+  request_accepted: '#1F3A8A',
+  trip_started: '#5B2CA5',
+  trip_completed: wp.color.green,
+  low_stock_alert: wp.color.amber,
+  critical_stock_alert: wp.color.red,
+  bag_used: wp.color.ink3,
+  daily_summary: wp.color.ink2,
+};
+
+function deepLinkFor(n: NotificationItem): string | null {
+  switch (n.notification_type) {
+    case 'delivery_arrived':
+      return '/alerts';
+    case 'request_accepted':
+      return '/(tabs)/requests';
+    case 'trip_started':
+    case 'trip_completed':
+      return '/(tabs)/trips';
+    case 'low_stock_alert':
+    case 'critical_stock_alert':
+      return '/(tabs)/stock';
+    default:
+      return null;
+  }
+}
+
+function dayKey(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  const yest = new Date();
+  yest.setDate(today.getDate() - 1);
+  const sameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+  if (sameDay(d, today)) return 'TODAY';
+  if (sameDay(d, yest)) return 'YESTERDAY';
+  return d.toLocaleDateString('en-US', { day: '2-digit', month: 'short' }).toUpperCase();
+}
 
 export default function NotificationsScreen() {
-  const [permissionStatus, setPermissionStatus] = useState<string | null>(null);
+  const router = useRouter();
+  const feed = useNotificationFeed();
+  const markRead = useMarkNotificationRead();
+  const markAll = useMarkAllNotificationsRead();
 
-  const checkPermissions = useCallback(async () => {
-    try {
-      const { status } = await Notifications.getPermissionsAsync();
-      setPermissionStatus(status);
-      if (status === 'granted') {
-        Alert.alert('Notifications Enabled', 'Push notifications are enabled for this device.');
-      } else {
-        // Attempt to request permission
-        const token = await registerForPushNotifications();
-        if (token) {
-          setPermissionStatus('granted');
-          Alert.alert('Notifications Enabled', 'Push notifications have been enabled.');
-        } else {
-          setPermissionStatus('denied');
-          Alert.alert(
-            'Notifications Disabled',
-            'Please enable notifications in your device settings to receive alerts.',
-          );
-        }
-      }
-    } catch (error) {
-      console.error('Error checking notification permissions:', error);
-      Alert.alert('Error', 'Could not check notification permissions. Please try again.');
+  const items = feed.data?.notifications ?? [];
+  const unread = feed.data?.unread_count ?? 0;
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, NotificationItem[]>();
+    for (const n of items) {
+      const k = dayKey(n.created_at);
+      if (!map.has(k)) map.set(k, []);
+      map.get(k)!.push(n);
     }
-  }, []);
+    return Array.from(map.entries());
+  }, [items]);
+
+  const handleTap = (n: NotificationItem) => {
+    if (!n.is_read) markRead.mutate(n.id);
+    const link = deepLinkFor(n);
+    if (link) router.push(link as never);
+  };
 
   return (
-    <>
-      <Stack.Screen
-        options={{
-          title: 'Notifications',
-          headerStyle: { backgroundColor: brand.gradientStart },
-          headerTintColor: colors.white,
-        }}
-      />
-      <SafeAreaView style={styles.container} edges={['bottom']}>
-        <View style={styles.content}>
-          <View style={styles.iconContainer}>
-            <Text style={styles.icon}>🔔</Text>
-          </View>
+    <PaperBackground>
+      <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
+        {feed.isLoading ? (
+          <Loading fullScreen message="" />
+        ) : (
+          <ScrollView
+            contentContainerStyle={styles.scroll}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={feed.isRefetching}
+                onRefresh={() => feed.refetch()}
+                tintColor={wp.color.ink2}
+              />
+            }
+          >
+            <Masthead
+              kicker={`MAIL ROOM — ${fmtKickerDate()}`}
+              title="Notifications"
+              backUseRouter
+            />
 
-          <Text style={styles.title}>Push Notifications</Text>
-          <Text style={styles.description}>
-            Stay informed about stock requests, delivery updates, and important alerts in real time.
-          </Text>
-
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>How it works</Text>
-            <Text style={styles.cardText}>
-              {'\u2022'} Receive alerts when deliveries arrive{'\n'}
-              {'\u2022'} Get notified when requests are accepted{'\n'}
-              {'\u2022'} Stay updated on trip progress{'\n'}
-              {'\u2022'} Low stock warnings sent directly to you
-            </Text>
-          </View>
-
-          {permissionStatus !== null && (
-            <View
-              style={[
-                styles.statusBadge,
-                permissionStatus === 'granted' ? styles.statusGranted : styles.statusDenied,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.statusText,
-                  permissionStatus === 'granted'
-                    ? styles.statusTextGranted
-                    : styles.statusTextDenied,
-                ]}
-              >
-                {permissionStatus === 'granted'
-                  ? 'Notifications are enabled'
-                  : 'Notifications are disabled'}
-              </Text>
+            {/* Unread + mark all */}
+            <View style={styles.headerRow}>
+              <View>
+                <KickerLabel size={9} tracking={1.5} color={wp.color.ink3}>
+                  Unread
+                </KickerLabel>
+                <MonoText
+                  size={22}
+                  weight={700}
+                  tracking={-0.5}
+                  color={unread > 0 ? wp.color.red : wp.color.ink}
+                >
+                  {unread}
+                </MonoText>
+              </View>
+              {unread > 0 && (
+                <InkButton
+                  label="Mark all read"
+                  onPress={() => markAll.mutate()}
+                  loading={markAll.isPending}
+                />
+              )}
             </View>
-          )}
 
-          <TouchableOpacity style={styles.button} onPress={checkPermissions} activeOpacity={0.8}>
-            <Text style={styles.buttonText}>Check Notification Permissions</Text>
-          </TouchableOpacity>
-
-          <Text style={styles.hint}>
-            If notifications are not working, check your device settings and ensure notifications are
-            allowed for Potato Stock.
-          </Text>
-        </View>
+            {grouped.length === 0 ? (
+              <View style={styles.empty}>
+                <MonoText size={11} tracking={1} upper color={wp.color.ink3}>
+                  No notifications yet
+                </MonoText>
+              </View>
+            ) : (
+              grouped.map(([day, group]) => (
+                <View key={day}>
+                  <View style={styles.dayHead}>
+                    <KickerLabel size={10} tracking={2} color={wp.color.ink}>
+                      {day}
+                    </KickerLabel>
+                    <KickerLabel size={9} tracking={1.5} color={wp.color.ink3}>
+                      {group.length}
+                    </KickerLabel>
+                  </View>
+                  {group.map((n, i) => (
+                    <Row
+                      key={n.id}
+                      n={n}
+                      rowIndex={i}
+                      onPress={() => handleTap(n)}
+                    />
+                  ))}
+                </View>
+              ))
+            )}
+          </ScrollView>
+        )}
       </SafeAreaView>
-    </>
+    </PaperBackground>
+  );
+}
+
+function Row({
+  n,
+  rowIndex,
+  onPress,
+}: {
+  n: NotificationItem;
+  rowIndex: number;
+  onPress: () => void;
+}) {
+  const accent = TYPE_COLOR[n.notification_type] ?? wp.color.ink3;
+  return (
+    <TouchableOpacity
+      activeOpacity={0.7}
+      onPress={onPress}
+      style={[styles.row, !n.is_read && styles.rowUnread]}
+    >
+      <View style={[styles.bar, { backgroundColor: accent }]} />
+      <View style={styles.body}>
+        <Text allowFontScaling={false} style={styles.title} numberOfLines={1}>
+          {n.title}
+        </Text>
+        {n.body ? (
+          <Text allowFontScaling={false} style={styles.bodyText} numberOfLines={2}>
+            {n.body}
+          </Text>
+        ) : null}
+      </View>
+      <View style={styles.right}>
+        <MonoText size={9} tracking={1} upper color={wp.color.ink3}>
+          {timeAgo(n.created_at).replace(' ago', '').toUpperCase()} AGO
+        </MonoText>
+        {!n.is_read && (
+          <Stamp colorHex={wp.color.red} rowIndex={rowIndex}>
+            NEW
+          </Stamp>
+        )}
+      </View>
+    </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
-  content: {
-    flex: 1,
+  safe: { flex: 1 },
+  scroll: { paddingBottom: 40 },
+  headerRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing.lg,
-    paddingTop: spacing.xl,
+    justifyContent: 'space-between',
+    paddingHorizontal: wp.space.screenH,
+    paddingVertical: 16,
+    borderBottomWidth: wp.border.mid,
+    borderBottomColor: wp.color.lineD,
   },
-  iconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: brand.accentLight,
+  empty: {
+    paddingVertical: 60,
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.md,
   },
-  icon: { fontSize: 36 },
+  dayHead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: 18,
+    paddingBottom: 8,
+    borderTopWidth: 1.5,
+    borderTopColor: wp.color.lineD,
+    marginTop: 4,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: wp.space.screenH,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: wp.color.line,
+    borderStyle: 'dashed',
+    gap: 12,
+  },
+  rowUnread: {
+    backgroundColor: 'rgba(194, 59, 31, 0.04)',
+  },
+  bar: {
+    width: 3,
+    alignSelf: 'stretch',
+    minHeight: 36,
+  },
+  body: { flex: 1, minWidth: 0 },
   title: {
-    fontSize: fontSize.xl,
-    fontWeight: fontWeight.bold,
-    color: colors.gray[900],
-    marginBottom: spacing.sm,
+    fontFamily: wp.font.serifMid.fontFamily,
+    fontWeight: wp.font.serifMid.fontWeight,
+    fontStyle: 'italic',
+    fontSize: 15,
+    color: wp.color.ink,
   },
-  description: {
-    fontSize: fontSize.sm,
-    color: colors.gray[600],
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: spacing.lg,
-    paddingHorizontal: spacing.md,
+  bodyText: {
+    fontFamily: wp.font.sans.fontFamily,
+    fontSize: 12,
+    color: wp.color.ink2,
+    marginTop: 3,
+    lineHeight: 16,
   },
-  card: {
-    backgroundColor: colors.white,
-    borderRadius: 12,
-    padding: spacing.md,
-    width: '100%',
-    marginBottom: spacing.lg,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  cardTitle: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[900],
-    marginBottom: spacing.sm,
-  },
-  cardText: {
-    fontSize: fontSize.sm,
-    color: colors.gray[600],
-    lineHeight: 24,
-  },
-  statusBadge: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: 20,
-    marginBottom: spacing.md,
-  },
-  statusGranted: { backgroundColor: '#dcfce7' },
-  statusDenied: { backgroundColor: '#fee2e2' },
-  statusText: { fontSize: fontSize.sm, fontWeight: fontWeight.medium },
-  statusTextGranted: { color: '#166534' },
-  statusTextDenied: { color: '#991b1b' },
-  button: {
-    backgroundColor: brand.accent,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm + 2,
-    borderRadius: 10,
-    marginBottom: spacing.md,
-    width: '100%',
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: colors.white,
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-  },
-  hint: {
-    fontSize: fontSize.xs,
-    color: colors.gray[400],
-    textAlign: 'center',
-    paddingHorizontal: spacing.lg,
-    lineHeight: 18,
+  right: {
+    alignItems: 'flex-end',
+    gap: 6,
   },
 });

@@ -5,239 +5,263 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
+  TextInput,
   Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { useLogWaste } from '../../src/hooks/useStock';
-import { Card } from '../../src/components/ui/Card';
-import { Button } from '../../src/components/ui/Button';
-import { Input } from '../../src/components/ui/Input';
-import { brand, colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
+import {
+  PaperBackground,
+  Masthead,
+  IntentStrip,
+  DFieldBox,
+  PrimaryBar,
+  MonoText,
+  KickerLabel,
+  QuantityField,
+} from '../../src/components/wp';
+import { wp, fmtKickerDate } from '../../src/constants/warehousePaper';
 import type { WasteReason } from '../../src/types';
 
-const WASTE_REASONS: Array<{ value: WasteReason; label: string; icon: string }> = [
-  { value: 'spoiled', label: 'Spoiled', icon: 'alert-circle' },
-  { value: 'damaged', label: 'Damaged', icon: 'hammer' },
-  { value: 'trim_prep_loss', label: 'Trim / Prep Loss', icon: 'cut' },
-  { value: 'contaminated', label: 'Contaminated', icon: 'warning' },
-  { value: 'other', label: 'Other', icon: 'ellipsis-horizontal' },
+const REASONS: Array<{ value: WasteReason; label: string }> = [
+  { value: 'spoiled', label: 'Spoiled' },
+  { value: 'damaged', label: 'Damaged' },
+  { value: 'trim_prep_loss', label: 'Trim / Prep' },
+  { value: 'contaminated', label: 'Contaminated' },
+  { value: 'other', label: 'Other' },
 ];
 
-export default function WasteScreen() {
+const QUICK_AMOUNTS = [1, 5, 10, 25];
+
+export default function LogWasteScreen() {
   const router = useRouter();
   const mutation = useLogWaste();
 
   const [quantity, setQuantity] = useState('');
-  const [unit, setUnit] = useState<'bag' | 'kg'>('bag');
   const [reason, setReason] = useState<WasteReason | null>(null);
   const [notes, setNotes] = useState('');
 
-  const isValid = Number(quantity) > 0 && reason !== null;
+  const qty = Number(quantity);
+  const isValid = qty > 0 && reason !== null;
 
   const handleSubmit = () => {
     if (!isValid || !reason) return;
-
-    const qty = Number(quantity);
-    const displayQty = unit === 'bag' ? `${qty} bag${qty > 1 ? 's' : ''}` : `${qty} kg`;
-
-    Alert.alert('Confirm Waste', `Log ${displayQty} as waste (${reason.replace(/_/g, ' ')})?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Log Waste',
-        style: 'destructive',
-        onPress: () => {
-          mutation.mutate(
-            {
-              quantity: qty,
-              unit,
-              reason,
-              notes: notes.trim() || undefined,
-            },
-            {
-              onSuccess: (data) => {
-                Alert.alert('Waste Logged', data.message ?? 'Waste has been recorded.', [
-                  { text: 'OK', onPress: () => router.back() },
-                ]);
+    Alert.alert(
+      'Confirm Waste',
+      `Log ${qty} bag${qty > 1 ? 's' : ''} as waste (${reason.replace(/_/g, ' ')})?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Log Waste',
+          style: 'destructive',
+          onPress: () => {
+            mutation.mutate(
+              {
+                quantity: qty,
+                unit: 'bag',
+                reason,
+                notes: notes.trim() || undefined,
               },
-            },
-          );
+              {
+                onSuccess: (data) => {
+                  Alert.alert('Waste Logged', data.message ?? 'Recorded.', [
+                    { text: 'OK', onPress: () => router.back() },
+                  ]);
+                },
+              },
+            );
+          },
         },
-      },
-    ]);
+      ],
+    );
   };
 
   return (
-    <>
-      <Stack.Screen
-        options={{
-          title: 'Log Waste',
-          headerStyle: { backgroundColor: brand.gradientStart },
-          headerTintColor: '#fff',
-        }}
-      />
-      <SafeAreaView style={styles.container} edges={['bottom']}>
+    <PaperBackground>
+      <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.flex}
         >
+          <Masthead
+            kicker={`LOSS REPORT — ${fmtKickerDate()}`}
+            title="Log waste"
+            backUseRouter
+          />
+
           <ScrollView contentContainerStyle={styles.content}>
-            {/* Quantity */}
-            <Card>
-              <Text style={styles.sectionTitle}>Quantity</Text>
-              <View style={styles.qtyRow}>
-                <View style={styles.qtyInput}>
-                  <Input
-                    placeholder="0"
-                    keyboardType="decimal-pad"
-                    value={quantity}
-                    onChangeText={setQuantity}
-                    error={quantity !== '' && Number(quantity) <= 0 ? 'Must be > 0' : undefined}
-                  />
-                </View>
-                <View style={styles.unitToggle}>
-                  <TouchableOpacity
-                    style={[styles.unitBtn, unit === 'bag' && styles.unitBtnActive]}
-                    onPress={() => setUnit('bag')}
-                  >
-                    <Text style={[styles.unitText, unit === 'bag' && styles.unitTextActive]}>Bags</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.unitBtn, unit === 'kg' && styles.unitBtnActive]}
-                    onPress={() => setUnit('kg')}
-                  >
-                    <Text style={[styles.unitText, unit === 'kg' && styles.unitTextActive]}>kg</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </Card>
+            <IntentStrip>
+              Record stock lost to spoilage, damage, or prep trim. Deducted from the oldest batch.
+            </IntentStrip>
 
-            {/* Reason */}
-            <Card>
-              <Text style={styles.sectionTitle}>Reason</Text>
-              <View style={styles.reasonGrid}>
-                {WASTE_REASONS.map((r) => (
-                  <TouchableOpacity
-                    key={r.value}
-                    style={[
-                      styles.reasonChip,
-                      reason === r.value && styles.reasonChipSelected,
-                    ]}
-                    onPress={() => setReason(r.value)}
-                  >
-                    <Ionicons
-                      name={r.icon as any}
-                      size={16}
-                      color={reason === r.value ? '#fff' : '#64748b'}
-                    />
-                    <Text
-                      style={[
-                        styles.reasonText,
-                        reason === r.value && styles.reasonTextSelected,
-                      ]}
-                    >
-                      {r.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </Card>
-
-            {/* Notes */}
-            <Card>
-              <Input
-                label="Notes (optional)"
-                placeholder="Describe the waste..."
-                value={notes}
-                onChangeText={setNotes}
-                multiline
-                numberOfLines={3}
-                style={styles.textArea}
+            <DFieldBox label="Quantity · bags">
+              <QuantityField
+                value={quantity}
+                onChangeText={setQuantity}
+                trailing={
+                  <View style={styles.chipRow}>
+                    {QUICK_AMOUNTS.map((n) => (
+                      <TouchableOpacity
+                        key={n}
+                        activeOpacity={0.6}
+                        onPress={() => setQuantity(String(n))}
+                        style={[styles.chip, qty === n && styles.chipActive]}
+                      >
+                        <MonoText
+                          size={11}
+                          weight={600}
+                          tracking={1}
+                          color={qty === n ? wp.color.paper : wp.color.ink}
+                        >
+                          {n}
+                        </MonoText>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                }
               />
-            </Card>
-          </ScrollView>
+              <View style={styles.qtyUnderline} />
+              <MonoText size={9} tracking={1.5} upper color={wp.color.ink3} style={{ marginTop: 6 }}>
+                Tap to type · or pick a stamp
+              </MonoText>
+            </DFieldBox>
 
-          {/* Submit */}
-          <View style={styles.footer}>
-            <Button
-              title={mutation.isPending ? 'Logging...' : 'Log Waste'}
-              onPress={handleSubmit}
-              loading={mutation.isPending}
-              disabled={!isValid || mutation.isPending}
-              style={{ backgroundColor: brand.accent }}
-            />
-          </View>
+            <DFieldBox label="Reason">
+              <View style={styles.reasonGrid}>
+                {REASONS.map((r) => {
+                  const selected = reason === r.value;
+                  return (
+                    <TouchableOpacity
+                      key={r.value}
+                      activeOpacity={0.65}
+                      onPress={() => setReason(r.value)}
+                      style={[styles.reasonChip, selected && styles.reasonChipSelected]}
+                    >
+                      <Text
+                        allowFontScaling={false}
+                        style={[styles.reasonLabel, selected && styles.reasonLabelSelected]}
+                      >
+                        {r.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </DFieldBox>
+
+            <DFieldBox label="Notes · optional" noDivider>
+              <View style={styles.notesBox}>
+                <TextInput
+                  placeholder="Details about the loss…"
+                  placeholderTextColor={wp.color.ink3}
+                  value={notes}
+                  onChangeText={setNotes}
+                  multiline
+                  style={styles.notesInput}
+                />
+              </View>
+            </DFieldBox>
+          </ScrollView>
         </KeyboardAvoidingView>
+
+        <PrimaryBar
+          label={qty > 0 ? `Log ${qty} bag${qty > 1 ? 's' : ''} as waste` : 'Log waste'}
+          onPress={handleSubmit}
+          disabled={!isValid}
+          loading={mutation.isPending}
+        />
       </SafeAreaView>
-    </>
+    </PaperBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc' },
+  safe: { flex: 1 },
   flex: { flex: 1 },
-  content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing['3xl'] },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#0f172a',
-    letterSpacing: -0.2,
-    marginBottom: spacing.md,
+  content: {
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: 14,
+    paddingBottom: 200,
   },
-  qtyRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
-  qtyInput: { flex: 1 },
-  unitToggle: {
-    flexDirection: 'row',
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    overflow: 'hidden',
-    marginTop: 2,
-  },
-  unitBtn: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    backgroundColor: '#fff',
-  },
-  unitBtnActive: {
-    backgroundColor: '#0f172a',
-  },
-  unitText: {
-    fontSize: fontSize.sm,
-    fontWeight: '600',
-    color: '#64748b',
-  },
-  unitTextActive: { color: '#fff' },
-  reasonGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  reasonChip: {
+  qtyRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#fff',
+    justifyContent: 'space-between',
+  },
+  qtyUnderline: {
+    height: 1.5,
+    backgroundColor: wp.color.lineD,
+    marginTop: 8,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  chip: {
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: 'transparent',
+    minWidth: 36,
+    alignItems: 'center',
+  },
+  chipActive: {
+    backgroundColor: wp.color.ink,
+  },
+  hiddenInput: {
+    position: 'absolute',
+    opacity: 0,
+    width: 0,
+    height: 0,
+  },
+
+  // Reason chips — stamp-style outlined
+  reasonGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  reasonChip: {
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: 'transparent',
   },
   reasonChipSelected: {
-    backgroundColor: '#0f172a',
-    borderColor: '#0f172a',
+    backgroundColor: wp.color.ink,
   },
-  reasonText: {
-    fontSize: fontSize.sm,
-    fontWeight: '600',
-    color: '#64748b',
+  reasonLabel: {
+    fontFamily: wp.font.monoSemi.fontFamily,
+    fontWeight: wp.font.monoSemi.fontWeight,
+    fontSize: 11,
+    letterSpacing: 1,
+    color: wp.color.ink,
+    textTransform: 'uppercase',
   },
-  reasonTextSelected: { color: '#fff' },
-  textArea: { minHeight: 80, textAlignVertical: 'top' },
-  footer: {
-    padding: spacing.lg,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.gray[200],
-    backgroundColor: colors.white,
+  reasonLabelSelected: {
+    color: wp.color.paper,
+  },
+
+  notesBox: {
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+    backgroundColor: wp.color.voucherBg,
+    padding: 12,
+    minHeight: 72,
+  },
+  notesInput: {
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'Georgia' }),
+    fontStyle: 'italic',
+    fontSize: 14,
+    color: wp.color.ink,
+    minHeight: 48,
+    textAlignVertical: 'top',
+    padding: 0,
   },
 });

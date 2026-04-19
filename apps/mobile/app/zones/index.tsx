@@ -1,20 +1,22 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
-  Text,
   ScrollView,
   RefreshControl,
-  TouchableOpacity,
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { useZones, useLocations } from '../../src/hooks/useLocations';
-import { Card } from '../../src/components/ui/Card';
-import { Badge } from '../../src/components/ui/Badge';
 import { Loading } from '../../src/components/ui/Loading';
-import { colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
+import {
+  PaperBackground,
+  Masthead,
+  LedgerRow,
+  Stamp,
+  MonoText,
+} from '../../src/components/wp';
+import { wp, fmtKickerDate } from '../../src/constants/warehousePaper';
 
 export default function ZonesListScreen() {
   const router = useRouter();
@@ -24,29 +26,34 @@ export default function ZonesListScreen() {
   const zoneList = zones.data?.zones ?? [];
   const allLocations = locations.data?.locations ?? [];
 
-  // Compute location count per zone
-  function locationCountForZone(zoneId: string): number {
-    return allLocations.filter((l) => l.zone_id === zoneId).length;
-  }
-
-  function shopCountForZone(zoneId: string): number {
-    return allLocations.filter((l) => l.zone_id === zoneId && l.type === 'shop').length;
-  }
-
-  function warehouseCountForZone(zoneId: string): number {
-    return allLocations.filter((l) => l.zone_id === zoneId && l.type === 'warehouse').length;
-  }
+  const stats = useMemo(() => {
+    const m = new Map<string, { total: number; shops: number; warehouses: number }>();
+    for (const l of allLocations) {
+      const s = m.get(l.zone_id) ?? { total: 0, shops: 0, warehouses: 0 };
+      s.total++;
+      if (l.type === 'shop') s.shops++;
+      else if (l.type === 'warehouse') s.warehouses++;
+      m.set(l.zone_id, s);
+    }
+    return m;
+  }, [allLocations]);
 
   if (zones.isLoading || locations.isLoading) {
-    return <Loading fullScreen message="Loading zones..." />;
+    return (
+      <PaperBackground>
+        <Stack.Screen options={{ headerShown: false }} />
+        <Loading fullScreen message="" />
+      </PaperBackground>
+    );
   }
 
   return (
-    <>
-      <Stack.Screen options={{ title: 'Zones' }} />
-      <SafeAreaView style={styles.container} edges={['bottom']}>
+    <PaperBackground>
+      <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
         <ScrollView
-          contentContainerStyle={styles.content}
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
               refreshing={zones.isRefetching}
@@ -54,104 +61,63 @@ export default function ZonesListScreen() {
                 zones.refetch();
                 locations.refetch();
               }}
+              tintColor={wp.color.ink2}
             />
           }
         >
-          <Text style={styles.countText}>
-            {zoneList.length} zone(s)
-          </Text>
+          <Masthead
+            kicker={`ZONE ROSTER — ${fmtKickerDate()}`}
+            title="Zones"
+            backUseRouter
+          />
 
-          {zoneList.length === 0 && (
-            <Card>
-              <Text style={styles.emptyText}>No zones found.</Text>
-            </Card>
+          {zoneList.length === 0 ? (
+            <View style={styles.empty}>
+              <MonoText size={11} tracking={1} upper color={wp.color.ink3}>
+                No zones on file
+              </MonoText>
+            </View>
+          ) : (
+            zoneList.map((zone, i) => {
+              const s = stats.get(zone.id) ?? { total: 0, shops: 0, warehouses: 0 };
+              const ctx = [
+                `${s.total} ${s.total === 1 ? 'SITE' : 'SITES'}`,
+                s.shops ? `${s.shops} SHOP${s.shops !== 1 ? 'S' : ''}` : null,
+                s.warehouses ? `${s.warehouses} WHSE` : null,
+              ]
+                .filter(Boolean)
+                .join(' · ');
+              return (
+                <LedgerRow
+                  key={zone.id}
+                  idx={i + 1}
+                  primary={zone.name}
+                  secondary={ctx}
+                  trailing={
+                    <Stamp
+                      colorHex={s.total === 0 ? wp.color.ink3 : wp.color.ink}
+                      rowIndex={i}
+                    >
+                      {s.total === 0 ? 'EMPTY' : `N°${String(s.total).padStart(2, '0')}`}
+                    </Stamp>
+                  }
+                  onPress={() => router.push(`/zones/${zone.id}`)}
+                />
+              );
+            })
           )}
-
-          {zoneList.map((zone) => {
-            const total = locationCountForZone(zone.id);
-            const shops = shopCountForZone(zone.id);
-            const warehouses = warehouseCountForZone(zone.id);
-
-            return (
-              <TouchableOpacity
-                key={zone.id}
-                activeOpacity={0.7}
-                onPress={() => router.push(`/zones/${zone.id}`)}
-              >
-                <Card>
-                  <View style={styles.zoneHeader}>
-                    <View style={styles.zoneIcon}>
-                      <Ionicons name="map" size={22} color={colors.primary[500]} />
-                    </View>
-                    <View style={styles.zoneInfo}>
-                      <Text style={styles.zoneName}>{zone.name}</Text>
-                      <Text style={styles.zoneCount}>
-                        {total} location{total !== 1 ? 's' : ''}
-                      </Text>
-                    </View>
-                    <Ionicons
-                      name="chevron-forward"
-                      size={20}
-                      color={colors.gray[400]}
-                    />
-                  </View>
-
-                  <View style={styles.badgeRow}>
-                    {shops > 0 && (
-                      <Badge
-                        label={`${shops} Shop${shops !== 1 ? 's' : ''}`}
-                        variant="info"
-                      />
-                    )}
-                    {warehouses > 0 && (
-                      <Badge
-                        label={`${warehouses} Warehouse${warehouses !== 1 ? 's' : ''}`}
-                        variant="warning"
-                      />
-                    )}
-                    {total === 0 && (
-                      <Badge label="No locations" variant="neutral" />
-                    )}
-                  </View>
-                </Card>
-              </TouchableOpacity>
-            );
-          })}
         </ScrollView>
       </SafeAreaView>
-    </>
+    </PaperBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
-  content: { padding: spacing.lg, gap: spacing.lg },
-  countText: { fontSize: fontSize.sm, color: colors.gray[500] },
-  emptyText: {
-    fontSize: fontSize.sm,
-    color: colors.gray[500],
-    textAlign: 'center',
-  },
-  zoneHeader: {
-    flexDirection: 'row',
+  safe: { flex: 1 },
+  scroll: { paddingBottom: 40 },
+  empty: {
+    paddingHorizontal: wp.space.screenH,
+    paddingVertical: 40,
     alignItems: 'center',
-    gap: spacing.md,
-    marginBottom: spacing.md,
   },
-  zoneIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.primary[50],
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  zoneInfo: { flex: 1 },
-  zoneName: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[900],
-  },
-  zoneCount: { fontSize: fontSize.sm, color: colors.gray[500] },
-  badgeRow: { flexDirection: 'row', gap: spacing.sm },
 });

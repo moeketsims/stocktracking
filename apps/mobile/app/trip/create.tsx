@@ -1,180 +1,73 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
+  TextInput,
+  Alert,
+  KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { useCreateTrip } from '../../src/hooks/useTrips';
 import { useVehicles } from '../../src/hooks/useVehicles';
 import { useLocations } from '../../src/hooks/useLocations';
-import { referenceApi } from '../../src/api/reference';
-import { useQuery } from '@tanstack/react-query';
-import { Button } from '../../src/components/ui/Button';
-import { Input } from '../../src/components/ui/Input';
-import { Card } from '../../src/components/ui/Card';
-import { brand, colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
+import { Loading } from '../../src/components/ui/Loading';
+import {
+  PaperBackground,
+  Masthead,
+  IntentStrip,
+  DFieldBox,
+  PrimaryBar,
+  MonoText,
+  KickerLabel,
+} from '../../src/components/wp';
+import { wp, fmtKickerDate } from '../../src/constants/warehousePaper';
 import type { TripType } from '../../src/types';
 
-const TRIP_TYPES: { value: TripType; label: string }[] = [
-  { value: 'supplier_to_warehouse', label: 'Supplier to Warehouse' },
-  { value: 'supplier_to_shop', label: 'Supplier to Shop' },
-  { value: 'warehouse_to_shop', label: 'Warehouse to Shop' },
-  { value: 'shop_to_shop', label: 'Shop to Shop' },
-  { value: 'shop_to_warehouse', label: 'Shop to Warehouse' },
-  { value: 'other', label: 'Other' },
+const TRIP_TYPES: { value: TripType; code: string; label: string }[] = [
+  { value: 'warehouse_to_shop', code: 'W→S', label: 'Warehouse to shop' },
+  { value: 'shop_to_shop', code: 'S→S', label: 'Shop to shop' },
+  { value: 'supplier_to_warehouse', code: 'SUP→W', label: 'Supplier to warehouse' },
+  { value: 'shop_to_warehouse', code: 'S→W', label: 'Shop to warehouse' },
 ];
-
-interface PickerOption {
-  value: string;
-  label: string;
-}
-
-function DropdownPicker({
-  label,
-  options,
-  value,
-  onChange,
-  placeholder,
-  error,
-}: {
-  label: string;
-  options: PickerOption[];
-  value: string;
-  onChange: (val: string) => void;
-  placeholder?: string;
-  error?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const selected = options.find((o) => o.value === value);
-
-  return (
-    <View style={pickerStyles.container}>
-      <Text style={pickerStyles.label}>{label}</Text>
-      <TouchableOpacity
-        style={[pickerStyles.trigger, error ? pickerStyles.errorBorder : null]}
-        onPress={() => setOpen(!open)}
-        activeOpacity={0.7}
-      >
-        <Text style={selected ? pickerStyles.selectedText : pickerStyles.placeholder}>
-          {selected?.label ?? placeholder ?? 'Select...'}
-        </Text>
-        <Ionicons
-          name={open ? 'chevron-up' : 'chevron-down'}
-          size={18}
-          color={colors.gray[400]}
-        />
-      </TouchableOpacity>
-      {open && (
-        <View style={pickerStyles.dropdown}>
-          <ScrollView style={pickerStyles.dropdownScroll} nestedScrollEnabled>
-            {options.map((opt) => (
-              <TouchableOpacity
-                key={opt.value}
-                style={[
-                  pickerStyles.option,
-                  opt.value === value && pickerStyles.optionActive,
-                ]}
-                onPress={() => {
-                  onChange(opt.value);
-                  setOpen(false);
-                }}
-              >
-                <Text
-                  style={[
-                    pickerStyles.optionText,
-                    opt.value === value && pickerStyles.optionTextActive,
-                  ]}
-                >
-                  {opt.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      )}
-      {error && <Text style={pickerStyles.errorText}>{error}</Text>}
-    </View>
-  );
-}
 
 export default function CreateTripScreen() {
   const router = useRouter();
-  const createTrip = useCreateTrip();
+  const createMutation = useCreateTrip();
+  const { data: vehiclesData, isLoading: vehLoading } = useVehicles(true);
+  const { data: locationsData, isLoading: locLoading } = useLocations();
 
-  // Reference data
-  const vehicles = useVehicles(true);
-  const locations = useLocations();
-  const suppliers = useQuery({
-    queryKey: ['suppliers'],
-    queryFn: () => referenceApi.getSuppliers().then((r) => r.data),
-  });
+  const vehicles: any[] = Array.isArray(vehiclesData) ? vehiclesData : (vehiclesData as any)?.vehicles ?? [];
+  const locations = locationsData?.locations ?? [];
 
-  // Form state
+  const [tripType, setTripType] = useState<TripType>('warehouse_to_shop');
   const [vehicleId, setVehicleId] = useState('');
-  const [driverName, setDriverName] = useState('');
-  const [tripType, setTripType] = useState('');
-  const [supplierId, setSupplierId] = useState('');
-  const [fromLocationId, setFromLocationId] = useState('');
-  const [toLocationId, setToLocationId] = useState('');
+  const [fromId, setFromId] = useState('');
+  const [toId, setToId] = useState('');
   const [notes, setNotes] = useState('');
-  const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const needsSupplier = tripType === 'supplier_to_warehouse' || tripType === 'supplier_to_shop';
-  const needsFromLocation =
-    tripType === 'warehouse_to_shop' ||
-    tripType === 'shop_to_shop' ||
-    tripType === 'shop_to_warehouse';
+  const selectedVehicle = useMemo(
+    () => vehicles.find((v: any) => v.id === vehicleId),
+    [vehicles, vehicleId],
+  );
+  const selectedFrom = useMemo(() => locations.find((l) => l.id === fromId), [locations, fromId]);
+  const selectedTo = useMemo(() => locations.find((l) => l.id === toId), [locations, toId]);
 
-  const vehicleOptions: PickerOption[] = (vehicles.data ?? [])
-    .filter((v) => v.is_active)
-    .map((v) => ({
-      value: v.id,
-      label: `${v.registration_number}${v.make ? ` (${v.make})` : ''}`,
-    }));
-
-  const locationOptions: PickerOption[] = (locations.data ?? []).map((l) => ({
-    value: l.id,
-    label: `${l.name} (${l.type})`,
-  }));
-
-  const supplierOptions: PickerOption[] = (suppliers.data ?? []).map((s) => ({
-    value: s.id,
-    label: s.name,
-  }));
-
-  const tripTypeOptions: PickerOption[] = TRIP_TYPES.map((t) => ({
-    value: t.value,
-    label: t.label,
-  }));
-
-  const validate = (): boolean => {
-    const newErrors: Record<string, string> = {};
-    if (!vehicleId) newErrors.vehicleId = 'Vehicle is required';
-    if (!tripType) newErrors.tripType = 'Trip type is required';
-    if (needsSupplier && !supplierId) newErrors.supplierId = 'Supplier is required';
-    if (needsFromLocation && !fromLocationId) newErrors.fromLocationId = 'From location is required';
-    if (!toLocationId) newErrors.toLocationId = 'Destination is required';
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
+  const isValid = !!vehicleId && !!fromId && !!toId && fromId !== toId;
 
   const handleSubmit = () => {
-    if (!validate()) return;
-    createTrip.mutate(
+    if (!isValid) return;
+    createMutation.mutate(
       {
         vehicle_id: vehicleId,
-        driver_name: driverName || undefined,
-        trip_type: tripType || undefined,
-        supplier_id: needsSupplier ? supplierId : undefined,
-        from_location_id: needsFromLocation ? fromLocationId : undefined,
-        to_location_id: toLocationId,
-        notes: notes || undefined,
+        trip_type: tripType,
+        from_location_id: fromId,
+        to_location_id: toId,
+        notes: notes.trim() || undefined,
       },
       {
         onSuccess: () => {
@@ -184,190 +77,363 @@ export default function CreateTripScreen() {
     );
   };
 
+  if (vehLoading || locLoading) {
+    return <Loading fullScreen message="" />;
+  }
+
   return (
-    <>
-      <Stack.Screen
-        options={{
-          title: 'New Trip',
-          headerStyle: { backgroundColor: brand.gradientStart },
-          headerTintColor: colors.white,
-        }}
-      />
-      <SafeAreaView style={styles.container} edges={['bottom']}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <Card>
-            <Text style={styles.sectionTitle}>Trip Details</Text>
-
-            <DropdownPicker
-              label="Vehicle *"
-              options={vehicleOptions}
-              value={vehicleId}
-              onChange={setVehicleId}
-              placeholder="Select a vehicle"
-              error={errors.vehicleId}
-            />
-
-            <Input
-              label="Driver Name (optional)"
-              value={driverName}
-              onChangeText={setDriverName}
-              placeholder="Enter driver name"
-              containerStyle={{ marginTop: spacing.md }}
-            />
-
-            <View style={{ marginTop: spacing.md }}>
-              <DropdownPicker
-                label="Trip Type *"
-                options={tripTypeOptions}
-                value={tripType}
-                onChange={(val) => {
-                  setTripType(val);
-                  setSupplierId('');
-                  setFromLocationId('');
-                }}
-                placeholder="Select trip type"
-                error={errors.tripType}
-              />
-            </View>
-
-            {needsSupplier && (
-              <View style={{ marginTop: spacing.md }}>
-                <DropdownPicker
-                  label="Supplier *"
-                  options={supplierOptions}
-                  value={supplierId}
-                  onChange={setSupplierId}
-                  placeholder="Select supplier"
-                  error={errors.supplierId}
-                />
-              </View>
-            )}
-
-            {needsFromLocation && (
-              <View style={{ marginTop: spacing.md }}>
-                <DropdownPicker
-                  label="From Location *"
-                  options={locationOptions}
-                  value={fromLocationId}
-                  onChange={setFromLocationId}
-                  placeholder="Select origin"
-                  error={errors.fromLocationId}
-                />
-              </View>
-            )}
-
-            <View style={{ marginTop: spacing.md }}>
-              <DropdownPicker
-                label="Destination *"
-                options={locationOptions}
-                value={toLocationId}
-                onChange={setToLocationId}
-                placeholder="Select destination"
-                error={errors.toLocationId}
-              />
-            </View>
-
-            <Input
-              label="Notes (optional)"
-              value={notes}
-              onChangeText={setNotes}
-              placeholder="Add any notes"
-              multiline
-              numberOfLines={3}
-              containerStyle={{ marginTop: spacing.md }}
-              style={{ minHeight: 80, textAlignVertical: 'top' }}
-            />
-          </Card>
-
-          <Button
-            title="Create Trip"
-            onPress={handleSubmit}
-            loading={createTrip.isPending}
-            size="lg"
+    <PaperBackground>
+      <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.flex}
+        >
+          <Masthead
+            kicker={`NEW TRIP — ${fmtKickerDate()}`}
+            title="Plan a trip"
+            backUseRouter
           />
-        </ScrollView>
+
+          <ScrollView contentContainerStyle={styles.content}>
+            <IntentStrip>
+              Create a trip to move stock between locations. Pick a vehicle, set the route, add notes.
+            </IntentStrip>
+
+            {/* Trip type — 2×2 tile grid */}
+            <DFieldBox label="Trip type">
+              <View style={styles.tileGrid}>
+                {TRIP_TYPES.map((t) => {
+                  const selected = tripType === t.value;
+                  return (
+                    <TypeTile
+                      key={t.value}
+                      code={t.code}
+                      label={t.label}
+                      selected={selected}
+                      onPress={() => setTripType(t.value)}
+                    />
+                  );
+                })}
+              </View>
+            </DFieldBox>
+
+            {/* Vehicle */}
+            <DFieldBox label="Vehicle">
+              <View style={styles.list}>
+                {vehicles.length === 0 ? (
+                  <View style={styles.listEmpty}>
+                    <MonoText size={10} tracking={1} upper color={wp.color.ink3}>
+                      No vehicles available
+                    </MonoText>
+                  </View>
+                ) : (
+                  vehicles.map((v: any, i: number) => {
+                    const selected = v.id === vehicleId;
+                    const isLast = i === vehicles.length - 1;
+                    return (
+                      <TouchableOpacity
+                        key={v.id}
+                        activeOpacity={0.65}
+                        onPress={() => setVehicleId(v.id)}
+                        style={[
+                          styles.listRow,
+                          !isLast && styles.listRowDivider,
+                          selected && styles.listRowSelected,
+                        ]}
+                      >
+                        <View style={[styles.checkbox, selected && styles.checkboxChecked]}>
+                          {selected && (
+                            <Text allowFontScaling={false} style={styles.checkMark}>
+                              ✓
+                            </Text>
+                          )}
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <MonoText
+                            size={13}
+                            weight={700}
+                            tracking={1}
+                            color={wp.color.ink}
+                          >
+                            {v.registration_number}
+                          </MonoText>
+                          <MonoText
+                            size={9}
+                            tracking={1.2}
+                            upper
+                            color={wp.color.ink3}
+                            style={{ marginTop: 2 }}
+                          >
+                            {[v.make, v.model, v.capacity_kg ? `${v.capacity_kg} KG` : null]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </MonoText>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
+              </View>
+            </DFieldBox>
+
+            {/* From */}
+            <DFieldBox label="From">
+              <LocationPicker
+                locations={locations}
+                selectedId={fromId}
+                onSelect={setFromId}
+              />
+            </DFieldBox>
+
+            {/* To */}
+            <DFieldBox label="To">
+              <LocationPicker
+                locations={locations.filter((l) => l.id !== fromId)}
+                selectedId={toId}
+                onSelect={setToId}
+              />
+            </DFieldBox>
+
+            {/* Notes */}
+            <DFieldBox label="Notes · optional" noDivider>
+              <View style={styles.notesBox}>
+                <TextInput
+                  value={notes}
+                  onChangeText={setNotes}
+                  placeholder="Any additional details…"
+                  placeholderTextColor={wp.color.ink3}
+                  multiline
+                  style={styles.notesInput}
+                />
+              </View>
+            </DFieldBox>
+          </ScrollView>
+        </KeyboardAvoidingView>
+
+        <PrimaryBar
+          label="Create trip →"
+          onPress={handleSubmit}
+          disabled={!isValid}
+          loading={createMutation.isPending}
+        />
       </SafeAreaView>
-    </>
+    </PaperBackground>
+  );
+}
+
+function TypeTile({
+  code,
+  label,
+  selected,
+  onPress,
+}: {
+  code: string;
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <View style={styles.tileWrap}>
+      {selected && <View pointerEvents="none" style={styles.tileShadow} />}
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={onPress}
+        style={[styles.tile, selected && styles.tileSelected]}
+      >
+        <MonoText
+          size={9}
+          tracking={1.5}
+          upper
+          color={selected ? 'rgba(236,230,214,0.7)' : wp.color.ink3}
+        >
+          {code}
+        </MonoText>
+        <Text
+          allowFontScaling={false}
+          style={[styles.tileLabel, { color: selected ? wp.color.paper : wp.color.ink }]}
+        >
+          {label}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function LocationPicker({
+  locations,
+  selectedId,
+  onSelect,
+}: {
+  locations: any[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+}) {
+  if (locations.length === 0) {
+    return (
+      <View style={styles.listEmpty}>
+        <MonoText size={10} tracking={1} upper color={wp.color.ink3}>
+          No locations available
+        </MonoText>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.list}>
+      {locations.map((l, i) => {
+        const selected = l.id === selectedId;
+        const isLast = i === locations.length - 1;
+        return (
+          <TouchableOpacity
+            key={l.id}
+            activeOpacity={0.65}
+            onPress={() => onSelect(l.id)}
+            style={[
+              styles.listRow,
+              !isLast && styles.listRowDivider,
+              selected && styles.listRowSelected,
+            ]}
+          >
+            <View style={[styles.checkbox, selected && styles.checkboxChecked]}>
+              {selected && (
+                <Text allowFontScaling={false} style={styles.checkMark}>
+                  ✓
+                </Text>
+              )}
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text allowFontScaling={false} style={styles.locName}>
+                {l.name}
+              </Text>
+              <MonoText
+                size={9}
+                tracking={1.5}
+                upper
+                color={wp.color.ink3}
+                style={{ marginTop: 2 }}
+              >
+                {(l.type ?? 'LOCATION').toUpperCase()}
+              </MonoText>
+            </View>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
-  content: { padding: spacing.lg, gap: spacing.lg },
-  sectionTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[900],
-    marginBottom: spacing.md,
+  safe: { flex: 1 },
+  flex: { flex: 1 },
+  content: {
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: 14,
+    paddingBottom: 200,
   },
-});
 
-const pickerStyles = StyleSheet.create({
-  container: { gap: spacing.xs },
-  label: {
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.medium,
-    color: colors.gray[700],
+  // Tile grid
+  tileGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
   },
-  trigger: {
+  tileWrap: {
+    width: '48.5%',
+    position: 'relative',
+  },
+  tileShadow: {
+    position: 'absolute',
+    top: 2,
+    left: 2,
+    right: -2,
+    bottom: -2,
+    backgroundColor: wp.color.lineD,
+  },
+  tile: {
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: 'transparent',
+    minHeight: 64,
+    justifyContent: 'space-between',
+  },
+  tileSelected: {
+    backgroundColor: wp.color.ink,
+    borderWidth: 2,
+  },
+  tileLabel: {
+    fontFamily: wp.font.serifMid.fontFamily,
+    fontWeight: wp.font.serifMid.fontWeight,
+    fontStyle: 'italic',
+    fontSize: 14,
+    marginTop: 4,
+  },
+
+  // List
+  list: {
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+  },
+  listRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: colors.gray[300],
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    backgroundColor: colors.white,
-    minHeight: 44,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
   },
-  errorBorder: {
-    borderColor: colors.error,
+  listRowDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: wp.color.line,
+    borderStyle: 'dashed',
   },
-  placeholder: {
-    fontSize: fontSize.md,
-    color: colors.gray[400],
+  listRowSelected: {
+    backgroundColor: 'rgba(26,25,22,0.05)',
   },
-  selectedText: {
-    fontSize: fontSize.md,
-    color: colors.gray[900],
+  listEmpty: {
+    padding: 16,
+    alignItems: 'center',
   },
-  dropdown: {
-    borderWidth: 1,
-    borderColor: colors.gray[200],
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.white,
-    marginTop: spacing.xs,
-    ...Platform.select({
-      ios: {
-        shadowColor: colors.black,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: { elevation: 3 },
-    }),
+  checkbox: {
+    width: 14,
+    height: 14,
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+    marginRight: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  dropdownScroll: { maxHeight: 200 },
-  option: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.gray[100],
+  checkboxChecked: {
+    backgroundColor: wp.color.ink,
   },
-  optionActive: {
-    backgroundColor: colors.primary[50],
+  checkMark: {
+    color: wp.color.paper,
+    fontSize: 10,
+    fontWeight: '900',
+    lineHeight: 12,
   },
-  optionText: {
-    fontSize: fontSize.md,
-    color: colors.gray[700],
+  locName: {
+    fontFamily: wp.font.serifMid.fontFamily,
+    fontWeight: wp.font.serifMid.fontWeight,
+    fontStyle: 'italic',
+    fontSize: 16,
+    color: wp.color.ink,
   },
-  optionTextActive: {
-    color: colors.primary[600],
-    fontWeight: fontWeight.semibold,
+
+  // Notes
+  notesBox: {
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+    backgroundColor: wp.color.voucherBg,
+    padding: 12,
+    minHeight: 72,
   },
-  errorText: {
-    fontSize: fontSize.xs,
-    color: colors.error,
+  notesInput: {
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'Georgia' }),
+    fontStyle: 'italic',
+    fontSize: 14,
+    color: wp.color.ink,
+    minHeight: 48,
+    textAlignVertical: 'top',
+    padding: 0,
   },
 });

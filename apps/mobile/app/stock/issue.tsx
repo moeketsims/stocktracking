@@ -1,51 +1,53 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
+  TextInput,
   Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { useIssueStock } from '../../src/hooks/useStock';
-import { Card } from '../../src/components/ui/Card';
-import { Button } from '../../src/components/ui/Button';
-import { Input } from '../../src/components/ui/Input';
-import { brand, colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
+import {
+  PaperBackground,
+  Masthead,
+  IntentStrip,
+  DFieldBox,
+  PrimaryBar,
+  MonoText,
+  KickerLabel,
+  QuantityField,
+} from '../../src/components/wp';
+import { wp, fmtKickerDate } from '../../src/constants/warehousePaper';
 
-type Unit = 'bag' | 'kg';
+const QUICK_AMOUNTS = [1, 5, 10, 25];
 
 export default function IssueStockScreen() {
   const router = useRouter();
   const mutation = useIssueStock();
 
   const [quantity, setQuantity] = useState('');
-  const [unit, setUnit] = useState<Unit>('bag');
   const [notes, setNotes] = useState('');
 
   const qty = Number(quantity);
   const isValid = qty > 0;
-  const displayKg = unit === 'bag' ? qty * 10 : qty;
 
   const handleSubmit = () => {
     if (!isValid) return;
-
-    const label = unit === 'bag' ? `${qty} bag${qty > 1 ? 's' : ''}` : `${qty} kg`;
-    Alert.alert('Issue Stock', `Issue ${label} from your location?`, [
+    Alert.alert('Issue Stock', `Issue ${qty} bag${qty > 1 ? 's' : ''} from your location?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Issue',
         onPress: () => {
           mutation.mutate(
-            { quantity: qty, unit, notes: notes.trim() || undefined },
+            { quantity: qty, unit: 'bag', notes: notes.trim() || undefined },
             {
               onSuccess: (data) => {
-                Alert.alert('Success', data.message ?? 'Stock issued successfully.', [
+                Alert.alert('Success', data.message ?? 'Stock issued.', [
                   { text: 'OK', onPress: () => router.back() },
                 ]);
               },
@@ -57,140 +59,136 @@ export default function IssueStockScreen() {
   };
 
   return (
-    <>
-      <Stack.Screen
-        options={{
-          title: 'Issue Stock',
-          headerStyle: { backgroundColor: brand.gradientStart },
-          headerTintColor: '#fff',
-        }}
-      />
-      <SafeAreaView style={styles.container} edges={['bottom']}>
+    <PaperBackground>
+      <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.flex}
         >
-          <ScrollView contentContainerStyle={styles.content}>
-            <Card style={styles.infoBanner}>
-              <View style={styles.infoRow}>
-                <Ionicons name="information-circle" size={20} color={colors.info} />
-                <Text style={styles.infoText}>
-                  Issue stock from your location. This deducts from the oldest batch first (FIFO).
-                </Text>
-              </View>
-            </Card>
+          <Masthead
+            kicker={`STOCK MOVEMENT — ${fmtKickerDate()}`}
+            title="Issue stock"
+            backUseRouter
+          />
 
-            {/* Quantity */}
-            <Card>
-              <Text style={styles.sectionTitle}>Quantity</Text>
-              <Input
-                label={unit === 'bag' ? 'Number of bags' : 'Kilograms'}
-                placeholder={unit === 'bag' ? 'e.g. 5' : 'e.g. 50'}
-                keyboardType="numeric"
+          <ScrollView contentContainerStyle={styles.content}>
+            <IntentStrip>
+              Issue stock from your location. FIFO — the oldest batch is deducted first.
+            </IntentStrip>
+
+            <DFieldBox label="Quantity · bags">
+              <QuantityField
                 value={quantity}
                 onChangeText={setQuantity}
-                error={quantity !== '' && qty <= 0 ? 'Must be greater than 0' : undefined}
+                trailing={
+                  <View style={styles.chipRow}>
+                    {QUICK_AMOUNTS.map((n) => (
+                      <TouchableOpacity
+                        key={n}
+                        activeOpacity={0.6}
+                        onPress={() => setQuantity(String(n))}
+                        style={[styles.chip, qty === n && styles.chipActive]}
+                      >
+                        <MonoText
+                          size={11}
+                          weight={600}
+                          tracking={1}
+                          color={qty === n ? wp.color.paper : wp.color.ink}
+                        >
+                          {n}
+                        </MonoText>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                }
               />
-              {qty > 0 && (
-                <Text style={styles.kgHint}>
-                  = {displayKg} kg
-                </Text>
-              )}
-            </Card>
+              <View style={styles.qtyUnderline} />
+              <KickerLabel size={9} tracking={1.5} color={wp.color.ink3} style={{ marginTop: 6 }}>
+                Tap to type · or pick a stamp
+              </KickerLabel>
+            </DFieldBox>
 
-            {/* Unit toggle */}
-            <Card>
-              <Text style={styles.sectionTitle}>Unit</Text>
-              <View style={styles.unitRow}>
-                <TouchableOpacity
-                  style={[styles.unitOption, unit === 'bag' && styles.unitSelected]}
-                  onPress={() => setUnit('bag')}
-                >
-                  <Ionicons name="cube-outline" size={20} color={unit === 'bag' ? '#fff' : '#94a3b8'} />
-                  <Text style={[styles.unitLabel, unit === 'bag' && styles.unitLabelSelected]}>Bags</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.unitOption, unit === 'kg' && styles.unitSelected]}
-                  onPress={() => setUnit('kg')}
-                >
-                  <Ionicons name="scale-outline" size={20} color={unit === 'kg' ? '#fff' : '#94a3b8'} />
-                  <Text style={[styles.unitLabel, unit === 'kg' && styles.unitLabelSelected]}>Kilograms</Text>
-                </TouchableOpacity>
+            <DFieldBox label="Notes · optional" noDivider>
+              <View style={styles.notesBox}>
+                <TextInput
+                  placeholder="Reason for issuing…"
+                  placeholderTextColor={wp.color.ink3}
+                  value={notes}
+                  onChangeText={setNotes}
+                  multiline
+                  style={styles.notesInput}
+                />
               </View>
-            </Card>
-
-            {/* Notes */}
-            <Card>
-              <Input
-                label="Notes (optional)"
-                placeholder="Reason for issuing stock..."
-                value={notes}
-                onChangeText={setNotes}
-                multiline
-                numberOfLines={3}
-                style={styles.textArea}
-              />
-            </Card>
+            </DFieldBox>
           </ScrollView>
-
-          <View style={styles.footer}>
-            <Button
-              title={mutation.isPending ? 'Issuing...' : 'Issue Stock'}
-              onPress={handleSubmit}
-              loading={mutation.isPending}
-              disabled={!isValid || mutation.isPending}
-              style={{ backgroundColor: brand.accent }}
-            />
-          </View>
         </KeyboardAvoidingView>
+
+        <PrimaryBar
+          label={qty > 0 ? `Issue ${qty} bag${qty > 1 ? 's' : ''}` : 'Issue stock'}
+          onPress={handleSubmit}
+          disabled={!isValid}
+          loading={mutation.isPending}
+        />
       </SafeAreaView>
-    </>
+    </PaperBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc' },
+  safe: { flex: 1 },
   flex: { flex: 1 },
-  content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing['3xl'] },
-  infoBanner: { borderLeftWidth: 3, borderLeftColor: colors.info },
-  infoRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
-  infoText: { flex: 1, fontSize: fontSize.sm, color: colors.gray[600], lineHeight: 20 },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#0f172a',
-    letterSpacing: -0.2,
-    marginBottom: spacing.md,
+  content: {
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: 14,
+    paddingBottom: 200,
   },
-  kgHint: { fontSize: fontSize.xs, color: colors.gray[500], marginTop: spacing.xs },
-  unitRow: { flexDirection: 'row', gap: spacing.md },
-  unitOption: {
-    flex: 1,
+  qtyRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    padding: spacing.md,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#fff',
+    justifyContent: 'space-between',
   },
-  unitSelected: {
-    borderColor: '#0f172a',
-    backgroundColor: '#0f172a',
+  qtyUnderline: {
+    height: 1.5,
+    backgroundColor: wp.color.lineD,
+    marginTop: 8,
   },
-  unitLabel: {
-    fontSize: fontSize.sm,
-    fontWeight: '600',
-    color: '#64748b',
+  chipRow: {
+    flexDirection: 'row',
+    gap: 8,
   },
-  unitLabelSelected: { color: '#fff' },
-  textArea: { minHeight: 80, textAlignVertical: 'top' },
-  footer: {
-    padding: spacing.lg,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.gray[200],
-    backgroundColor: colors.white,
+  chip: {
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: 'transparent',
+    minWidth: 36,
+    alignItems: 'center',
+  },
+  chipActive: {
+    backgroundColor: wp.color.ink,
+  },
+  hiddenInput: {
+    position: 'absolute',
+    opacity: 0,
+    width: 0,
+    height: 0,
+  },
+  notesBox: {
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+    backgroundColor: wp.color.voucherBg,
+    padding: 12,
+    minHeight: 72,
+  },
+  notesInput: {
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'Georgia' }),
+    fontStyle: 'italic',
+    fontSize: 14,
+    color: wp.color.ink,
+    minHeight: 48,
+    textAlignVertical: 'top',
+    padding: 0,
   },
 });

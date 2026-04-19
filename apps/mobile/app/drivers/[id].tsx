@@ -10,29 +10,45 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { useDriver, useUpdateDriver, useDeactivateDriver, useResendInvitation } from '../../src/hooks/useDrivers';
+import {
+  useDriver,
+  useUpdateDriver,
+  useDeactivateDriver,
+  useResendInvitation,
+} from '../../src/hooks/useDrivers';
 import { useAuthStore } from '../../src/stores/authStore';
-import { Card } from '../../src/components/ui/Card';
-import { Input } from '../../src/components/ui/Input';
-import { Badge } from '../../src/components/ui/Badge';
-import { Button } from '../../src/components/ui/Button';
 import { Loading } from '../../src/components/ui/Loading';
-import { brand, colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
+import {
+  PaperBackground,
+  Masthead,
+  KickerLabel,
+  MonoText,
+  SerifNumber,
+  Stamp,
+  HardShadowFrame,
+  ActionStack,
+  MonoInput,
+  IntentStrip,
+} from '../../src/components/wp';
+import { wp } from '../../src/constants/warehousePaper';
 import type { UserRole, InvitationStatus } from '../../src/types';
 
-const STATUS_BADGE: Record<InvitationStatus, { label: string; variant: 'success' | 'warning' | 'error' | 'neutral' }> = {
-  active: { label: 'Active', variant: 'success' },
-  pending: { label: 'Pending Invitation', variant: 'warning' },
-  expired: { label: 'Invitation Expired', variant: 'error' },
-  no_invitation: { label: 'No Invitation', variant: 'neutral' },
+const STAMP: Record<InvitationStatus, { label: string; color: string }> = {
+  active: { label: 'ACTIVE', color: wp.color.green },
+  pending: { label: 'PENDING', color: wp.color.amber },
+  expired: { label: 'EXPIRED', color: wp.color.red },
+  no_invitation: { label: 'NO INVITE', color: wp.color.ink3 },
 };
 
 export default function DriverDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const hasRole = useAuthStore((s) => s.hasRole);
-  const canManage = hasRole('admin' as UserRole, 'zone_manager' as UserRole, 'location_manager' as UserRole);
+  const canManage = hasRole(
+    'admin' as UserRole,
+    'zone_manager' as UserRole,
+    'location_manager' as UserRole,
+  );
 
   const { data: driver, isLoading } = useDriver(id);
   const updateMutation = useUpdateDriver();
@@ -56,26 +72,25 @@ export default function DriverDetailScreen() {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <Stack.Screen options={{ title: 'Driver Details' }} />
-        <Loading message="Loading driver..." fullScreen />
-      </SafeAreaView>
+      <PaperBackground>
+        <Stack.Screen options={{ headerShown: false }} />
+        <Loading fullScreen message="" />
+      </PaperBackground>
     );
   }
 
   if (!driver) {
     return (
-      <SafeAreaView style={styles.container}>
-        <Stack.Screen options={{ title: 'Driver Details' }} />
-        <View style={styles.emptyState}>
-          <Ionicons name="alert-circle-outline" size={48} color={colors.gray[300]} />
-          <Text style={styles.emptyTitle}>Driver not found</Text>
-        </View>
-      </SafeAreaView>
+      <PaperBackground>
+        <Stack.Screen options={{ headerShown: false }} />
+        <SafeAreaView style={styles.safe}>
+          <Masthead kicker="DRIVER" title="Not found" backUseRouter />
+        </SafeAreaView>
+      </PaperBackground>
     );
   }
 
-  const statusBadge = STATUS_BADGE[driver.invitation_status] ?? STATUS_BADGE.no_invitation;
+  const stamp = STAMP[driver.invitation_status] ?? STAMP.no_invitation;
 
   const handleSave = () => {
     updateMutation.mutate(
@@ -93,264 +108,191 @@ export default function DriverDetailScreen() {
   };
 
   const handleDeactivate = () => {
-    Alert.alert(
-      'Deactivate Driver',
-      `Are you sure you want to deactivate ${driver.full_name}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Deactivate',
-          style: 'destructive',
-          onPress: () => {
-            deactivateMutation.mutate(id, {
-              onSuccess: () => router.back(),
-            });
-          },
-        },
-      ],
-    );
+    Alert.alert('Deactivate driver', `Stand down ${driver.full_name}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Deactivate',
+        style: 'destructive',
+        onPress: () => deactivateMutation.mutate(id, { onSuccess: () => router.back() }),
+      },
+    ]);
   };
 
-  const handleResendInvitation = () => {
-    resendMutation.mutate(id);
-  };
+  const recordNumber = (driver.id ?? '').slice(-4).toUpperCase();
+  const showResend =
+    driver.invitation_status === 'pending' || driver.invitation_status === 'expired';
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <Stack.Screen
-        options={{
-          title: driver.full_name ?? 'Driver Details',
-          headerStyle: { backgroundColor: brand.gradientStart },
-          headerTintColor: colors.white,
-          headerTitleStyle: { fontWeight: fontWeight.semibold },
-        }}
-      />
+    <PaperBackground>
+      <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+            <Masthead
+              kicker={`DRIVER · ${recordNumber}`}
+              title={driver.full_name ?? 'Driver'}
+              backUseRouter
+            />
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView contentContainerStyle={styles.content}>
-          {/* Status card */}
-          <Card>
-            <View style={styles.statusRow}>
-              <View style={[styles.avatar, !driver.is_active && styles.avatarInactive]}>
-                <Text style={styles.avatarText}>
-                  {(driver.full_name ?? '?').charAt(0).toUpperCase()}
-                </Text>
-              </View>
-              <View style={{ flex: 1, gap: spacing.xs }}>
-                <Text style={styles.driverName}>{driver.full_name}</Text>
-                <View style={styles.badgeRow}>
-                  <Badge label={statusBadge.label} variant={statusBadge.variant} />
-                  {!driver.is_active && <Badge label="Inactive" variant="neutral" />}
+            {/* Voucher hero */}
+            <View style={styles.heroWrap}>
+              <HardShadowFrame>
+                <View style={styles.hero}>
+                  <View style={styles.heroTop}>
+                    <KickerLabel size={10} tracking={2} color={wp.color.ink3}>
+                      RECORD N° {recordNumber}
+                    </KickerLabel>
+                    <Stamp colorHex={driver.is_active ? stamp.color : wp.color.ink3} rotate={-3}>
+                      {driver.is_active ? stamp.label : 'OFF'}
+                    </Stamp>
+                  </View>
+                  <SerifNumber size={26} tracking={-1} leading={1.05} style={styles.heroName}>
+                    {driver.full_name ?? '(No name)'}
+                  </SerifNumber>
+                  <View style={styles.metaList}>
+                    <MetaRow label="Email" value={driver.email ?? '—'} />
+                    <MetaRow label="Phone" value={driver.phone ?? '—'} />
+                    <MetaRow label="License" value={driver.license_number ?? '—'} />
+                    {driver.notes ? <MetaRow label="Notes" value={driver.notes} /> : null}
+                  </View>
                 </View>
-              </View>
+              </HardShadowFrame>
             </View>
-          </Card>
 
-          {/* Detail / edit card */}
-          <Card>
-            <Text style={styles.sectionTitle}>
-              {editing ? 'Edit Details' : 'Details'}
-            </Text>
-
-            {editing ? (
-              <View style={styles.form}>
-                <Input
-                  label="Full Name"
-                  value={fullName}
-                  onChangeText={setFullName}
-                  placeholder="Driver name"
-                />
-                <Input
+            {/* Edit form */}
+            {editing && canManage && (
+              <View style={styles.formWrap}>
+                <IntentStrip>Update the driver's contact and license details.</IntentStrip>
+                <MonoInput label="Full name" value={fullName} onChangeText={setFullName} />
+                <MonoInput
                   label="Phone"
                   value={phone}
                   onChangeText={setPhone}
-                  placeholder="Phone number"
                   keyboardType="phone-pad"
                 />
-                <Input
-                  label="License Number"
+                <MonoInput
+                  label="License number"
                   value={licenseNumber}
                   onChangeText={setLicenseNumber}
-                  placeholder="License number"
                 />
-                <Input
-                  label="Notes"
-                  value={notes}
-                  onChangeText={setNotes}
-                  placeholder="Additional notes"
-                  multiline
-                  numberOfLines={3}
-                />
-                <View style={styles.buttonRow}>
-                  <Button
-                    title="Cancel"
-                    variant="outline"
-                    onPress={() => setEditing(false)}
-                    style={{ flex: 1 }}
-                  />
-                  <Button
-                    title="Save"
-                    onPress={handleSave}
-                    loading={updateMutation.isPending}
-                    style={{ flex: 1 }}
-                  />
-                </View>
-              </View>
-            ) : (
-              <View style={styles.detailList}>
-                <DetailRow icon="person" label="Name" value={driver.full_name} />
-                <DetailRow icon="call" label="Phone" value={driver.phone ?? '---'} />
-                <DetailRow icon="mail" label="Email" value={driver.email ?? '---'} />
-                <DetailRow icon="card" label="License" value={driver.license_number ?? '---'} />
-                {driver.notes ? (
-                  <DetailRow icon="document-text" label="Notes" value={driver.notes} />
-                ) : null}
+                <MonoInput label="Notes · optional" value={notes} onChangeText={setNotes} />
               </View>
             )}
-          </Card>
 
-          {/* Actions */}
-          {canManage && !editing && (
-            <Card>
-              <Text style={styles.sectionTitle}>Actions</Text>
-              <View style={styles.actionButtons}>
-                <Button
-                  title="Edit Driver"
-                  variant="outline"
-                  onPress={() => setEditing(true)}
-                  icon={<Ionicons name="create-outline" size={18} color={colors.primary[500]} />}
-                />
-                {(driver.invitation_status === 'pending' || driver.invitation_status === 'expired') && (
-                  <Button
-                    title="Resend Invitation"
-                    variant="secondary"
-                    onPress={handleResendInvitation}
-                    loading={resendMutation.isPending}
-                    icon={<Ionicons name="mail-outline" size={18} color={colors.gray[800]} />}
+            {/* Actions */}
+            {canManage && (
+              <View style={styles.actionsWrap}>
+                {editing ? (
+                  <ActionStack
+                    actions={[
+                      {
+                        label: 'Save changes',
+                        onPress: handleSave,
+                        filled: true,
+                        loading: updateMutation.isPending,
+                      },
+                      { label: 'Cancel', onPress: () => setEditing(false), color: wp.color.ink3 },
+                    ]}
                   />
-                )}
-                {driver.is_active && (
-                  <Button
-                    title="Deactivate Driver"
-                    variant="danger"
-                    onPress={handleDeactivate}
-                    loading={deactivateMutation.isPending}
-                    icon={<Ionicons name="close-circle-outline" size={18} color={colors.white} />}
+                ) : (
+                  <ActionStack
+                    actions={[
+                      { label: 'Edit driver', onPress: () => setEditing(true) },
+                      ...(showResend
+                        ? [
+                            {
+                              label: 'Resend invitation',
+                              onPress: () => resendMutation.mutate(id),
+                              loading: resendMutation.isPending,
+                              color: wp.color.amber,
+                            },
+                          ]
+                        : []),
+                      ...(driver.is_active
+                        ? [
+                            {
+                              label: 'Deactivate',
+                              onPress: handleDeactivate,
+                              color: wp.color.red,
+                              loading: deactivateMutation.isPending,
+                            },
+                          ]
+                        : []),
+                    ]}
                   />
                 )}
               </View>
-            </Card>
-          )}
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+            )}
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </PaperBackground>
   );
 }
 
-function DetailRow({
-  icon,
-  label,
-  value,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  value: string;
-}) {
+function MetaRow({ label, value }: { label: string; value: string }) {
   return (
-    <View style={styles.detailRow}>
-      <Ionicons name={icon} size={18} color={colors.gray[400]} />
-      <View style={{ flex: 1 }}>
-        <Text style={styles.detailLabel}>{label}</Text>
-        <Text style={styles.detailValue}>{value}</Text>
-      </View>
+    <View style={styles.metaRow}>
+      <MonoText size={10} tracking={1.5} upper weight={600} color={wp.color.ink3} style={{ width: 80 }}>
+        {label}
+      </MonoText>
+      <Text allowFontScaling={false} style={styles.metaValue}>
+        {value}
+      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
-  content: {
-    padding: spacing.lg,
-    gap: spacing.lg,
-    paddingBottom: spacing['5xl'],
+  safe: { flex: 1 },
+  scroll: { paddingBottom: 60 },
+  heroWrap: {
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: wp.space.block,
   },
-  statusRow: {
+  hero: {
+    borderWidth: wp.border.mid,
+    borderColor: wp.color.lineD,
+    backgroundColor: wp.color.voucherBg,
+    padding: 16,
+  },
+  heroTop: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: spacing.md,
   },
-  avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.primary[500],
-    alignItems: 'center',
-    justifyContent: 'center',
+  heroName: {
+    marginTop: 10,
   },
-  avatarInactive: {
-    backgroundColor: colors.gray[300],
+  metaList: {
+    marginTop: 14,
+    gap: 8,
   },
-  avatarText: {
-    fontSize: fontSize['2xl'],
-    fontWeight: fontWeight.bold,
-    color: colors.white,
-  },
-  driverName: {
-    fontSize: fontSize.xl,
-    fontWeight: fontWeight.bold,
-    color: colors.gray[900],
-  },
-  badgeRow: {
+  metaRow: {
     flexDirection: 'row',
-    gap: spacing.sm,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: wp.color.line,
+    borderStyle: 'dashed',
+    alignItems: 'baseline',
   },
-  sectionTitle: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[900],
-    marginBottom: spacing.md,
-  },
-  form: {
-    gap: spacing.md,
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    marginTop: spacing.sm,
-  },
-  detailList: {
-    gap: spacing.md,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-  },
-  detailLabel: {
-    fontSize: fontSize.xs,
-    color: colors.gray[400],
-    fontWeight: fontWeight.medium,
-  },
-  detailValue: {
-    fontSize: fontSize.md,
-    color: colors.gray[800],
-  },
-  actionButtons: {
-    gap: spacing.sm,
-  },
-  emptyState: {
+  metaValue: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing['3xl'],
-    gap: spacing.md,
+    fontFamily: wp.font.sansSemi.fontFamily,
+    fontWeight: wp.font.sansSemi.fontWeight,
+    fontSize: 14,
+    color: wp.color.ink,
   },
-  emptyTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[700],
+  formWrap: {
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: wp.space.block,
+    gap: 4,
+  },
+  actionsWrap: {
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: wp.space.section,
   },
 });

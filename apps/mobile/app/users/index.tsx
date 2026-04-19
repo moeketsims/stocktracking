@@ -4,294 +4,211 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   RefreshControl,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { useUsers } from '../../src/hooks/useUsers';
 import { useAuthStore } from '../../src/stores/authStore';
-import { Card } from '../../src/components/ui/Card';
-import { Input } from '../../src/components/ui/Input';
-import { Badge } from '../../src/components/ui/Badge';
 import { Loading } from '../../src/components/ui/Loading';
-import { brand, colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
+import {
+  PaperBackground,
+  Masthead,
+  TabStrip,
+  LedgerRow,
+  Stamp,
+  MonoText,
+  InkButton,
+} from '../../src/components/wp';
+import { wp, fmtKickerDate } from '../../src/constants/warehousePaper';
 import type { UserRole } from '../../src/types';
 
-const ROLE_OPTIONS: { label: string; value: string | undefined }[] = [
-  { label: 'All Roles', value: undefined },
-  { label: 'Admin', value: 'admin' },
-  { label: 'Zone Manager', value: 'zone_manager' },
-  { label: 'Location Manager', value: 'location_manager' },
-  { label: 'Vehicle Manager', value: 'vehicle_manager' },
-  { label: 'Driver', value: 'driver' },
-  { label: 'Staff', value: 'staff' },
-];
+type Filter = 'all' | 'admin' | 'zone_manager' | 'location_manager' | 'vehicle_manager' | 'driver' | 'staff';
 
-const ROLE_BADGE_VARIANT: Record<string, 'success' | 'warning' | 'error' | 'info' | 'neutral' | 'primary'> = {
-  admin: 'error',
-  zone_manager: 'warning',
-  location_manager: 'info',
-  vehicle_manager: 'primary',
-  driver: 'success',
-  staff: 'neutral',
+const ROLE_LABEL: Record<string, string> = {
+  admin: 'ADMIN',
+  zone_manager: 'ZONE MGR',
+  location_manager: 'LOC MGR',
+  vehicle_manager: 'VEH MGR',
+  driver: 'DRIVER',
+  staff: 'STAFF',
 };
 
-function formatRole(role: string): string {
-  return role.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-}
+const ROLE_COLOR: Record<string, string> = {
+  admin: wp.color.red,
+  zone_manager: wp.color.amber,
+  location_manager: '#1F3A8A',
+  vehicle_manager: '#5B2CA5',
+  driver: wp.color.green,
+  staff: wp.color.ink3,
+};
 
 export default function UsersListScreen() {
   const router = useRouter();
   const hasRole = useAuthStore((s) => s.hasRole);
   const [search, setSearch] = useState('');
-  const [roleFilter, setRoleFilter] = useState<string | undefined>(undefined);
+  const [filter, setFilter] = useState<Filter>('all');
 
   const { data, isLoading, isRefetching, refetch } = useUsers({
-    role: roleFilter,
+    role: filter === 'all' ? undefined : filter,
     search: search.trim() || undefined,
   });
 
-  // Admin-only guard
   if (!hasRole('admin' as UserRole)) {
     return (
-      <SafeAreaView style={styles.container}>
-        <Stack.Screen options={{ title: 'User Management' }} />
-        <View style={styles.emptyState}>
-          <Ionicons name="lock-closed" size={48} color={colors.gray[300]} />
-          <Text style={styles.emptyTitle}>Access Denied</Text>
-          <Text style={styles.emptySubtitle}>Admin access required</Text>
-        </View>
-      </SafeAreaView>
+      <PaperBackground>
+        <Stack.Screen options={{ headerShown: false }} />
+        <SafeAreaView style={styles.safe}>
+          <Masthead kicker="ACCESS" title="Denied" backUseRouter />
+          <View style={styles.denied}>
+            <MonoText size={11} tracking={1.5} upper color={wp.color.ink3}>
+              Admin access required
+            </MonoText>
+          </View>
+        </SafeAreaView>
+      </PaperBackground>
     );
   }
 
   const users = data?.users ?? [];
 
+  const counts = useMemo(() => {
+    return {
+      all: data?.total ?? users.length,
+    };
+  }, [data, users.length]);
+
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <Stack.Screen
-        options={{
-          title: 'User Management',
-          headerStyle: { backgroundColor: brand.gradientStart },
-          headerTintColor: colors.white,
-          headerTitleStyle: { fontWeight: fontWeight.semibold },
-          headerRight: () => (
-            <TouchableOpacity
-              onPress={() => router.push('/users/create')}
-              style={{ marginRight: spacing.md }}
-            >
-              <Ionicons name="person-add" size={22} color={colors.white} />
-            </TouchableOpacity>
-          ),
-        }}
-      />
+    <PaperBackground>
+      <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
+        {isLoading && !data ? (
+          <Loading fullScreen message="" />
+        ) : (
+          <ScrollView
+            contentContainerStyle={styles.scroll}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefetching}
+                onRefresh={refetch}
+                tintColor={wp.color.ink2}
+              />
+            }
+          >
+            <Masthead
+              kicker={`PERSONNEL ROSTER — ${fmtKickerDate()}`}
+              title="Users"
+              backUseRouter
+            />
 
-      <View style={styles.searchBar}>
-        <Input
-          placeholder="Search by name or email..."
-          value={search}
-          onChangeText={setSearch}
-          containerStyle={styles.searchInput}
-        />
-      </View>
+            <TabStrip<Filter>
+              items={[
+                { key: 'all', label: 'All', count: counts.all },
+                { key: 'admin', label: 'Admin' },
+                { key: 'driver', label: 'Driver' },
+                { key: 'staff', label: 'Staff' },
+              ]}
+              active={filter}
+              onChange={setFilter}
+            />
 
-      {/* Role filter chips */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.chipRow}
-      >
-        {ROLE_OPTIONS.map((opt) => {
-          const active = roleFilter === opt.value;
-          return (
-            <TouchableOpacity
-              key={opt.label}
-              style={[styles.chip, active && styles.chipActive]}
-              onPress={() => setRoleFilter(opt.value)}
-            >
-              <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                {opt.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+            <View style={styles.searchRow}>
+              <View style={styles.search}>
+                <Text allowFontScaling={false} style={styles.searchGlyph}>⌕</Text>
+                <TextInput
+                  value={search}
+                  onChangeText={setSearch}
+                  placeholder="name · email"
+                  placeholderTextColor={wp.color.ink3}
+                  style={styles.searchInput}
+                />
+              </View>
+              <InkButton label="+ Invite" onPress={() => router.push('/users/create')} />
+            </View>
 
-      {isLoading ? (
-        <Loading message="Loading users..." fullScreen />
-      ) : users.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Ionicons name="people-outline" size={48} color={colors.gray[300]} />
-          <Text style={styles.emptyTitle}>No users found</Text>
-          <Text style={styles.emptySubtitle}>
-            {search ? 'Try a different search term' : 'No users match the selected filter'}
-          </Text>
-        </View>
-      ) : (
-        <ScrollView
-          contentContainerStyle={styles.list}
-          refreshControl={
-            <RefreshControl refreshing={isRefetching} onRefresh={refetch} />
-          }
-        >
-          <Text style={styles.resultCount}>
-            {data?.total ?? 0} user{(data?.total ?? 0) !== 1 ? 's' : ''}
-          </Text>
-          {users.map((user) => (
-            <TouchableOpacity
-              key={user.id}
-              activeOpacity={0.7}
-              onPress={() => router.push(`/users/${user.id}`)}
-            >
-              <Card style={styles.userCard}>
-                <View style={styles.cardRow}>
-                  <View style={[styles.avatar, !user.is_active && styles.avatarInactive]}>
-                    <Text style={styles.avatarText}>
-                      {(user.full_name ?? user.email ?? '?').charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
-                  <View style={styles.cardInfo}>
-                    <View style={styles.nameRow}>
-                      <Text style={styles.userName} numberOfLines={1}>
-                        {user.full_name ?? '(No name)'}
-                      </Text>
-                      {!user.is_active && (
-                        <Badge label="Inactive" variant="neutral" />
-                      )}
-                    </View>
-                    <Text style={styles.userEmail} numberOfLines={1}>
-                      {user.email ?? '—'}
-                    </Text>
-                    <View style={styles.metaRow}>
-                      <Badge
-                        label={formatRole(user.role)}
-                        variant={ROLE_BADGE_VARIANT[user.role] ?? 'neutral'}
-                      />
-                      {user.location_name && (
-                        <Text style={styles.location} numberOfLines={1}>
-                          {user.location_name}
-                        </Text>
-                      )}
-                    </View>
-                  </View>
-                  <Ionicons name="chevron-forward" size={18} color={colors.gray[400]} />
-                </View>
-              </Card>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
-    </SafeAreaView>
+            {users.length === 0 ? (
+              <View style={styles.empty}>
+                <MonoText size={11} tracking={1} upper color={wp.color.ink3}>
+                  {search ? 'No matches' : 'No users on file'}
+                </MonoText>
+              </View>
+            ) : (
+              users.map((u, i) => {
+                const isInactive = !u.is_active;
+                const roleColor = isInactive ? wp.color.ink3 : ROLE_COLOR[u.role] ?? wp.color.ink;
+                const context = [
+                  u.email ?? '',
+                  u.location_name ?? null,
+                  isInactive ? 'INACTIVE' : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ');
+                return (
+                  <LedgerRow
+                    key={u.id}
+                    idx={i + 1}
+                    primary={u.full_name ?? '(No name)'}
+                    secondary={context.toUpperCase()}
+                    trailing={
+                      <Stamp colorHex={roleColor} rowIndex={i}>
+                        {ROLE_LABEL[u.role] ?? u.role.toUpperCase()}
+                      </Stamp>
+                    }
+                    onPress={() => router.push(`/users/${u.id}`)}
+                  />
+                );
+              })
+            )}
+          </ScrollView>
+        )}
+      </SafeAreaView>
+    </PaperBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
-  searchBar: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
-  searchInput: { flex: 1 },
-  chipRow: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    gap: spacing.sm,
-  },
-  chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.gray[200],
-  },
-  chipActive: {
-    backgroundColor: colors.primary[500],
-    borderColor: colors.primary[500],
-  },
-  chipText: {
-    fontSize: fontSize.sm,
-    color: colors.gray[600],
-    fontWeight: fontWeight.medium,
-  },
-  chipTextActive: {
-    color: colors.white,
-  },
-  list: {
-    padding: spacing.lg,
-    gap: spacing.md,
-    paddingBottom: spacing['5xl'],
-  },
-  resultCount: {
-    fontSize: fontSize.sm,
-    color: colors.gray[500],
-    marginBottom: spacing.xs,
-  },
-  userCard: {
-    marginBottom: 0,
-  },
-  cardRow: {
+  safe: { flex: 1 },
+  scroll: { paddingBottom: 40 },
+  searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    gap: 10,
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: 14,
+    paddingBottom: 6,
   },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.primary[500],
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInactive: {
-    backgroundColor: colors.gray[300],
-  },
-  avatarText: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.bold,
-    color: colors.white,
-  },
-  cardInfo: { flex: 1, gap: 2 },
-  nameRow: {
+  search: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    borderBottomWidth: 1.5,
+    borderBottomColor: wp.color.lineD,
+    paddingVertical: 6,
+    gap: 8,
   },
-  userName: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[900],
-    flexShrink: 1,
+  searchGlyph: {
+    fontFamily: wp.font.mono.fontFamily,
+    fontSize: 12,
+    color: wp.color.ink3,
   },
-  userEmail: {
-    fontSize: fontSize.sm,
-    color: colors.gray[500],
+  searchInput: {
+    flex: 1,
+    fontFamily: wp.font.mono.fontFamily,
+    fontSize: 14,
+    color: wp.color.ink,
+    padding: 0,
   },
-  metaRow: {
-    flexDirection: 'row',
+  empty: {
+    paddingHorizontal: wp.space.screenH,
+    paddingVertical: 40,
     alignItems: 'center',
-    gap: spacing.sm,
-    marginTop: 2,
   },
-  location: {
-    fontSize: fontSize.xs,
-    color: colors.gray[400],
-    flexShrink: 1,
-  },
-  emptyState: {
+  denied: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: spacing['3xl'],
-    gap: spacing.md,
-  },
-  emptyTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[700],
-  },
-  emptySubtitle: {
-    fontSize: fontSize.sm,
-    color: colors.gray[500],
-    textAlign: 'center',
+    padding: wp.space.section,
   },
 });

@@ -1,24 +1,35 @@
 import React from 'react';
-import { View, Text, ScrollView, RefreshControl, StyleSheet } from 'react-native';
+import {
+  View,
+  ScrollView,
+  RefreshControl,
+  StyleSheet,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/authStore';
 import { useStockLevels, useShopEfficiency } from '../../src/hooks/useReports';
-import { Card } from '../../src/components/ui/Card';
-import { Badge } from '../../src/components/ui/Badge';
 import { Loading } from '../../src/components/ui/Loading';
-import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
+import {
+  PaperBackground,
+  Masthead,
+  SummaryBand,
+  LedgerRow,
+  Stamp,
+  KickerLabel,
+  MonoText,
+} from '../../src/components/wp';
+import { wp, fmtKickerDate } from '../../src/constants/warehousePaper';
 
-function getStockStatus(bags: number): { label: string; variant: 'error' | 'warning' | 'success' } {
-  if (bags <= 0) return { label: 'Out', variant: 'error' };
-  if (bags < 5) return { label: 'Low', variant: 'warning' };
-  return { label: 'OK', variant: 'success' };
+function stockStatus(bags: number): { label: string; color: string } {
+  if (bags <= 0) return { label: 'OUT', color: wp.color.red };
+  if (bags < 5) return { label: 'LOW', color: wp.color.amber };
+  return { label: 'OK', color: wp.color.green };
 }
 
 export default function StockSummaryScreen() {
   const user = useAuthStore((s) => s.user);
-  const isAdmin = user?.role === 'admin' || user?.role === 'zone_manager';
+  const canSeeFleet = user?.role === 'admin' || user?.role === 'zone_manager';
 
   const stockLevels = useStockLevels(user?.location_id ?? undefined);
   const efficiency = useShopEfficiency(30);
@@ -27,165 +38,142 @@ export default function StockSummaryScreen() {
   const locations = efficiency.data?.locations ?? [];
 
   const totalBags = levels.reduce((sum, l) => sum + l.bags_remaining, 0);
-  const lowStockCount = levels.filter((l) => l.bags_remaining > 0 && l.bags_remaining < 5).length;
-  const outOfStockCount = levels.filter((l) => l.bags_remaining <= 0).length;
-
-  const isLoading = stockLevels.isLoading;
-
-  if (isLoading) return <Loading fullScreen message="Loading stock levels..." />;
+  const lowCount = levels.filter((l) => l.bags_remaining > 0 && l.bags_remaining < 5).length;
+  const outCount = levels.filter((l) => l.bags_remaining <= 0).length;
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <Stack.Screen options={{ title: 'Stock Summary', headerStyle: { backgroundColor: '#0f172a' }, headerTintColor: '#fff', headerShadowVisible: false }} />
-      <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={stockLevels.isRefetching}
-            onRefresh={() => {
-              stockLevels.refetch();
-              efficiency.refetch();
-            }}
-          />
-        }
-      >
-        {/* Summary */}
-        <Card>
-          <Text style={styles.sectionTitle}>Stock Overview</Text>
-          <View style={styles.summaryRow}>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryValue}>{totalBags}</Text>
-              <Text style={styles.summaryLabel}>Total Bags</Text>
-            </View>
-            <View style={styles.summaryItem}>
-              <Text style={[styles.summaryValue, lowStockCount > 0 ? { color: colors.warning } : undefined]}>
-                {lowStockCount}
-              </Text>
-              <Text style={styles.summaryLabel}>Low Stock</Text>
-            </View>
-            <View style={styles.summaryItem}>
-              <Text style={[styles.summaryValue, outOfStockCount > 0 ? { color: colors.error } : undefined]}>
-                {outOfStockCount}
-              </Text>
-              <Text style={styles.summaryLabel}>Out of Stock</Text>
-            </View>
-          </View>
-        </Card>
+    <PaperBackground>
+      <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
+        {stockLevels.isLoading ? (
+          <Loading fullScreen message="" />
+        ) : (
+          <ScrollView
+            contentContainerStyle={styles.scroll}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={stockLevels.isRefetching}
+                onRefresh={() => {
+                  stockLevels.refetch();
+                  efficiency.refetch();
+                }}
+                tintColor={wp.color.ink2}
+              />
+            }
+          >
+            <Masthead
+              kicker={`STOCK LEVELS — ${fmtKickerDate()}`}
+              title="Stock summary"
+              backUseRouter
+            />
 
-        {/* Stock Items */}
-        <Card padded={false}>
-          <View style={styles.listHeader}>
-            <Text style={styles.sectionTitle}>Stock Levels</Text>
-          </View>
-          {levels.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Ionicons name="cube-outline" size={40} color={colors.gray[300]} />
-              <Text style={styles.emptyText}>No stock data available</Text>
-            </View>
-          ) : (
-            levels.map((item) => {
-              const status = getStockStatus(item.bags_remaining);
-              return (
-                <View key={item.item_id} style={styles.stockRow}>
-                  <View style={styles.stockInfo}>
-                    <Text style={styles.stockName}>{item.item_name}</Text>
-                    <Text style={styles.stockKg}>{item.kg_remaining.toFixed(1)} kg</Text>
-                  </View>
-                  <View style={styles.stockRight}>
-                    <Text style={styles.stockBags}>{item.bags_remaining} bags</Text>
-                    <Badge label={status.label} variant={status.variant} />
-                  </View>
-                </View>
-              );
-            })
-          )}
-        </Card>
+            <SummaryBand
+              items={[
+                { label: 'Bags', value: totalBags },
+                { label: 'Low', value: lowCount, color: wp.color.amber },
+                { label: 'Out', value: outCount, color: wp.color.red },
+              ]}
+            />
 
-        {/* Shop Efficiency (admin/zone_manager only) */}
-        {isAdmin && locations.length > 0 && (
-          <Card padded={false}>
-            <View style={styles.listHeader}>
-              <Text style={styles.sectionTitle}>Location Performance</Text>
-              {efficiency.data?.best_performer && (
-                <Text style={styles.bestPerformer}>
-                  Best: {efficiency.data.best_performer}
-                </Text>
-              )}
+            <View style={styles.sectionHead}>
+              <KickerLabel size={10} tracking={2} color={wp.color.ink}>
+                On hand
+              </KickerLabel>
+              <KickerLabel size={9} tracking={1.5} color={wp.color.ink3}>
+                {levels.length} {levels.length === 1 ? 'item' : 'items'}
+              </KickerLabel>
             </View>
-            {locations.map((loc) => {
-              const statusColor = loc.efficiency_score >= 70
-                ? colors.success
-                : loc.efficiency_score >= 40
-                  ? colors.warning
-                  : colors.error;
-              return (
-                <View key={loc.location_id} style={styles.locationRow}>
-                  <View style={styles.locationInfo}>
-                    <View style={styles.locationNameRow}>
-                      <Text style={styles.locationRank}>#{loc.rank}</Text>
-                      <Text style={styles.locationName}>{loc.location_name}</Text>
-                    </View>
-                    <Text style={styles.locationMeta}>
-                      {loc.current_stock_bags} bags | Waste: {loc.waste_rate_pct.toFixed(1)}%
-                    </Text>
-                  </View>
-                  <View style={styles.scoreContainer}>
-                    <Text style={[styles.scoreValue, { color: statusColor }]}>
-                      {loc.efficiency_score.toFixed(0)}
-                    </Text>
-                    <Text style={styles.scoreLabel}>score</Text>
-                  </View>
+
+            {levels.length === 0 ? (
+              <View style={styles.empty}>
+                <MonoText size={11} tracking={1} upper color={wp.color.ink3}>
+                  No stock data
+                </MonoText>
+              </View>
+            ) : (
+              levels.map((item, i) => {
+                const status = stockStatus(item.bags_remaining);
+                return (
+                  <LedgerRow
+                    key={item.item_id}
+                    idx={i + 1}
+                    primary={item.item_name}
+                    secondary={`${item.kg_remaining.toFixed(1)} KG · ${item.bags_remaining} BAGS`}
+                    trailing={
+                      <Stamp colorHex={status.color} rowIndex={i}>
+                        {status.label}
+                      </Stamp>
+                    }
+                    chev={false}
+                  />
+                );
+              })
+            )}
+
+            {canSeeFleet && locations.length > 0 && (
+              <>
+                <View style={[styles.sectionHead, styles.sectionHeadRule]}>
+                  <KickerLabel size={10} tracking={2} color={wp.color.ink}>
+                    Location performance
+                  </KickerLabel>
+                  {efficiency.data?.best_performer ? (
+                    <KickerLabel size={9} tracking={1.5} color={wp.color.green}>
+                      BEST · {efficiency.data.best_performer.toUpperCase()}
+                    </KickerLabel>
+                  ) : null}
                 </View>
-              );
-            })}
-          </Card>
+                {locations.map((loc, i) => {
+                  const color =
+                    loc.efficiency_score >= 70
+                      ? wp.color.green
+                      : loc.efficiency_score >= 40
+                        ? wp.color.amber
+                        : wp.color.red;
+                  return (
+                    <LedgerRow
+                      key={loc.location_id}
+                      idx={loc.rank}
+                      primary={loc.location_name}
+                      secondary={`${loc.current_stock_bags} BAGS · WASTE ${loc.waste_rate_pct.toFixed(1)}%`}
+                      trailing={
+                        <Stamp colorHex={color} rowIndex={i}>
+                          {`${loc.efficiency_score.toFixed(0)}pt`}
+                        </Stamp>
+                      }
+                      chev={false}
+                    />
+                  );
+                })}
+              </>
+            )}
+          </ScrollView>
         )}
-      </ScrollView>
-    </SafeAreaView>
+      </SafeAreaView>
+    </PaperBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
-  content: { padding: spacing.lg, gap: spacing.lg },
-  sectionTitle: { fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.gray[900], marginBottom: spacing.sm },
-  summaryRow: { flexDirection: 'row', justifyContent: 'space-around' },
-  summaryItem: { alignItems: 'center' },
-  summaryValue: { fontSize: fontSize['2xl'], fontWeight: fontWeight.bold, color: colors.gray[900] },
-  summaryLabel: { fontSize: fontSize.xs, color: colors.gray[500], marginTop: 2 },
-  listHeader: { padding: spacing.lg, paddingBottom: 0 },
-  emptyState: { alignItems: 'center', padding: spacing['3xl'], gap: spacing.md },
-  emptyText: { fontSize: fontSize.sm, color: colors.gray[400] },
-  stockRow: {
+  safe: { flex: 1 },
+  scroll: { paddingBottom: 40 },
+  sectionHead: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.gray[100],
+    alignItems: 'baseline',
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: 18,
+    paddingBottom: 6,
   },
-  stockInfo: { flex: 1 },
-  stockName: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.gray[900] },
-  stockKg: { fontSize: fontSize.xs, color: colors.gray[500], marginTop: 2 },
-  stockRight: { alignItems: 'flex-end', gap: spacing.xs },
-  stockBags: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.gray[900] },
-  bestPerformer: { fontSize: fontSize.xs, color: colors.success, fontWeight: fontWeight.medium },
-  locationRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.gray[100],
+  sectionHeadRule: {
+    marginTop: 10,
+    paddingTop: 14,
+    borderTopWidth: wp.border.mid,
+    borderTopColor: wp.color.lineD,
   },
-  locationInfo: { flex: 1 },
-  locationNameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  locationRank: { fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: colors.gray[400] },
-  locationName: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.gray[900] },
-  locationMeta: { fontSize: fontSize.xs, color: colors.gray[500], marginTop: 2, marginLeft: spacing.xl },
-  scoreContainer: { alignItems: 'center' },
-  scoreValue: { fontSize: fontSize.xl, fontWeight: fontWeight.bold },
-  scoreLabel: { fontSize: 10, color: colors.gray[400] },
+  empty: {
+    paddingHorizontal: wp.space.screenH,
+    paddingVertical: 40,
+    alignItems: 'center',
+  },
 });

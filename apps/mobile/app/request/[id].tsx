@@ -36,6 +36,16 @@ import { formatDateTime, timeAgo } from '../../src/utils/dates';
 import { getUrgencyVariant } from '../../src/utils/status';
 import { brand, colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
+import {
+  PaperBackground,
+  Masthead,
+  MonoText,
+  SerifNumber,
+  Stamp,
+  KickerLabel,
+  HardShadowFrame,
+} from '../../src/components/wp';
+import { wp, pipelineColor } from '../../src/constants/warehousePaper';
 
 /* ── Design tokens (matching dashboard) ── */
 const WARM_BG  = '#f8fafc';
@@ -361,69 +371,142 @@ export default function RequestDetailScreen() {
   const locations = locationsQuery.data ?? [];
   const suppliers = suppliersQuery.data ?? [];
 
+  const shortId = request.id.slice(-4).toUpperCase();
+
+  const statusStampLabel: Record<string, string> = {
+    pending: 'PENDING',
+    accepted: 'ACCEPT',
+    trip_created: 'TRIP SET',
+    in_delivery: 'EN ROUTE',
+    delivered: 'DELIVERED',
+    fulfilled: 'FULFILLED',
+    cancelled: 'CANCELLED',
+    partially_fulfilled: 'PARTIAL',
+    expired: 'EXPIRED',
+    time_proposed: 'TIME PROP',
+  };
+
+  const metaRows: { key: string; value: string }[] = [
+    { key: 'DELIVER TO', value: request.location?.name ?? '—' },
+    { key: 'REQUESTED BY', value: request.requester?.full_name ?? '—' },
+    { key: 'CREATED', value: formatDateTime(request.created_at) },
+  ];
+  if (request.requested_delivery_time) {
+    metaRows.push({ key: 'REQUESTED TIME', value: formatDateTime(request.requested_delivery_time) });
+  }
+  if (request.proposed_delivery_time) {
+    metaRows.push({ key: 'PROPOSED TIME', value: formatDateTime(request.proposed_delivery_time) });
+  }
+  if (request.agreed_delivery_time) {
+    metaRows.push({ key: 'AGREED TIME', value: formatDateTime(request.agreed_delivery_time) });
+  }
+  if (request.notes) {
+    metaRows.push({ key: 'NOTES', value: request.notes });
+  }
+
   return (
-    <>
-      <Stack.Screen
-        options={{
-          title: 'Request Detail',
-          headerStyle: { backgroundColor: brand.gradientStart },
-          headerTintColor: colors.white,
-          headerTitleStyle: { fontWeight: '600', fontSize: 16 },
-          headerShadowVisible: false,
-        }}
-      />
-      <SafeAreaView style={styles.container} edges={['bottom']}>
-        <ScrollView contentContainerStyle={styles.content}>
-          {/* Request Info */}
-          <Card>
-            <View style={styles.headerRow}>
-              <StatusBadge status={request.status} type="request" />
-              {request.urgency === 'urgent' && (
-                <Badge label="Urgent" variant={getUrgencyVariant(request.urgency)} />
-              )}
-            </View>
+    <PaperBackground>
+      <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView style={wpStyles.safe} edges={['bottom']}>
+        <Masthead
+          kicker={`REQUEST · ${shortId} · ${new Date(request.created_at)
+            .toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })
+            .toUpperCase()}`}
+          title="Request detail"
+          backUseRouter
+        />
 
-            <View style={styles.section}>
-              <DetailRow icon="location" label="Delivery To" value={request.location?.name ?? '\u2014'} />
-              <DetailRow icon="cube" label="Quantity" value={`${request.quantity_bags} bags`} />
-              <DetailRow icon="person" label="Requested By" value={request.requester?.full_name ?? '\u2014'} />
-              <DetailRow icon="time" label="Created" value={formatDateTime(request.created_at)} />
-              {request.requested_delivery_time && (
-                <DetailRow icon="calendar" label="Requested Time" value={formatDateTime(request.requested_delivery_time)} />
-              )}
-              {request.proposed_delivery_time && (
-                <DetailRow icon="swap-horizontal" label="Proposed Time" value={formatDateTime(request.proposed_delivery_time)} />
-              )}
-              {request.agreed_delivery_time && (
-                <DetailRow icon="checkmark-circle" label="Agreed Time" value={formatDateTime(request.agreed_delivery_time)} />
-              )}
-            </View>
-
-            {request.notes && (
-              <View style={styles.notesSection}>
-                <Text style={styles.notesLabel}>Notes</Text>
-                <Text style={styles.notesText}>{request.notes}</Text>
+        <ScrollView contentContainerStyle={wpStyles.content}>
+          {/* Voucher hero */}
+          <HardShadowFrame style={{ marginBottom: 18 }}>
+            <View style={wpStyles.voucher}>
+              <View style={wpStyles.voucherHead}>
+                <KickerLabel size={10} tracking={1.5} color={wp.color.ink3}>
+                  VOUCHER N° {shortId}
+                </KickerLabel>
+                <Stamp colorHex={pipelineColor(request.status)} rotate={3}>
+                  {statusStampLabel[request.status] ?? request.status.toUpperCase()}
+                </Stamp>
               </View>
-            )}
-          </Card>
 
-          {/* Stock Info */}
+              <View style={wpStyles.heroRow}>
+                <SerifNumber
+                  size={88}
+                  tracking={-3}
+                  leading={0.9}
+                  color={wp.color.ink}
+                  autoShrink
+                  style={{ flexShrink: 1 }}
+                >
+                  {String(request.quantity_bags)}
+                </SerifNumber>
+                <MonoText size={11} tracking={1.5} color={wp.color.ink3} style={{ marginLeft: 10 }}>
+                  BAGS
+                </MonoText>
+                {request.urgency === 'urgent' && (
+                  <View style={{ marginLeft: 'auto' }}>
+                    <Stamp color="red" rotate={-3}>URGENT</Stamp>
+                  </View>
+                )}
+              </View>
+
+              {/* Meta ledger rows */}
+              <View style={wpStyles.metaLedger}>
+                {metaRows.map((row, i) => (
+                  <View
+                    key={row.key}
+                    style={[
+                      wpStyles.metaRow,
+                      i < metaRows.length - 1 && wpStyles.metaRowDivider,
+                    ]}
+                  >
+                    <MonoText size={10} tracking={1.5} upper color={wp.color.ink3}>
+                      {row.key}
+                    </MonoText>
+                    <Text
+                      allowFontScaling={false}
+                      style={wpStyles.metaValue}
+                      numberOfLines={2}
+                    >
+                      {row.value}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          </HardShadowFrame>
+
+          {/* Stock info panel */}
           {request.current_stock_kg != null && (
-            <Card>
-              <Text style={styles.sectionTitle}>Stock Info</Text>
-              <DetailRow
-                icon="trending-down"
-                label="Current Stock"
-                value={`${(request.current_stock_kg / 10).toFixed(1)} bags (${request.current_stock_kg} kg)`}
-              />
-              {request.target_stock_kg != null && (
-                <DetailRow
-                  icon="flag"
-                  label="Target Stock"
-                  value={`${(request.target_stock_kg / 10).toFixed(1)} bags`}
-                />
-              )}
-            </Card>
+            <View style={{ marginBottom: 18 }}>
+              <KickerLabel size={11} weight={600} tracking={1} color={wp.color.ink}>
+                Stock info
+              </KickerLabel>
+              <View style={wpStyles.stockInfo}>
+                <View style={wpStyles.stockRow}>
+                  <MonoText size={10} tracking={1.3} upper color={wp.color.ink3}>
+                    CURRENT STOCK
+                  </MonoText>
+                  <MonoText size={14} weight={700} color={wp.color.ink}>
+                    {(request.current_stock_kg / 10).toFixed(0)}
+                    <MonoText size={14} color={wp.color.ink3}>
+                      {' · '}
+                      {request.current_stock_kg.toLocaleString()}kg
+                    </MonoText>
+                  </MonoText>
+                </View>
+                {request.target_stock_kg != null && (
+                  <View style={[wpStyles.stockRow, wpStyles.stockRowTop]}>
+                    <MonoText size={10} tracking={1.3} upper color={wp.color.ink3}>
+                      TARGET STOCK
+                    </MonoText>
+                    <MonoText size={14} weight={700} color={wp.color.ink}>
+                      {(request.target_stock_kg / 10).toFixed(0)}
+                    </MonoText>
+                  </View>
+                )}
+              </View>
+            </View>
           )}
 
           {/* Accepted By */}
@@ -915,9 +998,83 @@ export default function RequestDetailScreen() {
           )}
         </ScrollView>
       </SafeAreaView>
-    </>
+    </PaperBackground>
   );
 }
+
+const wpStyles = StyleSheet.create({
+  safe: { flex: 1 },
+  content: {
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: 14,
+    paddingBottom: 48,
+  },
+  // Voucher hero
+  voucher: {
+    backgroundColor: wp.color.voucherBg,
+    borderWidth: 1,
+    borderColor: wp.color.lineD,
+    padding: 16,
+    paddingBottom: 14,
+  },
+  voucherHead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    marginTop: 12,
+  },
+  metaLedger: {
+    marginTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: wp.color.line,
+    borderStyle: 'dashed',
+    paddingTop: 10,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingVertical: 8,
+    gap: 12,
+  },
+  metaRowDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: wp.color.line,
+    borderStyle: 'dashed',
+  },
+  metaValue: {
+    flex: 1,
+    textAlign: 'right',
+    fontFamily: wp.font.sansSemi.fontFamily,
+    fontWeight: wp.font.sansSemi.fontWeight,
+    fontSize: 13,
+    color: wp.color.ink,
+  },
+  // Stock info panel
+  stockInfo: {
+    marginTop: 8,
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+    padding: 12,
+  },
+  stockRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  stockRowTop: {
+    borderTopWidth: 1,
+    borderTopColor: wp.color.line,
+    borderStyle: 'dashed',
+    marginTop: 6,
+    paddingTop: 10,
+  },
+});
 
 function DetailRow({
   icon,

@@ -1,22 +1,38 @@
 import React, { useState } from 'react';
-import { View, Text, FlatList, StyleSheet, RefreshControl, TouchableOpacity, Alert, Modal, KeyboardAvoidingView, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  FlatList,
+  StyleSheet,
+  RefreshControl,
+  TouchableOpacity,
+  Alert,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
+  TextInput,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../src/stores/authStore';
 import { useAlerts, useAcknowledgeAlert } from '../src/hooks/useAlerts';
 import { usePendingDeliveries, useConfirmDelivery, useResendKmEmail, useCorrectKm } from '../src/hooks/useDeliveries';
-import { AlertCard } from '../src/components/AlertCard';
-import { DeliveryCard } from '../src/components/DeliveryCard';
-import { Button } from '../src/components/ui/Button';
-import { Input } from '../src/components/ui/Input';
 import { Loading } from '../src/components/ui/Loading';
 import { QueryErrorState } from '../src/components/ui/QueryErrorState';
-import { colors, spacing, fontSize, fontWeight, borderRadius } from '../src/constants/theme';
-import type { PendingDelivery } from '../src/types';
-
-const WARM_BG  = '#f9fafb';
-const CARD_R   = 12;
+import { timeAgo } from '../src/utils/dates';
+import {
+  PaperBackground,
+  Masthead,
+  MonoText,
+  KickerLabel,
+  Stamp,
+  SerifNumber,
+  HardShadowFrame,
+  InkButton,
+  DFieldBox,
+} from '../src/components/wp';
+import { wp, fmtKickerDate } from '../src/constants/warehousePaper';
+import type { PendingDelivery, AlertItem } from '../src/types';
 
 type Tab = 'alerts' | 'deliveries' | 'confirmed';
 
@@ -24,6 +40,7 @@ export default function AlertsScreen() {
   const user = useAuthStore((s) => s.user);
   const isManager = ['admin', 'zone_manager', 'location_manager'].includes(user?.role ?? '');
   const isVehicleManager = ['admin', 'vehicle_manager'].includes(user?.role ?? '');
+
   const [tab, setTab] = useState<Tab>('alerts');
   const [correctKmModalVisible, setCorrectKmModalVisible] = useState(false);
   const [selectedTripForKm, setSelectedTripForKm] = useState<{ tripId: string; currentKm: number; startingKm: number } | null>(null);
@@ -42,12 +59,20 @@ export default function AlertsScreen() {
   const pendingDeliveries = deliveries.data?.deliveries ?? [];
   const confirmedList = confirmedDeliveries.data?.deliveries ?? [];
 
-  const handleAcknowledge = (alert: { type: string; location_id: string; item_id: string }) => {
+  const handleAcknowledge = (alert: AlertItem) => {
     ackMutation.mutate({
       alert_type: alert.type,
       location_id: alert.location_id,
       item_id: alert.item_id,
     });
+  };
+
+  const handleConfirmDelivery = (deliveryId: string, claimedBags: number) => {
+    if (confirmMutation.isPending) return;
+    Alert.alert('Confirm Delivery', `Confirm ${claimedBags} bags received?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Confirm', onPress: () => confirmMutation.mutate({ id: deliveryId, data: { confirmed_bags: claimedBags } }) },
+    ]);
   };
 
   const handleResendKmEmail = (deliveryId: string) => {
@@ -95,15 +120,6 @@ export default function AlertsScreen() {
     );
   };
 
-  const handleConfirmDelivery = (deliveryId: string, claimedBags: number) => {
-    if (confirmMutation.isPending) return;
-    Alert.alert('Confirm Delivery', `Confirm ${claimedBags} bags received?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Confirm', onPress: () => confirmMutation.mutate({ id: deliveryId, data: { confirmed_bags: claimedBags } }) },
-    ]);
-  };
-
-  /* ── Tab data ── */
   const tabs: { key: Tab; label: string; count: number; show: boolean }[] = [
     { key: 'alerts', label: 'Alerts', count: activeAlerts.length, show: true },
     { key: 'deliveries', label: 'Pending', count: pendingDeliveries.length, show: isManager },
@@ -112,37 +128,38 @@ export default function AlertsScreen() {
   const visibleTabs = tabs.filter((t) => t.show);
 
   return (
-    <>
-      <Stack.Screen
-        options={{
-          title: 'Alerts & Deliveries',
-          headerStyle: { backgroundColor: '#fff' },
-          headerTintColor: '#111827',
-          headerTitleStyle: { fontWeight: '700', fontSize: 17, color: '#111827' },
-          headerShadowVisible: false,
-        }}
-      />
-      <SafeAreaView style={st.safe} edges={['bottom']}>
-        {/* ── Tab switcher ── */}
+    <PaperBackground>
+      <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
+        <Masthead
+          kicker={`OPS DESK — ${fmtKickerDate()}`}
+          title="Alerts & ledger"
+          backUseRouter
+        />
+
+        {/* Tab strip */}
         {visibleTabs.length > 1 && (
-          <View style={st.tabBar}>
+          <View style={styles.tabStrip}>
             {visibleTabs.map((t) => {
-              const active = tab === t.key;
+              const on = tab === t.key;
               return (
                 <TouchableOpacity
                   key={t.key}
-                  style={[st.tab, active && st.tabActive]}
-                  onPress={() => setTab(t.key)}
                   activeOpacity={0.7}
+                  onPress={() => setTab(t.key)}
+                  style={[styles.tab, on && styles.tabActive]}
                 >
-                  <Text style={[st.tabText, active && st.tabTextActive]}>
+                  <MonoText
+                    size={11}
+                    weight={on ? 700 : 500}
+                    tracking={1.5}
+                    upper
+                    color={on ? wp.color.ink : wp.color.ink3}
+                  >
                     {t.label}
-                  </Text>
-                  {t.count > 0 && (
-                    <View style={[st.tabCount, active && st.tabCountActive]}>
-                      <Text style={[st.tabCountText, active && st.tabCountTextActive]}>{t.count}</Text>
-                    </View>
-                  )}
+                    {'  '}
+                    {t.count}
+                  </MonoText>
                 </TouchableOpacity>
               );
             })}
@@ -151,51 +168,41 @@ export default function AlertsScreen() {
 
         {tab === 'alerts' ? (
           alerts.isLoading ? (
-            <Loading fullScreen message="Loading alerts..." />
+            <Loading fullScreen message="" />
           ) : alerts.isError ? (
             <QueryErrorState error={alerts.error} onRetry={() => alerts.refetch()} />
           ) : (
             <FlatList
               data={activeAlerts}
               keyExtractor={(item) => item.id}
-              contentContainerStyle={st.list}
-              refreshControl={
-                <RefreshControl refreshing={alerts.isRefetching} onRefresh={() => alerts.refetch()} />
-              }
-              renderItem={({ item }) => (
-                <AlertCard
+              contentContainerStyle={styles.list}
+              refreshControl={<RefreshControl refreshing={alerts.isRefetching} onRefresh={() => alerts.refetch()} tintColor={wp.color.ink2} />}
+              renderItem={({ item, index }) => (
+                <AlertVoucher
                   alert={item}
+                  rowIndex={index}
                   onAcknowledge={() => handleAcknowledge(item)}
                 />
               )}
-              ListEmptyComponent={
-                <View style={st.empty}>
-                  <View style={st.emptyIcon}>
-                    <Ionicons name="checkmark-circle-outline" size={36} color={colors.gray[300]} />
-                  </View>
-                  <Text style={st.emptyTitle}>No active alerts</Text>
-                  <Text style={st.emptyBody}>All clear -- no stock alerts right now.</Text>
-                </View>
-              }
+              ListEmptyComponent={<EmptyState title="All clear" subtitle="No active stock alerts right now" />}
             />
           )
         ) : tab === 'deliveries' ? (
           deliveries.isLoading ? (
-            <Loading fullScreen message="Loading deliveries..." />
+            <Loading fullScreen message="" />
           ) : deliveries.isError ? (
             <QueryErrorState error={deliveries.error} onRetry={() => deliveries.refetch()} />
           ) : (
             <FlatList
               data={pendingDeliveries}
               keyExtractor={(item) => item.id}
-              contentContainerStyle={st.list}
-              refreshControl={
-                <RefreshControl refreshing={deliveries.isRefetching} onRefresh={() => deliveries.refetch()} />
-              }
-              renderItem={({ item }) => (
-                <DeliveryCard
+              contentContainerStyle={styles.list}
+              refreshControl={<RefreshControl refreshing={deliveries.isRefetching} onRefresh={() => deliveries.refetch()} tintColor={wp.color.ink2} />}
+              renderItem={({ item, index }) => (
+                <DeliveryVoucher
                   delivery={item}
-                  onPress={() =>
+                  rowIndex={index}
+                  onConfirm={() =>
                     handleConfirmDelivery(
                       item.id,
                       item.driver_claimed_bags ?? Math.round(item.driver_claimed_qty_kg / 10),
@@ -203,84 +210,33 @@ export default function AlertsScreen() {
                   }
                 />
               )}
-              ListEmptyComponent={
-                <View style={st.empty}>
-                  <View style={st.emptyIcon}>
-                    <Ionicons name="cube-outline" size={36} color={colors.gray[300]} />
-                  </View>
-                  <Text style={st.emptyTitle}>No pending deliveries</Text>
-                  <Text style={st.emptyBody}>No deliveries waiting for confirmation.</Text>
-                </View>
-              }
+              ListEmptyComponent={<EmptyState title="Nothing pending" subtitle="All deliveries are confirmed" />}
             />
           )
         ) : (
           confirmedDeliveries.isLoading ? (
-            <Loading fullScreen message="Loading confirmed deliveries..." />
+            <Loading fullScreen message="" />
           ) : (
             <FlatList
               data={confirmedList}
               keyExtractor={(item) => item.id}
-              contentContainerStyle={st.list}
-              refreshControl={
-                <RefreshControl
-                  refreshing={confirmedDeliveries.isRefetching}
-                  onRefresh={() => confirmedDeliveries.refetch()}
+              contentContainerStyle={styles.list}
+              refreshControl={<RefreshControl refreshing={confirmedDeliveries.isRefetching} onRefresh={() => confirmedDeliveries.refetch()} tintColor={wp.color.ink2} />}
+              renderItem={({ item, index }) => (
+                <ConfirmedDeliveryVoucher
+                  delivery={item}
+                  rowIndex={index}
+                  onResendEmail={() => handleResendKmEmail(item.id)}
+                  onCorrectKm={() => handleOpenCorrectKm(item)}
+                  resendLoading={resendKmEmail.isPending}
                 />
-              }
-              renderItem={({ item }) => (
-                <View style={st.confirmedCard}>
-                  <View style={st.confirmedHeader}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={st.confirmedLocation}>
-                        {item.location?.name ?? 'Unknown'}
-                      </Text>
-                      {item.trip && (
-                        <Text style={st.confirmedTrip}>
-                          {item.trip.trip_number}
-                          {item.trip.driver_name ? ` \u2014 ${item.trip.driver_name}` : ''}
-                        </Text>
-                      )}
-                    </View>
-                    <View style={st.confirmedBagsPill}>
-                      <Text style={st.confirmedBagsText}>
-                        {item.confirmed_bags ?? '?'} bags
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={st.kmActions}>
-                    <Button
-                      title="Resend KM Email"
-                      variant="outline"
-                      size="sm"
-                      onPress={() => handleResendKmEmail(item.id)}
-                      loading={resendKmEmail.isPending}
-                      icon={<Ionicons name="mail" size={14} color="#111827" />}
-                    />
-                    <Button
-                      title="Correct KM"
-                      variant="secondary"
-                      size="sm"
-                      onPress={() => handleOpenCorrectKm(item)}
-                      icon={<Ionicons name="speedometer" size={14} color={colors.gray[800]} />}
-                    />
-                  </View>
-                </View>
               )}
-              ListEmptyComponent={
-                <View style={st.empty}>
-                  <View style={st.emptyIcon}>
-                    <Ionicons name="checkmark-done-outline" size={36} color={colors.gray[300]} />
-                  </View>
-                  <Text style={st.emptyTitle}>No confirmed deliveries</Text>
-                  <Text style={st.emptyBody}>Confirmed deliveries will appear here.</Text>
-                </View>
-              }
+              ListEmptyComponent={<EmptyState title="Nothing here yet" subtitle="Confirmed deliveries will appear here" />}
             />
           )
         )}
 
-        {/* ── Correct KM Modal ── */}
+        {/* Correct-KM modal */}
         <Modal
           visible={correctKmModalVisible}
           animationType="slide"
@@ -288,162 +244,350 @@ export default function AlertsScreen() {
           onRequestClose={() => setCorrectKmModalVisible(false)}
         >
           <KeyboardAvoidingView
-            style={st.modalOverlay}
+            style={styles.modalOverlay}
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           >
-            <View style={st.modalContent}>
-              <View style={st.modalHeader}>
-                <Text style={st.modalTitle}>Correct Closing KM</Text>
-                <TouchableOpacity onPress={() => setCorrectKmModalVisible(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                  <Ionicons name="close" size={22} color={colors.gray[400]} />
+            <View style={styles.modalSheet}>
+              <View style={styles.modalHeader}>
+                <Text allowFontScaling={false} style={styles.modalTitle}>
+                  Correct closing KM
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setCorrectKmModalVisible(false)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <MonoText size={14} weight={700} color={wp.color.ink}>×</MonoText>
                 </TouchableOpacity>
               </View>
               {selectedTripForKm && selectedTripForKm.startingKm > 0 && (
-                <View style={st.modalHintRow}>
-                  <Text style={st.modalHint}>
-                    Starting KM: {selectedTripForKm.startingKm.toLocaleString()}
-                    {selectedTripForKm.currentKm > 0
-                      ? ` | Current: ${selectedTripForKm.currentKm.toLocaleString()}`
-                      : ''}
-                  </Text>
-                </View>
+                <MonoText size={10} tracking={1} upper color={wp.color.ink3} style={{ marginBottom: 10 }}>
+                  Starting KM: {selectedTripForKm.startingKm.toLocaleString()}
+                  {selectedTripForKm.currentKm > 0
+                    ? ` · Current: ${selectedTripForKm.currentKm.toLocaleString()}`
+                    : ''}
+                </MonoText>
               )}
-              <Input
-                label="New Closing KM"
-                value={newKmValue}
-                onChangeText={setNewKmValue}
-                keyboardType="numeric"
-                placeholder="e.g. 145230"
-              />
-              <Input
-                label="Reason for correction"
-                value={kmReason}
-                onChangeText={setKmReason}
-                placeholder="Why is this being corrected?"
-                multiline
-                numberOfLines={2}
-                style={{ minHeight: 60, textAlignVertical: 'top' }}
-                containerStyle={{ marginTop: spacing.md }}
-              />
-              <View style={st.modalActions}>
-                <Button
-                  title="Cancel"
-                  variant="ghost"
-                  onPress={() => setCorrectKmModalVisible(false)}
-                />
-                <Button
-                  title="Save Correction"
-                  onPress={handleSubmitCorrectKm}
-                  loading={correctKm.isPending}
-                />
+              <DFieldBox label="New closing KM">
+                <View style={styles.textInputBox}>
+                  <TextInput
+                    value={newKmValue}
+                    onChangeText={setNewKmValue}
+                    keyboardType="number-pad"
+                    placeholder="e.g. 145230"
+                    placeholderTextColor={wp.color.ink3}
+                    style={styles.textInput}
+                  />
+                </View>
+              </DFieldBox>
+              <DFieldBox label="Reason" noDivider>
+                <View style={styles.notesBox}>
+                  <TextInput
+                    value={kmReason}
+                    onChangeText={setKmReason}
+                    placeholder="Why is this being corrected?"
+                    placeholderTextColor={wp.color.ink3}
+                    multiline
+                    style={styles.notesInput}
+                  />
+                </View>
+              </DFieldBox>
+              <View style={styles.modalActions}>
+                <InkButton label="Save correction" onPress={handleSubmitCorrectKm} variant="solid" loading={correctKm.isPending} />
               </View>
             </View>
           </KeyboardAvoidingView>
         </Modal>
       </SafeAreaView>
-    </>
+    </PaperBackground>
   );
 }
 
-/* ══════════════════════════════════════
-   STYLES
-══════════════════════════════════════ */
-const st = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: WARM_BG },
+function AlertVoucher({
+  alert,
+  rowIndex,
+  onAcknowledge,
+}: {
+  alert: AlertItem;
+  rowIndex: number;
+  onAcknowledge: () => void;
+}) {
+  const stampColor = alert.severity === 'error' ? 'red' : alert.severity === 'warning' ? 'amber' : 'ink';
+  const stampLabel =
+    alert.type === 'low_stock' ? 'LOW' :
+    alert.type === 'reorder_now' ? 'REORDER' :
+    alert.type === 'expiring_soon' ? 'EXPIRING' :
+    alert.type === 'expired' ? 'EXPIRED' : 'ALERT';
 
-  /* ── Tab bar ── */
-  tabBar: {
+  return (
+    <HardShadowFrame style={{ marginBottom: 10 }}>
+      <View style={styles.voucher}>
+        <View style={styles.voucherHead}>
+          <KickerLabel size={10} tracking={1.5} color={wp.color.ink3}>
+            {alert.location_name.toUpperCase()}
+          </KickerLabel>
+          <Stamp color={stampColor} rowIndex={rowIndex}>
+            {stampLabel}
+          </Stamp>
+        </View>
+        <Text allowFontScaling={false} style={styles.voucherTitle}>
+          {alert.title}
+        </Text>
+        <MonoText size={11} color={wp.color.ink2} style={{ marginTop: 6 }}>
+          {alert.message}
+        </MonoText>
+        <MonoText size={10} tracking={1} upper color={wp.color.ink3} style={{ marginTop: 6 }}>
+          {timeAgo(alert.created_at).toUpperCase()} · {alert.item_name.toUpperCase()}
+        </MonoText>
+        <View style={{ marginTop: 12, alignSelf: 'flex-start' }}>
+          <InkButton label="Acknowledge" onPress={onAcknowledge} />
+        </View>
+      </View>
+    </HardShadowFrame>
+  );
+}
+
+function DeliveryVoucher({
+  delivery,
+  rowIndex,
+  onConfirm,
+}: {
+  delivery: PendingDelivery;
+  rowIndex: number;
+  onConfirm: () => void;
+}) {
+  const claimedBags = delivery.driver_claimed_bags ?? Math.round(delivery.driver_claimed_qty_kg / 10);
+  const scannedBags = delivery.driver_scanned_bags;
+
+  return (
+    <HardShadowFrame style={{ marginBottom: 10 }}>
+      <View style={styles.voucher}>
+        <View style={styles.voucherHead}>
+          <KickerLabel size={10} tracking={1.5} color={wp.color.ink3}>
+            {(delivery.location?.name ?? 'Unknown').toUpperCase()}
+          </KickerLabel>
+          <Stamp color="amber" rowIndex={rowIndex}>
+            PENDING
+          </Stamp>
+        </View>
+
+        <View style={styles.deliveryHero}>
+          <SerifNumber size={48} tracking={-1.5} leading={1} color={wp.color.ink} autoShrink>
+            {claimedBags}
+          </SerifNumber>
+          <View style={{ marginLeft: 10 }}>
+            <MonoText size={10} tracking={1.5} color={wp.color.ink3}>BAGS CLAIMED</MonoText>
+            {scannedBags != null && (
+              <MonoText size={10} tracking={1} color={wp.color.ink3} style={{ marginTop: 2 }}>
+                {scannedBags} SCANNED
+              </MonoText>
+            )}
+          </View>
+        </View>
+
+        {delivery.trip && (
+          <MonoText size={10} tracking={1} upper color={wp.color.ink3} style={{ marginTop: 10 }}>
+            TRIP {delivery.trip.trip_number}
+            {delivery.trip.driver_name ? ` · ${delivery.trip.driver_name.toUpperCase()}` : ''}
+          </MonoText>
+        )}
+
+        <MonoText size={10} tracking={1} upper color={wp.color.ink3} style={{ marginTop: 4 }}>
+          {timeAgo(delivery.created_at).toUpperCase()}
+        </MonoText>
+
+        <View style={{ marginTop: 12, alignSelf: 'flex-start' }}>
+          <InkButton label={`Confirm ${claimedBags} bags`} onPress={onConfirm} variant="solid" />
+        </View>
+      </View>
+    </HardShadowFrame>
+  );
+}
+
+function ConfirmedDeliveryVoucher({
+  delivery,
+  rowIndex,
+  onResendEmail,
+  onCorrectKm,
+  resendLoading,
+}: {
+  delivery: PendingDelivery;
+  rowIndex: number;
+  onResendEmail: () => void;
+  onCorrectKm: () => void;
+  resendLoading: boolean;
+}) {
+  return (
+    <HardShadowFrame style={{ marginBottom: 10 }}>
+      <View style={styles.voucher}>
+        <View style={styles.voucherHead}>
+          <KickerLabel size={10} tracking={1.5} color={wp.color.ink3}>
+            {(delivery.location?.name ?? 'Unknown').toUpperCase()}
+          </KickerLabel>
+          <Stamp color="green" rowIndex={rowIndex}>
+            CONFIRMED
+          </Stamp>
+        </View>
+
+        {delivery.trip && (
+          <MonoText size={11} color={wp.color.ink2} style={{ marginTop: 6 }}>
+            {delivery.trip.trip_number}
+            {delivery.trip.driver_name ? ` · ${delivery.trip.driver_name}` : ''}
+          </MonoText>
+        )}
+
+        <MonoText size={14} weight={700} color={wp.color.ink} style={{ marginTop: 6 }}>
+          {delivery.confirmed_bags ?? '?'} BAGS
+        </MonoText>
+
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+          <InkButton label="Resend KM email" onPress={onResendEmail} loading={resendLoading} />
+          <InkButton label="Correct KM" onPress={onCorrectKm} />
+        </View>
+      </View>
+    </HardShadowFrame>
+  );
+}
+
+function EmptyState({ title, subtitle }: { title: string; subtitle: string }) {
+  return (
+    <View style={styles.empty}>
+      <Text allowFontScaling={false} style={styles.emptyTitle}>
+        {title}
+      </Text>
+      <MonoText size={11} tracking={1} upper color={wp.color.ink3} style={{ marginTop: 6 }}>
+        {subtitle}
+      </MonoText>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  safe: { flex: 1 },
+
+  // Tab strip
+  tabStrip: {
     flexDirection: 'row',
-    backgroundColor: '#fff',
-    paddingHorizontal: 16, paddingTop: 8, paddingBottom: 0,
-    gap: 4,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e5e7eb',
+    borderBottomWidth: wp.border.mid,
+    borderBottomColor: wp.color.lineD,
   },
   tab: {
-    flex: 1, alignItems: 'center', justifyContent: 'center',
-    flexDirection: 'row', gap: 6,
+    flex: 1,
     paddingVertical: 12,
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
+    alignItems: 'center',
   },
-  tabActive: { borderBottomColor: '#111827' },
-  tabText: {
-    fontSize: 14, fontWeight: '500', color: '#9ca3af',
-    letterSpacing: 0.1,
-  },
-  tabTextActive: { color: '#111827', fontWeight: '700' },
-  tabCount: {
-    backgroundColor: '#f3f4f6',
-    paddingHorizontal: 6, paddingVertical: 1, borderRadius: 8,
-    minWidth: 20, alignItems: 'center',
-  },
-  tabCountActive: { backgroundColor: '#111827' },
-  tabCountText: { fontSize: 11, fontWeight: '600', color: '#9ca3af' },
-  tabCountTextActive: { color: '#fff' },
-
-  /* ── List ── */
-  list: { padding: 16, gap: 14 },
-
-  /* ── Empty ── */
-  empty: { alignItems: 'center', paddingVertical: 80 },
-  emptyIcon: { marginBottom: 14 },
-  emptyTitle: { fontSize: 17, fontWeight: '700', color: '#111827', letterSpacing: -0.2 },
-  emptyBody: { fontSize: 14, fontWeight: '400', color: '#9ca3af', marginTop: 6 },
-
-  /* ── Confirmed deliveries ── */
-  confirmedCard: {
-    backgroundColor: '#fff', borderRadius: CARD_R, padding: 16,
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 6 },
-      android: { elevation: 1 },
-      default: { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 6 },
-    }),
-  },
-  confirmedHeader: {
-    flexDirection: 'row', alignItems: 'center',
-    marginBottom: 12,
-  },
-  confirmedLocation: {
-    fontSize: 15, fontWeight: '700', color: '#111827', letterSpacing: -0.2,
-  },
-  confirmedTrip: {
-    fontSize: 13, fontWeight: '400', color: '#9ca3af', marginTop: 2,
-  },
-  confirmedBagsPill: {
-    backgroundColor: '#f0fdf4',
-    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8,
-  },
-  confirmedBagsText: {
-    fontSize: 13, fontWeight: '600', color: '#059669',
-  },
-  kmActions: {
-    flexDirection: 'row', gap: 10,
-    paddingTop: 14, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#f3f4f6',
+  tabActive: {
+    borderBottomWidth: 3,
+    borderBottomColor: wp.color.ink,
+    marginBottom: -1.5,
   },
 
-  /* ── Modal ── */
+  list: {
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: 16,
+    paddingBottom: 40,
+  },
+
+  // Voucher
+  voucher: {
+    backgroundColor: wp.color.voucherBg,
+    borderWidth: 1,
+    borderColor: wp.color.lineD,
+    padding: 14,
+  },
+  voucherHead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  voucherTitle: {
+    fontFamily: wp.font.serifBold.fontFamily,
+    fontWeight: wp.font.serifBold.fontWeight,
+    fontStyle: 'italic',
+    fontSize: 18,
+    color: wp.color.ink,
+    marginTop: 6,
+  },
+
+  deliveryHero: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    marginTop: 8,
+  },
+
+  // Empty
+  empty: {
+    paddingVertical: 80,
+    alignItems: 'center',
+  },
+  emptyTitle: {
+    fontFamily: wp.font.serifBold.fontFamily,
+    fontWeight: wp.font.serifBold.fontWeight,
+    fontStyle: 'italic',
+    fontSize: 28,
+    letterSpacing: -1,
+    color: wp.color.ink,
+  },
+
+  // Modal
   modalOverlay: {
-    flex: 1, justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(26,25,22,0.4)',
   },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    padding: 20, gap: 12,
+  modalSheet: {
+    backgroundColor: wp.color.paper,
+    borderTopWidth: wp.border.mid,
+    borderTopColor: wp.color.lineD,
+    padding: 18,
   },
   modalHeader: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
   },
   modalTitle: {
-    fontSize: 17, fontWeight: '700', color: '#111827', letterSpacing: -0.2,
-  },
-  modalHintRow: { marginBottom: 4 },
-  modalHint: {
-    fontSize: 13, fontWeight: '400', color: '#9ca3af',
+    fontFamily: wp.font.serifBold.fontFamily,
+    fontWeight: wp.font.serifBold.fontWeight,
+    fontStyle: 'italic',
+    fontSize: 24,
+    letterSpacing: -0.5,
+    color: wp.color.ink,
   },
   modalActions: {
-    flexDirection: 'row', justifyContent: 'flex-end',
-    gap: 8, marginTop: 12,
+    marginTop: 14,
+    alignItems: 'flex-start',
+  },
+
+  textInputBox: {
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: wp.color.voucherBg,
+  },
+  textInput: {
+    fontFamily: wp.font.mono.fontFamily,
+    fontWeight: wp.font.mono.fontWeight,
+    fontSize: 14,
+    color: wp.color.ink,
+    padding: 0,
+  },
+
+  notesBox: {
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+    backgroundColor: wp.color.voucherBg,
+    padding: 12,
+    minHeight: 60,
+  },
+  notesInput: {
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'Georgia' }),
+    fontStyle: 'italic',
+    fontSize: 13,
+    color: wp.color.ink,
+    minHeight: 44,
+    textAlignVertical: 'top',
+    padding: 0,
   },
 });

@@ -1,20 +1,25 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
+  StyleSheet,
   ScrollView,
   TouchableOpacity,
-  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { useZones, useCreateLocation } from '../../src/hooks/useLocations';
-import { Card } from '../../src/components/ui/Card';
-import { Button } from '../../src/components/ui/Button';
-import { Input } from '../../src/components/ui/Input';
 import { Loading } from '../../src/components/ui/Loading';
-import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
+import {
+  PaperBackground,
+  Masthead,
+  IntentStrip,
+  MonoInput,
+  MonoText,
+  PrimaryBar,
+} from '../../src/components/wp';
+import { wp, fmtKickerDate } from '../../src/constants/warehousePaper';
 import type { LocationType } from '../../src/types';
 
 export default function CreateLocationScreen() {
@@ -28,15 +33,15 @@ export default function CreateLocationScreen() {
   const [zoneId, setZoneId] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  function validate(): boolean {
+  const validate = () => {
     const e: Record<string, string> = {};
-    if (!name.trim()) e.name = 'Name is required';
-    if (!zoneId) e.zoneId = 'Please select a zone';
+    if (!name.trim()) e.name = 'NAME REQUIRED';
+    if (!zoneId) e.zoneId = 'PICK A ZONE';
     setErrors(e);
     return Object.keys(e).length === 0;
-  }
+  };
 
-  function handleSubmit() {
+  const handleSubmit = () => {
     if (!validate()) return;
     createLocation.mutate(
       {
@@ -47,191 +52,205 @@ export default function CreateLocationScreen() {
       },
       { onSuccess: () => router.back() },
     );
+  };
+
+  if (zones.isLoading) {
+    return (
+      <PaperBackground>
+        <Stack.Screen options={{ headerShown: false }} />
+        <Loading fullScreen message="" />
+      </PaperBackground>
+    );
   }
 
-  if (zones.isLoading) return <Loading fullScreen message="Loading zones..." />;
-
   const zoneList = zones.data?.zones ?? [];
+  const canSubmit = name.trim().length > 0 && !!zoneId;
 
   return (
-    <>
-      <Stack.Screen options={{ title: 'New Location' }} />
-      <SafeAreaView style={styles.container} edges={['bottom']}>
-        <ScrollView contentContainerStyle={styles.content}>
-          <Card>
-            <Text style={styles.sectionTitle}>Location Details</Text>
-
-            <Input
-              label="Name"
-              value={name}
-              onChangeText={setName}
-              placeholder="e.g. Sandton Shop"
-              error={errors.name}
+    <PaperBackground>
+      <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <ScrollView
+            contentContainerStyle={styles.scroll}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <Masthead
+              kicker={`NEW LOCATION — ${fmtKickerDate()}`}
+              title="Add location"
+              backUseRouter
             />
+            <View style={styles.body}>
+              <IntentStrip>
+                Add a shop or warehouse to a zone. Stock thresholds can be set after creation.
+              </IntentStrip>
 
-            <Input
-              label="Address (optional)"
-              value={address}
-              onChangeText={setAddress}
-              placeholder="e.g. 123 Main Rd, Sandton"
-              containerStyle={{ marginTop: spacing.md }}
-            />
+              <MonoInput
+                label="Name · required"
+                value={name}
+                onChangeText={setName}
+                placeholder="Sandton Shop"
+              />
+              {errors.name && (
+                <MonoText size={9} tracking={1} upper color={wp.color.red}>
+                  {errors.name}
+                </MonoText>
+              )}
+              <MonoInput
+                label="Address · optional"
+                value={address}
+                onChangeText={setAddress}
+                placeholder="123 Main Rd"
+              />
 
-            {/* Type selector */}
-            <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Type</Text>
-              <View style={styles.typeRow}>
-                <TouchableOpacity
-                  style={[
-                    styles.typeOption,
-                    type === 'shop' && styles.typeSelected,
-                    type === 'shop' && { borderColor: colors.info },
-                  ]}
-                  onPress={() => setType('shop')}
-                >
-                  <Ionicons
-                    name="storefront"
-                    size={20}
-                    color={type === 'shop' ? colors.info : colors.gray[400]}
+              <View style={styles.subSection}>
+                <MonoText size={11} tracking={1} upper weight={600} color={wp.color.ink}>
+                  Type · required
+                </MonoText>
+                <View style={styles.typeRow}>
+                  <TypeOption
+                    label="Shop"
+                    active={type === 'shop'}
+                    onPress={() => setType('shop')}
                   />
-                  <Text
-                    style={[
-                      styles.typeLabel,
-                      type === 'shop' && { color: colors.info },
-                    ]}
-                  >
-                    Shop
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.typeOption,
-                    type === 'warehouse' && styles.typeSelected,
-                    type === 'warehouse' && { borderColor: '#d97706' },
-                  ]}
-                  onPress={() => setType('warehouse')}
-                >
-                  <Ionicons
-                    name="business"
-                    size={20}
-                    color={type === 'warehouse' ? '#d97706' : colors.gray[400]}
+                  <TypeOption
+                    label="Warehouse"
+                    active={type === 'warehouse'}
+                    onPress={() => setType('warehouse')}
                   />
-                  <Text
-                    style={[
-                      styles.typeLabel,
-                      type === 'warehouse' && { color: '#d97706' },
-                    ]}
-                  >
-                    Warehouse
-                  </Text>
-                </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.subSection}>
+                <MonoText size={11} tracking={1} upper weight={600} color={wp.color.ink}>
+                  Zone · required
+                </MonoText>
+                {errors.zoneId && (
+                  <MonoText size={9} tracking={1} upper color={wp.color.red}>
+                    {errors.zoneId}
+                  </MonoText>
+                )}
+                <View style={styles.zoneList}>
+                  {zoneList.length === 0 ? (
+                    <MonoText
+                      size={11}
+                      tracking={1}
+                      upper
+                      color={wp.color.ink3}
+                      style={{ padding: 14 }}
+                    >
+                      No zones — create one first
+                    </MonoText>
+                  ) : (
+                    zoneList.map((z) => (
+                      <ZoneOption
+                        key={z.id}
+                        label={z.name}
+                        active={zoneId === z.id}
+                        onPress={() => setZoneId(z.id)}
+                      />
+                    ))
+                  )}
+                </View>
               </View>
             </View>
-
-            {/* Zone selector */}
-            <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Zone</Text>
-              {errors.zoneId && <Text style={styles.errorText}>{errors.zoneId}</Text>}
-              {zoneList.map((z) => (
-                <TouchableOpacity
-                  key={z.id}
-                  style={[
-                    styles.zoneOption,
-                    zoneId === z.id && styles.zoneSelected,
-                  ]}
-                  onPress={() => setZoneId(z.id)}
-                >
-                  <Ionicons
-                    name={zoneId === z.id ? 'radio-button-on' : 'radio-button-off'}
-                    size={20}
-                    color={zoneId === z.id ? colors.primary[500] : colors.gray[400]}
-                  />
-                  <Text
-                    style={[
-                      styles.zoneName,
-                      zoneId === z.id && { color: colors.primary[700] },
-                    ]}
-                  >
-                    {z.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-              {zoneList.length === 0 && (
-                <Text style={styles.noZones}>No zones available. Create a zone first.</Text>
-              )}
-            </View>
-          </Card>
-
-          <Button
-            title="Create Location"
-            onPress={handleSubmit}
-            loading={createLocation.isPending}
-            disabled={createLocation.isPending}
-          />
-        </ScrollView>
+          </ScrollView>
+        </KeyboardAvoidingView>
+        <PrimaryBar
+          label="Create location"
+          onPress={handleSubmit}
+          loading={createLocation.isPending}
+          disabled={!canSubmit}
+        />
       </SafeAreaView>
-    </>
+    </PaperBackground>
+  );
+}
+
+function TypeOption({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  return (
+    <TouchableOpacity
+      activeOpacity={0.7}
+      onPress={onPress}
+      style={[styles.typeOption, active && styles.typeOptionActive]}
+    >
+      <MonoText
+        size={12}
+        tracking={1.5}
+        upper
+        weight={active ? 700 : 500}
+        color={active ? wp.color.paper : wp.color.ink}
+      >
+        {active ? '■ ' : '□ '}
+        {label}
+      </MonoText>
+    </TouchableOpacity>
+  );
+}
+
+function ZoneOption({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  return (
+    <TouchableOpacity
+      activeOpacity={0.7}
+      onPress={onPress}
+      style={[styles.zoneItem, active && styles.zoneItemActive]}
+    >
+      <MonoText
+        size={11}
+        tracking={1}
+        upper
+        weight={active ? 700 : 500}
+        color={active ? wp.color.paper : wp.color.ink}
+      >
+        {active ? '■ ' : '□ '}
+        {label}
+      </MonoText>
+    </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
-  content: { padding: spacing.lg, gap: spacing.lg },
-  sectionTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[900],
-    marginBottom: spacing.lg,
+  safe: { flex: 1 },
+  flex: { flex: 1 },
+  scroll: { paddingBottom: 160 },
+  body: {
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: wp.space.block,
   },
-  fieldGroup: { marginTop: spacing.lg },
-  label: {
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.medium,
-    color: colors.gray[700],
-    marginBottom: spacing.sm,
+  subSection: {
+    paddingTop: 16,
+    gap: 10,
   },
-  typeRow: { flexDirection: 'row', gap: spacing.md },
+  typeRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
   typeOption: {
     flex: 1,
-    flexDirection: 'row',
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+    paddingVertical: 14,
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.lg,
-    borderWidth: 2,
-    borderColor: colors.gray[200],
-    borderRadius: borderRadius.lg,
-    backgroundColor: colors.white,
   },
-  typeSelected: { backgroundColor: colors.gray[50] },
-  typeLabel: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.medium,
-    color: colors.gray[500],
+  typeOptionActive: {
+    backgroundColor: wp.color.ink,
   },
-  zoneOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.md,
-    marginBottom: spacing.xs,
+  zoneList: {
+    borderWidth: 1,
+    borderColor: wp.color.lineD,
   },
-  zoneSelected: { backgroundColor: colors.primary[50] },
-  zoneName: {
-    fontSize: fontSize.md,
-    color: colors.gray[700],
+  zoneItem: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: wp.color.line,
+    borderStyle: 'dashed',
   },
-  noZones: {
-    fontSize: fontSize.sm,
-    color: colors.gray[500],
-    fontStyle: 'italic',
-  },
-  errorText: {
-    fontSize: fontSize.xs,
-    color: colors.error,
-    marginBottom: spacing.xs,
+  zoneItemActive: {
+    backgroundColor: wp.color.ink,
   },
 });
