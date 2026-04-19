@@ -1,16 +1,11 @@
 {
   "cli": {
-<<<<<<< HEAD
-    "version": ">= 16.0.0"
-=======
-    "version": ">= 15.0.0",
+    "version": ">= 16.0.0",
     "appVersionSource": "local"
->>>>>>> origin/main
   },
   "build": {
     "development": {
       "developmentClient": true,
-<<<<<<< HEAD
       "distribution": "internal",
       "ios": {
         "simulator": false
@@ -21,21 +16,18 @@
       "env": {
         "EXPO_PUBLIC_API_URL": "https://stocktracker-0560a415bf9e.herokuapp.com"
       }
-=======
-      "distribution": "internal"
->>>>>>> origin/main
     },
     "preview": {
       "distribution": "internal",
       "android": {
         "buildType": "apk"
-<<<<<<< HEAD
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://stocktracker-0560a415bf9e.herokuapp.com"
       }
     },
     "production": {
+      "autoIncrement": true,
       "android": {
         "buildType": "app-bundle"
       },
@@ -43,15 +35,8 @@
         "EXPO_PUBLIC_API_URL": "https://stocktracker-0560a415bf9e.herokuapp.com"
       }
     }
-=======
-      }
-    },
-    "production": {
-      "autoIncrement": true
-    }
   },
   "submit": {
     "production": {}
->>>>>>> origin/main
   }
 }
