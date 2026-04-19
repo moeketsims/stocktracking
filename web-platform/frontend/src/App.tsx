@@ -32,6 +32,7 @@ import { ToastContainer } from './components/ui/Toast';
 // Eagerly loaded pages (critical path)
 import LoginPage from './pages/LoginPage';
 import AcceptInvitePage from './pages/AcceptInvitePage';
+import AcceptInviteCodePage from './pages/AcceptInviteCodePage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import SubmitKmPage from './pages/SubmitKmPage';
@@ -68,7 +69,13 @@ function PageLoader() {
   );
 }
 
-type PublicPage = 'login' | 'forgot-password' | 'accept-invite' | 'reset-password' | 'submit-km';
+type PublicPage =
+  | 'login'
+  | 'forgot-password'
+  | 'accept-invite'
+  | 'accept-invite-code'
+  | 'reset-password'
+  | 'submit-km';
 
 type TabId =
   | 'dashboard'
@@ -239,7 +246,25 @@ function App() {
       );
     }
 
-    return <LoginPage onForgotPassword={() => setPublicPage('forgot-password')} />;
+    if (publicPage === 'accept-invite-code') {
+      return (
+        <AcceptInviteCodePage
+          onSuccess={() => {
+            // setAuth fired inside the page; the auth store flips and the
+            // app re-renders into the authenticated tree below.
+            setPublicPage('login');
+          }}
+          onBack={() => setPublicPage('login')}
+        />
+      );
+    }
+
+    return (
+      <LoginPage
+        onForgotPassword={() => setPublicPage('forgot-password')}
+        onAcceptInviteCode={() => setPublicPage('accept-invite-code')}
+      />
+    );
   }
 
   // Filter tabs based on role - drivers, vehicle managers, and staff have limited access

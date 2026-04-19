@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   KeyboardAvoidingView,
@@ -11,17 +10,25 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
 import { useCreateDriver } from '../../src/hooks/useDrivers';
 import { useAuthStore } from '../../src/stores/authStore';
-import { Card } from '../../src/components/ui/Card';
-import { Input } from '../../src/components/ui/Input';
-import { Button } from '../../src/components/ui/Button';
-import { brand, colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
+import {
+  PaperBackground,
+  Masthead,
+  IntentStrip,
+  MonoInput,
+  MonoText,
+  PrimaryBar,
+} from '../../src/components/wp';
+import { wp, fmtKickerDate } from '../../src/constants/warehousePaper';
 import type { UserRole } from '../../src/types';
-import { Ionicons } from '@expo/vector-icons';
 
 export default function CreateDriverScreen() {
   const router = useRouter();
   const hasRole = useAuthStore((s) => s.hasRole);
-  const canManage = hasRole('admin' as UserRole, 'zone_manager' as UserRole, 'location_manager' as UserRole);
+  const canManage = hasRole(
+    'admin' as UserRole,
+    'zone_manager' as UserRole,
+    'location_manager' as UserRole,
+  );
   const createMutation = useCreateDriver();
 
   const [email, setEmail] = useState('');
@@ -33,22 +40,25 @@ export default function CreateDriverScreen() {
 
   if (!canManage) {
     return (
-      <SafeAreaView style={styles.container}>
-        <Stack.Screen options={{ title: 'Add Driver' }} />
-        <View style={styles.emptyState}>
-          <Ionicons name="lock-closed" size={48} color={colors.gray[300]} />
-          <Text style={styles.emptyTitle}>Access Denied</Text>
-          <Text style={styles.emptySubtitle}>Manager access required</Text>
-        </View>
-      </SafeAreaView>
+      <PaperBackground>
+        <Stack.Screen options={{ headerShown: false }} />
+        <SafeAreaView style={styles.safe}>
+          <Masthead kicker="ACCESS" title="Denied" backUseRouter />
+          <View style={styles.denied}>
+            <MonoText size={11} tracking={1.5} upper color={wp.color.ink3}>
+              Manager access required
+            </MonoText>
+          </View>
+        </SafeAreaView>
+      </PaperBackground>
     );
   }
 
-  const validate = (): boolean => {
+  const validate = () => {
     const e: Record<string, string> = {};
-    if (!fullName.trim()) e.fullName = 'Name is required';
-    if (!email.trim()) e.email = 'Email is required';
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) e.email = 'Invalid email address';
+    if (!fullName.trim()) e.fullName = 'NAME REQUIRED';
+    if (!email.trim()) e.email = 'EMAIL REQUIRED';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) e.email = 'INVALID EMAIL';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -64,134 +74,119 @@ export default function CreateDriverScreen() {
         notes: notes.trim() || undefined,
       },
       {
-        onSuccess: () => router.back(),
+        onSuccess: (data) => {
+          // Replace this screen so the back button from invite-success
+          // returns to the drivers list, not back into the empty form.
+          router.replace({
+            pathname: '/invite-success',
+            params: {
+              code: data.short_code,
+              recipient: fullName.trim() || email.trim(),
+              role: 'driver',
+              phone: phone.trim() || '',
+              emailSent: data.email_sent ? '1' : '0',
+            },
+          });
+        },
       },
     );
   };
 
+  const canSubmit = fullName.trim().length > 0 && email.trim().length > 0;
+
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <Stack.Screen
-        options={{
-          title: 'Add Driver',
-          headerStyle: { backgroundColor: brand.gradientStart },
-          headerTintColor: colors.white,
-          headerTitleStyle: { fontWeight: fontWeight.semibold },
-        }}
-      />
+    <PaperBackground>
+      <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <ScrollView
+            contentContainerStyle={styles.scroll}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            <Masthead
+              kicker={`NEW DRIVER — ${fmtKickerDate()}`}
+              title="Add driver"
+              backUseRouter
+            />
+            <View style={styles.body}>
+              <IntentStrip>
+                We'll send an invitation email to the driver. They'll set their own password
+                when they accept.
+              </IntentStrip>
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView contentContainerStyle={styles.content}>
-          <Card>
-            <Text style={styles.sectionTitle}>Driver Information</Text>
-            <Text style={styles.sectionSubtitle}>
-              An invitation email will be sent to the driver to create their account.
-            </Text>
-
-            <View style={styles.form}>
-              <Input
-                label="Full Name *"
+              <MonoInput
+                label="Full name · required"
                 value={fullName}
                 onChangeText={setFullName}
-                placeholder="Enter driver's full name"
-                error={errors.fullName}
+                placeholder="Driver's full name"
               />
-              <Input
-                label="Email *"
+              {errors.fullName && (
+                <MonoText size={9} tracking={1} upper color={wp.color.red}>
+                  {errors.fullName}
+                </MonoText>
+              )}
+              <MonoInput
+                label="Email · required"
                 value={email}
                 onChangeText={setEmail}
                 placeholder="driver@example.com"
                 keyboardType="email-address"
                 autoCapitalize="none"
-                error={errors.email}
               />
-              <Input
-                label="Phone"
+              {errors.email && (
+                <MonoText size={9} tracking={1} upper color={wp.color.red}>
+                  {errors.email}
+                </MonoText>
+              )}
+              <MonoInput
+                label="Phone · optional"
                 value={phone}
                 onChangeText={setPhone}
-                placeholder="Phone number (optional)"
+                placeholder="Phone number"
                 keyboardType="phone-pad"
               />
-              <Input
-                label="License Number"
+              <MonoInput
+                label="License · optional"
                 value={licenseNumber}
                 onChangeText={setLicenseNumber}
-                placeholder="Driver's license (optional)"
+                placeholder="License number"
               />
-              <Input
-                label="Notes"
+              <MonoInput
+                label="Notes · optional"
                 value={notes}
                 onChangeText={setNotes}
-                placeholder="Additional notes (optional)"
-                multiline
-                numberOfLines={3}
+                placeholder="Anything else"
               />
             </View>
-          </Card>
-
-          <View style={styles.submitRow}>
-            <Button
-              title="Cancel"
-              variant="outline"
-              onPress={() => router.back()}
-              style={{ flex: 1 }}
-            />
-            <Button
-              title="Send Invitation"
-              onPress={handleCreate}
-              loading={createMutation.isPending}
-              style={{ flex: 1 }}
-            />
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+          </ScrollView>
+        </KeyboardAvoidingView>
+        <PrimaryBar
+          label="Send invitation"
+          onPress={handleCreate}
+          loading={createMutation.isPending}
+          disabled={!canSubmit}
+        />
+      </SafeAreaView>
+    </PaperBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
-  content: {
-    padding: spacing.lg,
-    gap: spacing.lg,
-    paddingBottom: spacing['5xl'],
+  safe: { flex: 1 },
+  flex: { flex: 1 },
+  scroll: { paddingBottom: 160 },
+  body: {
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: wp.space.block,
   },
-  sectionTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[900],
-    marginBottom: spacing.xs,
-  },
-  sectionSubtitle: {
-    fontSize: fontSize.sm,
-    color: colors.gray[500],
-    marginBottom: spacing.lg,
-  },
-  form: {
-    gap: spacing.md,
-  },
-  submitRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  emptyState: {
+  denied: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: spacing['3xl'],
-    gap: spacing.md,
-  },
-  emptyTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[700],
-  },
-  emptySubtitle: {
-    fontSize: fontSize.sm,
-    color: colors.gray[500],
-    textAlign: 'center',
+    padding: wp.space.section,
   },
 });

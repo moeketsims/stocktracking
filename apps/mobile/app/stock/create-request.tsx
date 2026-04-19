@@ -5,22 +5,31 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
+  TextInput,
   Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { useCreateStockRequest } from '../../src/hooks/useStock';
-import { Card } from '../../src/components/ui/Card';
-import { Button } from '../../src/components/ui/Button';
-import { Input } from '../../src/components/ui/Input';
-import { brand, colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
+import {
+  PaperBackground,
+  Masthead,
+  IntentStrip,
+  DFieldBox,
+  PrimaryBar,
+  MonoText,
+  KickerLabel,
+  QuantityField,
+} from '../../src/components/wp';
+import { wp, fmtKickerDate } from '../../src/constants/warehousePaper';
 
 type Urgency = 'normal' | 'urgent';
 
-export default function CreateRequestScreen() {
+const QUICK_AMOUNTS = [5, 10, 20, 50];
+
+export default function PlaceOrderScreen() {
   const router = useRouter();
   const mutation = useCreateStockRequest();
 
@@ -28,30 +37,26 @@ export default function CreateRequestScreen() {
   const [urgency, setUrgency] = useState<Urgency>('normal');
   const [notes, setNotes] = useState('');
 
-  const isValid = Number(quantityBags) > 0;
+  const qty = Number(quantityBags);
+  const isValid = qty > 0;
 
   const handleSubmit = () => {
     if (!isValid) return;
-
-    const qty = Number(quantityBags);
     const confirmMsg = `Request ${qty} bag${qty > 1 ? 's' : ''} (${urgency})?\n\nThis will notify available drivers.`;
-
     Alert.alert('Confirm Request', confirmMsg, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Create Request',
         onPress: () => {
           mutation.mutate(
-            {
-              quantity_bags: qty,
-              urgency,
-              notes: notes.trim() || undefined,
-            },
+            { quantity_bags: qty, urgency, notes: notes.trim() || undefined },
             {
               onSuccess: (data) => {
-                Alert.alert('Request Created', data.message ?? 'Your stock request has been submitted.', [
-                  { text: 'OK', onPress: () => router.back() },
-                ]);
+                Alert.alert(
+                  'Request Created',
+                  data.message ?? 'Your stock request has been submitted.',
+                  [{ text: 'OK', onPress: () => router.back() }],
+                );
               },
             },
           );
@@ -61,176 +66,254 @@ export default function CreateRequestScreen() {
   };
 
   return (
-    <>
-      <Stack.Screen
-        options={{
-          title: 'Create Stock Request',
-          headerStyle: { backgroundColor: brand.gradientStart },
-          headerTintColor: '#fff',
-        }}
-      />
-      <SafeAreaView style={styles.container} edges={['bottom']}>
+    <PaperBackground>
+      <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.flex}
         >
+          <Masthead
+            kicker={`NEW ORDER — ${fmtKickerDate()}`}
+            title="Place an order"
+            backUseRouter
+          />
           <ScrollView contentContainerStyle={styles.content}>
-            {/* Info banner */}
-            <Card style={styles.infoBanner}>
-              <View style={styles.infoRow}>
-                <Ionicons name="information-circle" size={20} color={colors.info} />
-                <Text style={styles.infoText}>
-                  Create a replenishment request. Drivers will be notified and can accept the delivery.
-                </Text>
-              </View>
-            </Card>
+            <IntentStrip>
+              Create a replenishment request. Drivers are notified and can accept the delivery.
+            </IntentStrip>
 
             {/* Quantity */}
-            <Card>
-              <Text style={styles.sectionTitle}>Quantity</Text>
-              <Input
-                label="Number of bags"
-                placeholder="e.g. 10"
-                keyboardType="number-pad"
+            <DFieldBox label="Quantity · bags">
+              <QuantityField
                 value={quantityBags}
                 onChangeText={setQuantityBags}
-                error={quantityBags !== '' && Number(quantityBags) <= 0 ? 'Must be greater than 0' : undefined}
+                trailing={
+                  <View style={styles.chipRow}>
+                    {QUICK_AMOUNTS.map((n) => (
+                      <TouchableOpacity
+                        key={n}
+                        onPress={() => setQuantityBags(String(n))}
+                        activeOpacity={0.6}
+                        style={[
+                          styles.chip,
+                          qty === n && styles.chipSelected,
+                        ]}
+                      >
+                        <MonoText
+                          size={11}
+                          weight={600}
+                          tracking={1}
+                          color={qty === n ? wp.color.paper : wp.color.ink}
+                        >
+                          {n}
+                        </MonoText>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                }
               />
-              {Number(quantityBags) > 0 && (
-                <Text style={styles.kgHint}>
-                  = {Number(quantityBags) * 10} kg
-                </Text>
-              )}
-            </Card>
+
+              <View style={styles.qtyUnderline} />
+
+              <KickerLabel size={9} tracking={1.5} color={wp.color.ink3} style={{ marginTop: 6 }}>
+                Tap to type · or pick a stamp
+              </KickerLabel>
+            </DFieldBox>
 
             {/* Urgency */}
-            <Card>
-              <Text style={styles.sectionTitle}>Urgency</Text>
+            <DFieldBox label="Urgency">
               <View style={styles.urgencyRow}>
-                <TouchableOpacity
-                  style={[
-                    styles.urgencyOption,
-                    urgency === 'normal' && styles.urgencySelected,
-                  ]}
+                <UrgencyTile
+                  title="Normal"
+                  subtitle="Standard queue"
+                  selected={urgency === 'normal'}
                   onPress={() => setUrgency('normal')}
-                >
-                  <Ionicons
-                    name="time-outline"
-                    size={20}
-                    color={urgency === 'normal' ? '#fff' : '#94a3b8'}
-                  />
-                  <Text
-                    style={[
-                      styles.urgencyLabel,
-                      urgency === 'normal' && styles.urgencyLabelSelected,
-                    ]}
-                  >
-                    Normal
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.urgencyOption,
-                    urgency === 'urgent' && styles.urgencyUrgentSelected,
-                  ]}
+                />
+                <UrgencyTile
+                  title="Urgent"
+                  titleColor={wp.color.red}
+                  subtitle="Push to front"
+                  selected={urgency === 'urgent'}
                   onPress={() => setUrgency('urgent')}
-                >
-                  <Ionicons
-                    name="flash"
-                    size={20}
-                    color={urgency === 'urgent' ? '#fff' : '#94a3b8'}
-                  />
-                  <Text
-                    style={[
-                      styles.urgencyLabel,
-                      urgency === 'urgent' && styles.urgencyUrgentLabel,
-                    ]}
-                  >
-                    Urgent
-                  </Text>
-                </TouchableOpacity>
+                />
               </View>
-            </Card>
+            </DFieldBox>
 
             {/* Notes */}
-            <Card>
-              <Input
-                label="Notes (optional)"
-                placeholder="Any additional details..."
-                value={notes}
-                onChangeText={setNotes}
-                multiline
-                numberOfLines={3}
-                style={styles.textArea}
-              />
-            </Card>
+            <DFieldBox label="Notes · optional" noDivider>
+              <View style={styles.notesBox}>
+                <TextInput
+                  placeholder="Any additional details…"
+                  placeholderTextColor={wp.color.ink3}
+                  value={notes}
+                  onChangeText={setNotes}
+                  multiline
+                  style={styles.notesInput}
+                />
+              </View>
+            </DFieldBox>
           </ScrollView>
-
-          {/* Submit button */}
-          <View style={styles.footer}>
-            <Button
-              title={mutation.isPending ? 'Creating...' : 'Create Request'}
-              onPress={handleSubmit}
-              loading={mutation.isPending}
-              disabled={!isValid || mutation.isPending}
-              style={styles.submitButton}
-            />
-          </View>
         </KeyboardAvoidingView>
+
+        <PrimaryBar
+          label="Create request"
+          onPress={handleSubmit}
+          disabled={!isValid}
+          loading={mutation.isPending}
+        />
       </SafeAreaView>
-    </>
+    </PaperBackground>
+  );
+}
+
+function UrgencyTile({
+  title,
+  subtitle,
+  titleColor = wp.color.ink,
+  selected,
+  onPress,
+}: {
+  title: string;
+  subtitle: string;
+  titleColor?: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  // Selected: ink fill + paper text + 2×2 shadow. Unselected: outlined.
+  return (
+    <View style={styles.tileWrap}>
+      {selected && (
+        <View pointerEvents="none" style={styles.tileShadow} />
+      )}
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={onPress}
+        style={[styles.tile, selected && styles.tileSelected]}
+      >
+        <Text
+          allowFontScaling={false}
+          style={[
+            styles.tileTitle,
+            { color: selected ? wp.color.paper : titleColor },
+          ]}
+        >
+          {title}
+        </Text>
+        <MonoText
+          size={9}
+          tracking={1.5}
+          upper
+          color={selected ? wp.color.paper : wp.color.ink3}
+          weight={500}
+          style={{ marginTop: 2 }}
+        >
+          {subtitle}
+        </MonoText>
+      </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc' },
+  safe: { flex: 1 },
   flex: { flex: 1 },
-  content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing['3xl'] },
-  infoBanner: { borderLeftWidth: 3, borderLeftColor: colors.info },
-  infoRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
-  infoText: { flex: 1, fontSize: fontSize.sm, color: colors.gray[600], lineHeight: 20 },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#0f172a',
-    letterSpacing: -0.2,
-    marginBottom: spacing.md,
+  content: {
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: 14,
+    paddingBottom: 200,
   },
-  kgHint: { fontSize: fontSize.xs, color: colors.gray[500], marginTop: spacing.xs },
-  urgencyRow: { flexDirection: 'row', gap: spacing.md },
-  urgencyOption: {
-    flex: 1,
+
+  // Quantity field
+  qtyRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    padding: spacing.md,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#fff',
+    justifyContent: 'space-between',
   },
-  urgencySelected: {
-    borderColor: '#0f172a',
-    backgroundColor: '#0f172a',
+  qtyValue: {
+    flexShrink: 1,
   },
-  urgencyUrgentSelected: {
-    borderColor: '#0f172a',
-    backgroundColor: '#0f172a',
+  qtyUnderline: {
+    height: 1.5,
+    backgroundColor: wp.color.lineD,
+    marginTop: 8,
   },
-  urgencyLabel: {
-    fontSize: fontSize.sm,
-    fontWeight: '600',
-    color: '#64748b',
+  chipRow: {
+    flexDirection: 'row',
+    gap: 8,
+    flexShrink: 0,
   },
-  urgencyLabelSelected: { color: '#fff' },
-  urgencyUrgentLabel: { color: '#fff' },
-  textArea: { minHeight: 80, textAlignVertical: 'top' },
-  footer: {
-    padding: spacing.lg,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.gray[200],
-    backgroundColor: colors.white,
+  chip: {
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: 'transparent',
+    minWidth: 36,
+    alignItems: 'center',
   },
-  submitButton: { backgroundColor: brand.accent },
+  chipSelected: {
+    backgroundColor: wp.color.ink,
+  },
+  hiddenInput: {
+    position: 'absolute',
+    opacity: 0,
+    width: 0,
+    height: 0,
+  },
+
+  // Urgency tiles
+  urgencyRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  tileWrap: {
+    flex: 1,
+    position: 'relative',
+  },
+  tileShadow: {
+    position: 'absolute',
+    top: 2,
+    left: 2,
+    right: -2,
+    bottom: -2,
+    backgroundColor: wp.color.lineD,
+  },
+  tile: {
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  tileSelected: {
+    borderWidth: 2,
+    backgroundColor: wp.color.ink,
+  },
+  tileTitle: {
+    fontFamily: wp.font.serifBold.fontFamily,
+    fontWeight: wp.font.serifBold.fontWeight,
+    fontStyle: 'italic',
+    fontSize: 22,
+    letterSpacing: -0.5,
+  },
+
+  // Notes
+  notesBox: {
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+    backgroundColor: wp.color.voucherBg,
+    padding: 12,
+    minHeight: 72,
+  },
+  notesInput: {
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'Georgia' }),
+    fontStyle: 'italic',
+    fontSize: 14,
+    color: wp.color.ink,
+    minHeight: 48,
+    textAlignVertical: 'top',
+    padding: 0,
+  },
 });

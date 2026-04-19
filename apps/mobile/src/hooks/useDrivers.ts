@@ -26,10 +26,12 @@ export function useCreateDriver() {
   return useMutation({
     mutationFn: (data: CreateDriverPayload) =>
       driversApi.create(data).then((r) => r.data),
-    onSuccess: (data) => {
+    onSuccess: () => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       qc.invalidateQueries({ queryKey: ['drivers'] });
-      Alert.alert('Success', data.message);
+      // Note: no Alert here. The caller (drivers/create.tsx) routes to
+      // the invite-success screen so the manager can read the short_code
+      // to the driver in person and share via WhatsApp / SMS.
     },
     onError: (error: any) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);

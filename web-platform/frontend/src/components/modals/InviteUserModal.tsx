@@ -4,6 +4,14 @@ import { Modal, Button, Input, Select } from '../ui';
 import { useCreateInvitation, useZones, useLocations } from '../../hooks/useData';
 import { useAuthStore } from '../../stores/authStore';
 import type { InviteUserForm, UserRole } from '../../types';
+import InviteCodeReveal from '../InviteCodeReveal';
+
+interface RevealedInvite {
+  code: string;
+  recipient: string;
+  role: string;
+  emailSent: boolean;
+}
 
 interface InviteUserModalProps {
   isOpen: boolean;
@@ -38,6 +46,7 @@ export default function InviteUserModal({
     full_name: '',
   });
   const [error, setError] = useState('');
+  const [revealed, setRevealed] = useState<RevealedInvite | null>(null);
 
   const createMutation = useCreateInvitation();
   const { data: zones } = useZones();
@@ -69,6 +78,7 @@ export default function InviteUserModal({
         full_name: '',
       });
       setError('');
+      setRevealed(null);
     }
   }, [isOpen, isZoneManager, isLocationManager, user?.zone_id, user?.location_id]);
 
@@ -109,19 +119,53 @@ export default function InviteUserModal({
     }
 
     try {
-      await createMutation.mutateAsync({
+      const result = await createMutation.mutateAsync({
         email: form.email,
         role: form.role,
         zone_id: form.zone_id || undefined,
         location_id: form.location_id || undefined,
         full_name: form.full_name || undefined,
       });
-      onSuccess();
-      onClose();
+      // Surface the in-person short code instead of closing immediately.
+      // Manager can copy / WhatsApp / share, then tap Done to dismiss.
+      const shortCode: string | undefined = result?.invitation?.short_code;
+      if (shortCode) {
+        setRevealed({
+          code: shortCode,
+          recipient: form.full_name?.trim() || form.email.trim(),
+          role: form.role,
+          emailSent: !!result?.email_sent,
+        });
+        // Refresh the invitations list now so it's already up-to-date
+        // by the time the manager taps Done.
+        onSuccess();
+      } else {
+        onSuccess();
+        onClose();
+      }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to create invitation');
     }
   };
+
+  const handleDoneAfterReveal = () => {
+    setRevealed(null);
+    onClose();
+  };
+
+  if (revealed) {
+    return (
+      <Modal isOpen={isOpen} onClose={handleDoneAfterReveal} title="Invitation sent">
+        <InviteCodeReveal
+          code={revealed.code}
+          recipient={revealed.recipient}
+          role={revealed.role}
+          emailSent={revealed.emailSent}
+          onDone={handleDoneAfterReveal}
+        />
+      </Modal>
+    );
+  }
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Invite New User">

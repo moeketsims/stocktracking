@@ -1,14 +1,70 @@
 import { useEffect, useRef } from 'react';
 import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { registerForPushNotifications, submitPushToken } from '../utils/notifications';
 import { useAuthStore } from '../stores/authStore';
+import { notificationsApi } from '../api/notifications';
+import { STALE_TIME } from '../constants/config';
+
+export function useNotificationFeed() {
+  return useQuery({
+    queryKey: ['notifications', 'feed'],
+    queryFn: () => notificationsApi.list().then((r) => r.data),
+    staleTime: STALE_TIME,
+  });
+}
+
+export function useUnreadNotificationCount() {
+  return useQuery({
+    queryKey: ['notifications', 'unread-count'],
+    queryFn: () => notificationsApi.unreadCount().then((r) => r.data.unread_count),
+    staleTime: STALE_TIME,
+  });
+}
+
+export function useMarkNotificationRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => notificationsApi.markRead(id).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['notifications'] });
+    },
+  });
+}
+
+export function useMarkAllNotificationsRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => notificationsApi.markAllRead().then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['notifications'] });
+    },
+  });
+}
+
+function cleanupSubscription(subscription?: Notifications.EventSubscription) {
+  if (!subscription) return;
+
+  if (typeof subscription.remove === 'function') {
+    subscription.remove();
+    return;
+  }
+
+  const legacyRemove = (Notifications as typeof Notifications & {
+    removeNotificationSubscription?: (sub: Notifications.EventSubscription) => void;
+  }).removeNotificationSubscription;
+
+  if (typeof legacyRemove === 'function') {
+    legacyRemove(subscription);
+  }
+}
 
 export function useNotifications() {
   const router = useRouter();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const notificationListener = useRef<Notifications.EventSubscription>();
-  const responseListener = useRef<Notifications.EventSubscription>();
+  const notificationListener = useRef<Notifications.EventSubscription | undefined>(undefined);
+  const responseListener = useRef<Notifications.EventSubscription | undefined>(undefined);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -41,12 +97,8 @@ export function useNotifications() {
     );
 
     return () => {
-      if (notificationListener.current) {
-        Notifications.removeNotificationSubscription(notificationListener.current);
-      }
-      if (responseListener.current) {
-        Notifications.removeNotificationSubscription(responseListener.current);
-      }
+      cleanupSubscription(notificationListener.current);
+      cleanupSubscription(responseListener.current);
     };
   }, [isAuthenticated, router]);
 }

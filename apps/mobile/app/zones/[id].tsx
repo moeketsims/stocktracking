@@ -4,17 +4,24 @@ import {
   Text,
   ScrollView,
   RefreshControl,
-  TouchableOpacity,
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { useZones, useLocationsByZone } from '../../src/hooks/useLocations';
-import { Card } from '../../src/components/ui/Card';
-import { Badge } from '../../src/components/ui/Badge';
 import { Loading } from '../../src/components/ui/Loading';
-import { colors, spacing, fontSize, fontWeight } from '../../src/constants/theme';
+import {
+  PaperBackground,
+  Masthead,
+  KickerLabel,
+  MonoText,
+  SerifNumber,
+  Stamp,
+  HardShadowFrame,
+  LedgerRow,
+  SummaryBand,
+} from '../../src/components/wp';
+import { wp } from '../../src/constants/warehousePaper';
 
 export default function ZoneDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -23,28 +30,40 @@ export default function ZoneDetailScreen() {
   const locationsByZone = useLocationsByZone(id);
 
   const zone = zones.data?.zones?.find((z) => z.id === id);
-  const locationsList = locationsByZone.data?.locations ?? [];
-  const shops = locationsList.filter((l) => l.type === 'shop');
-  const warehouses = locationsList.filter((l) => l.type === 'warehouse');
+  const list = locationsByZone.data?.locations ?? [];
+  const shops = list.filter((l) => l.type === 'shop');
+  const warehouses = list.filter((l) => l.type === 'warehouse');
 
   if (zones.isLoading || locationsByZone.isLoading) {
-    return <Loading fullScreen message="Loading zone..." />;
+    return (
+      <PaperBackground>
+        <Stack.Screen options={{ headerShown: false }} />
+        <Loading fullScreen message="" />
+      </PaperBackground>
+    );
   }
 
   if (!zone) {
     return (
-      <SafeAreaView style={styles.container}>
-        <Text style={styles.errorText}>Zone not found.</Text>
-      </SafeAreaView>
+      <PaperBackground>
+        <Stack.Screen options={{ headerShown: false }} />
+        <SafeAreaView style={styles.safe}>
+          <Masthead kicker="ZONE" title="Not found" backUseRouter />
+        </SafeAreaView>
+      </PaperBackground>
     );
   }
 
+  const recordNumber = (zone.id ?? '').slice(-4).toUpperCase();
+  let rowIdx = 0;
+
   return (
-    <>
-      <Stack.Screen options={{ title: zone.name }} />
-      <SafeAreaView style={styles.container} edges={['bottom']}>
+    <PaperBackground>
+      <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
         <ScrollView
-          contentContainerStyle={styles.content}
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
               refreshing={locationsByZone.isRefetching}
@@ -52,207 +71,143 @@ export default function ZoneDetailScreen() {
                 zones.refetch();
                 locationsByZone.refetch();
               }}
+              tintColor={wp.color.ink2}
             />
           }
         >
-          {/* Zone summary */}
-          <Card>
-            <View style={styles.summaryRow}>
-              <View style={styles.zoneIcon}>
-                <Ionicons name="map" size={28} color={colors.primary[500]} />
-              </View>
-              <View style={styles.summaryInfo}>
-                <Text style={styles.zoneName}>{zone.name}</Text>
-                <Text style={styles.zoneSubtitle}>
-                  {locationsList.length} location{locationsList.length !== 1 ? 's' : ''}
-                </Text>
-              </View>
-            </View>
+          <Masthead
+            kicker={`ZONE · ${recordNumber}`}
+            title={zone.name}
+            backUseRouter
+          />
 
-            <View style={styles.statsRow}>
-              <View style={styles.statBox}>
-                <Text style={styles.statValue}>{shops.length}</Text>
-                <Text style={styles.statLabel}>Shops</Text>
+          <View style={styles.heroWrap}>
+            <HardShadowFrame>
+              <View style={styles.hero}>
+                <View style={styles.heroTop}>
+                  <KickerLabel size={10} tracking={2} color={wp.color.ink3}>
+                    RECORD N° {recordNumber}
+                  </KickerLabel>
+                  <Stamp colorHex={list.length === 0 ? wp.color.ink3 : wp.color.ink} rotate={-3}>
+                    {list.length === 0 ? 'EMPTY' : `${list.length} SITES`}
+                  </Stamp>
+                </View>
+                <SerifNumber size={28} tracking={-1.2} leading={1.05} style={styles.heroName}>
+                  {zone.name}
+                </SerifNumber>
               </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statBox}>
-                <Text style={styles.statValue}>{warehouses.length}</Text>
-                <Text style={styles.statLabel}>Warehouses</Text>
-              </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statBox}>
-                <Text style={styles.statValue}>{locationsList.length}</Text>
-                <Text style={styles.statLabel}>Total</Text>
-              </View>
-            </View>
-          </Card>
+            </HardShadowFrame>
+          </View>
 
-          {/* Warehouses */}
+          <SummaryBand
+            items={[
+              { label: 'Total', value: list.length },
+              { label: 'Shops', value: shops.length, color: '#1F3A8A' },
+              { label: 'Warehouse', value: warehouses.length, color: wp.color.amber },
+            ]}
+          />
+
           {warehouses.length > 0 && (
-            <View>
-              <Text style={styles.sectionHeader}>Warehouses</Text>
-              <Card padded={false}>
-                {warehouses.map((loc, idx) => (
-                  <TouchableOpacity
+            <>
+              <View style={styles.sectionHead}>
+                <KickerLabel size={10} tracking={2} color={wp.color.ink}>
+                  Warehouses
+                </KickerLabel>
+              </View>
+              {warehouses.map((loc) => {
+                const i = rowIdx++;
+                return (
+                  <LedgerRow
                     key={loc.id}
-                    style={[
-                      styles.locationRow,
-                      idx === warehouses.length - 1 && styles.lastRow,
-                    ]}
+                    idx={i + 1}
+                    primary={loc.name}
+                    secondary={(loc.address ?? '').toUpperCase() || undefined}
+                    trailing={
+                      <Stamp colorHex={wp.color.amber} rowIndex={i}>
+                        WHSE
+                      </Stamp>
+                    }
                     onPress={() => router.push(`/locations/${loc.id}`)}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="business" size={20} color="#d97706" />
-                    <View style={styles.locationInfo}>
-                      <Text style={styles.locationName}>{loc.name}</Text>
-                      {loc.address ? (
-                        <Text style={styles.locationAddress} numberOfLines={1}>
-                          {loc.address}
-                        </Text>
-                      ) : null}
-                    </View>
-                    <Badge label="Warehouse" variant="warning" />
-                    <Ionicons
-                      name="chevron-forward"
-                      size={18}
-                      color={colors.gray[400]}
-                    />
-                  </TouchableOpacity>
-                ))}
-              </Card>
-            </View>
+                  />
+                );
+              })}
+            </>
           )}
 
-          {/* Shops */}
           {shops.length > 0 && (
-            <View>
-              <Text style={styles.sectionHeader}>Shops</Text>
-              <Card padded={false}>
-                {shops.map((loc, idx) => (
-                  <TouchableOpacity
+            <>
+              <View style={[styles.sectionHead, styles.sectionHeadRule]}>
+                <KickerLabel size={10} tracking={2} color={wp.color.ink}>
+                  Shops
+                </KickerLabel>
+              </View>
+              {shops.map((loc) => {
+                const i = rowIdx++;
+                return (
+                  <LedgerRow
                     key={loc.id}
-                    style={[
-                      styles.locationRow,
-                      idx === shops.length - 1 && styles.lastRow,
-                    ]}
+                    idx={i + 1}
+                    primary={loc.name}
+                    secondary={(loc.address ?? '').toUpperCase() || undefined}
+                    trailing={
+                      <Stamp colorHex="#1F3A8A" rowIndex={i}>
+                        SHOP
+                      </Stamp>
+                    }
                     onPress={() => router.push(`/locations/${loc.id}`)}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="storefront" size={20} color={colors.info} />
-                    <View style={styles.locationInfo}>
-                      <Text style={styles.locationName}>{loc.name}</Text>
-                      {loc.address ? (
-                        <Text style={styles.locationAddress} numberOfLines={1}>
-                          {loc.address}
-                        </Text>
-                      ) : null}
-                    </View>
-                    <Badge label="Shop" variant="info" />
-                    <Ionicons
-                      name="chevron-forward"
-                      size={18}
-                      color={colors.gray[400]}
-                    />
-                  </TouchableOpacity>
-                ))}
-              </Card>
-            </View>
+                  />
+                );
+              })}
+            </>
           )}
 
-          {locationsList.length === 0 && (
-            <Card>
-              <Text style={styles.emptyText}>
-                No locations assigned to this zone yet.
-              </Text>
-            </Card>
+          {list.length === 0 && (
+            <View style={styles.empty}>
+              <MonoText size={11} tracking={1} upper color={wp.color.ink3}>
+                No locations assigned yet
+              </MonoText>
+            </View>
           )}
         </ScrollView>
       </SafeAreaView>
-    </>
+    </PaperBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
-  content: { padding: spacing.lg, gap: spacing.lg },
-  errorText: {
-    fontSize: fontSize.md,
-    color: colors.error,
-    textAlign: 'center',
-    marginTop: spacing['3xl'],
+  safe: { flex: 1 },
+  scroll: { paddingBottom: 40 },
+  heroWrap: {
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: wp.space.block,
+    paddingBottom: 16,
   },
-  summaryRow: {
+  hero: {
+    borderWidth: wp.border.mid,
+    borderColor: wp.color.lineD,
+    backgroundColor: wp.color.voucherBg,
+    padding: 16,
+  },
+  heroTop: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: spacing.lg,
-    marginBottom: spacing.lg,
   },
-  zoneIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: colors.primary[50],
+  heroName: { marginTop: 12 },
+  sectionHead: {
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: 18,
+    paddingBottom: 8,
+  },
+  sectionHeadRule: {
+    marginTop: 10,
+    paddingTop: 14,
+    borderTopWidth: wp.border.mid,
+    borderTopColor: wp.color.lineD,
+  },
+  empty: {
+    paddingHorizontal: wp.space.screenH,
+    paddingVertical: 40,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
-  summaryInfo: { flex: 1 },
-  zoneName: {
-    fontSize: fontSize.xl,
-    fontWeight: fontWeight.bold,
-    color: colors.gray[900],
-  },
-  zoneSubtitle: { fontSize: fontSize.sm, color: colors.gray[500] },
-  statsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.gray[50],
-    borderRadius: 8,
-    paddingVertical: spacing.md,
-  },
-  statBox: { flex: 1, alignItems: 'center' },
-  statValue: {
-    fontSize: fontSize['2xl'],
-    fontWeight: fontWeight.bold,
-    color: colors.gray[900],
-  },
-  statLabel: { fontSize: fontSize.xs, color: colors.gray[500], marginTop: 2 },
-  statDivider: {
-    width: 1,
-    height: 32,
-    backgroundColor: colors.gray[200],
-  },
-  sectionHeader: {
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[500],
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: spacing.sm,
-  },
-  locationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.lg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.gray[100],
-    gap: spacing.md,
-  },
-  lastRow: { borderBottomWidth: 0 },
-  locationInfo: { flex: 1 },
-  locationName: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.medium,
-    color: colors.gray[900],
-  },
-  locationAddress: {
-    fontSize: fontSize.xs,
-    color: colors.gray[500],
-    marginTop: 2,
-  },
-  emptyText: {
-    fontSize: fontSize.sm,
-    color: colors.gray[500],
-    textAlign: 'center',
   },
 });

@@ -1,32 +1,36 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { api } from '../../src/api/client';
 import { referenceApi } from '../../src/api/reference';
 import { useAuthStore } from '../../src/stores/authStore';
-import { Card } from '../../src/components/ui/Card';
-import { Button } from '../../src/components/ui/Button';
-import { Input } from '../../src/components/ui/Input';
-import { Loading } from '../../src/components/ui/Loading';
-import { brand, colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
+import {
+  PaperBackground,
+  Masthead,
+  IntentStrip,
+  MonoInput,
+  MonoText,
+  PrimaryBar,
+} from '../../src/components/wp';
+import { wp, fmtKickerDate } from '../../src/constants/warehousePaper';
 import type { UserRole } from '../../src/types';
 
 const ROLES: { label: string; value: UserRole }[] = [
   { label: 'Admin', value: 'admin' },
-  { label: 'Zone Manager', value: 'zone_manager' },
-  { label: 'Location Manager', value: 'location_manager' },
-  { label: 'Vehicle Manager', value: 'vehicle_manager' },
+  { label: 'Zone mgr', value: 'zone_manager' },
+  { label: 'Loc mgr', value: 'location_manager' },
+  { label: 'Veh mgr', value: 'vehicle_manager' },
   { label: 'Driver', value: 'driver' },
   { label: 'Staff', value: 'staff' },
 ];
@@ -47,43 +51,69 @@ export default function CreateUserScreen() {
   });
 
   const invite = useMutation({
-    mutationFn: (data: { email: string; role: string; full_name?: string; location_id?: string }) =>
-      api.post('/api/invitations', data).then((r) => r.data),
-    onSuccess: () => {
+    mutationFn: (data: {
+      email: string;
+      role: string;
+      full_name?: string;
+      location_id?: string;
+    }) =>
+      api
+        .post<{
+          success: boolean;
+          message: string;
+          email_sent: boolean;
+          invitation: {
+            id: string;
+            email: string;
+            role: string;
+            short_code: string;
+            expires_at: string;
+            token: string;
+          };
+        }>('/api/invitations', data)
+        .then((r) => r.data),
+    onSuccess: (data) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       qc.invalidateQueries({ queryKey: ['users'] });
-      Alert.alert('Invitation Sent', `An invitation email has been sent to ${email}.`, [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
+      router.replace({
+        pathname: '/invite-success',
+        params: {
+          code: data.invitation.short_code,
+          recipient: fullName.trim() || email.trim(),
+          role: selectedRole,
+          emailSent: data.email_sent ? '1' : '0',
+        },
+      });
     },
-    onError: (error: any) => {
+    onError: (err: any) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert('Error', error.response?.data?.detail ?? 'Failed to send invitation');
+      Alert.alert('Error', err.response?.data?.detail ?? 'Failed to send invitation');
     },
   });
 
   if (!hasRole('admin' as UserRole)) {
     return (
-      <SafeAreaView style={styles.container}>
-        <Stack.Screen options={{ title: 'Invite User' }} />
-        <View style={styles.centered}>
-          <Ionicons name="lock-closed" size={48} color={colors.gray[300]} />
-          <Text style={styles.emptyTitle}>Access Denied</Text>
-        </View>
-      </SafeAreaView>
+      <PaperBackground>
+        <Stack.Screen options={{ headerShown: false }} />
+        <SafeAreaView style={styles.safe}>
+          <Masthead kicker="ACCESS" title="Denied" backUseRouter />
+          <View style={styles.denied}>
+            <MonoText size={11} tracking={1.5} upper color={wp.color.ink3}>
+              Admin access required
+            </MonoText>
+          </View>
+        </SafeAreaView>
+      </PaperBackground>
     );
   }
 
-  const handleSubmit = () => {
-    if (!email.trim()) {
-      Alert.alert('Validation', 'Email is required');
-      return;
-    }
-    if (!email.includes('@')) {
-      Alert.alert('Validation', 'Please enter a valid email address');
-      return;
-    }
+  const canSubmit = email.trim().length > 0 && email.includes('@');
 
+  const handleSubmit = () => {
+    if (!canSubmit) {
+      Alert.alert('Invalid', 'Please enter a valid email address');
+      return;
+    }
     invite.mutate({
       email: email.trim(),
       role: selectedRole,
@@ -92,203 +122,173 @@ export default function CreateUserScreen() {
     });
   };
 
-  const locationList = locations.data ?? [];
-
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <Stack.Screen
-        options={{
-          title: 'Invite User',
-          headerStyle: { backgroundColor: brand.gradientStart },
-          headerTintColor: colors.white,
-          headerTitleStyle: { fontWeight: fontWeight.semibold },
-        }}
-      />
-
-      <ScrollView contentContainerStyle={styles.content}>
-        <Card>
-          <Text style={styles.sectionTitle}>New User Invitation</Text>
-          <Text style={styles.description}>
-            Send an invitation email. The user will set their own password when they accept.
-          </Text>
-
-          <Input
-            label="Email *"
-            value={email}
-            onChangeText={setEmail}
-            placeholder="user@example.com"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            containerStyle={styles.field}
-          />
-
-          <Input
-            label="Full Name"
-            value={fullName}
-            onChangeText={setFullName}
-            placeholder="Enter full name (optional)"
-            containerStyle={styles.field}
-          />
-
-          {/* Role selector */}
-          <Text style={styles.fieldLabel}>Role *</Text>
+    <PaperBackground>
+      <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
           <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chipRow}
+            contentContainerStyle={styles.scroll}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
           >
-            {ROLES.map((r) => {
-              const active = selectedRole === r.value;
-              return (
-                <TouchableOpacity
-                  key={r.value}
-                  style={[styles.chip, active && styles.chipActive]}
-                  onPress={() => setSelectedRole(r.value)}
-                >
-                  <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                    {r.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+            <Masthead
+              kicker={`NEW USER — ${fmtKickerDate()}`}
+              title="Invite user"
+              backUseRouter
+            />
+            <View style={styles.body}>
+              <IntentStrip>
+                Send an invitation email. The recipient sets their own password when they accept.
+              </IntentStrip>
 
-          {/* Location selector */}
-          <Text style={[styles.fieldLabel, { marginTop: spacing.lg }]}>Location</Text>
-          <ScrollView
-            horizontal={false}
-            style={styles.locationList}
-            nestedScrollEnabled
-          >
-            <TouchableOpacity
-              style={[
-                styles.locationItem,
-                selectedLocationId === null && styles.locationItemActive,
-              ]}
-              onPress={() => setSelectedLocationId(null)}
-            >
-              <Text
-                style={[
-                  styles.locationItemText,
-                  selectedLocationId === null && styles.locationItemTextActive,
-                ]}
-              >
-                None (assign later)
-              </Text>
-            </TouchableOpacity>
-            {locationList.map((loc) => {
-              const active = selectedLocationId === loc.id;
-              return (
-                <TouchableOpacity
-                  key={loc.id}
-                  style={[styles.locationItem, active && styles.locationItemActive]}
-                  onPress={() => setSelectedLocationId(loc.id)}
-                >
-                  <Text
-                    style={[
-                      styles.locationItemText,
-                      active && styles.locationItemTextActive,
-                    ]}
-                  >
-                    {loc.name}
-                  </Text>
-                  {loc.zone_name && (
-                    <Text style={styles.locationZone}>{loc.zone_name}</Text>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </Card>
+              <MonoInput
+                label="Email · required"
+                value={email}
+                onChangeText={setEmail}
+                placeholder="user@example.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+              <MonoInput
+                label="Full name · optional"
+                value={fullName}
+                onChangeText={setFullName}
+                placeholder="Person's full name"
+              />
 
-        <Button
-          title="Send Invitation"
+              <View style={styles.subSection}>
+                <MonoText size={11} tracking={1} upper weight={600} color={wp.color.ink}>
+                  Role · required
+                </MonoText>
+                <View style={styles.chipWrap}>
+                  {ROLES.map((r) => {
+                    const active = selectedRole === r.value;
+                    return (
+                      <TouchableOpacity
+                        key={r.value}
+                        activeOpacity={0.7}
+                        onPress={() => setSelectedRole(r.value)}
+                        style={[styles.chip, active && styles.chipActive]}
+                      >
+                        <MonoText
+                          size={10}
+                          tracking={1.2}
+                          upper
+                          weight={active ? 700 : 500}
+                          color={active ? wp.color.paper : wp.color.ink}
+                        >
+                          {r.label}
+                        </MonoText>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View style={styles.subSection}>
+                <MonoText size={11} tracking={1} upper weight={600} color={wp.color.ink}>
+                  Location · optional
+                </MonoText>
+                <View style={styles.locList}>
+                  <LocOption
+                    label="Unassigned"
+                    active={selectedLocationId === null}
+                    onPress={() => setSelectedLocationId(null)}
+                  />
+                  {(locations.data ?? []).map((loc: any) => (
+                    <LocOption
+                      key={loc.id}
+                      label={loc.name + (loc.zone_name ? ` · ${loc.zone_name}` : '')}
+                      active={selectedLocationId === loc.id}
+                      onPress={() => setSelectedLocationId(loc.id)}
+                    />
+                  ))}
+                </View>
+              </View>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+        <PrimaryBar
+          label="Send invitation"
           onPress={handleSubmit}
           loading={invite.isPending}
-          icon={<Ionicons name="mail" size={18} color={colors.white} />}
+          disabled={!canSubmit}
         />
-      </ScrollView>
-    </SafeAreaView>
+      </SafeAreaView>
+    </PaperBackground>
+  );
+}
+
+function LocOption({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  return (
+    <TouchableOpacity
+      activeOpacity={0.7}
+      onPress={onPress}
+      style={[styles.locItem, active && styles.locItemActive]}
+    >
+      <MonoText
+        size={11}
+        tracking={1}
+        upper
+        weight={active ? 700 : 500}
+        color={active ? wp.color.paper : wp.color.ink}
+      >
+        {active ? '■ ' : '□ '}
+        {label}
+      </MonoText>
+    </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
-  content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing['5xl'] },
-  centered: {
+  safe: { flex: 1 },
+  flex: { flex: 1 },
+  scroll: { paddingBottom: 160 },
+  body: {
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: wp.space.block,
+  },
+  subSection: {
+    paddingTop: 16,
+    gap: 10,
+  },
+  chipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  chip: {
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  chipActive: {
+    backgroundColor: wp.color.ink,
+  },
+  locList: {
+    borderWidth: 1,
+    borderColor: wp.color.lineD,
+    maxHeight: 240,
+  },
+  locItem: {
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: wp.color.line,
+    borderStyle: 'dashed',
+  },
+  locItemActive: {
+    backgroundColor: wp.color.ink,
+  },
+  denied: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.md,
-  },
-  sectionTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[900],
-    marginBottom: spacing.xs,
-  },
-  description: {
-    fontSize: fontSize.sm,
-    color: colors.gray[500],
-    marginBottom: spacing.lg,
-  },
-  field: { marginBottom: spacing.md },
-  fieldLabel: {
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.medium,
-    color: colors.gray[700],
-    marginBottom: spacing.xs,
-  },
-  chipRow: { gap: spacing.sm },
-  chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.gray[200],
-  },
-  chipActive: {
-    backgroundColor: colors.primary[500],
-    borderColor: colors.primary[500],
-  },
-  chipText: {
-    fontSize: fontSize.sm,
-    color: colors.gray[600],
-    fontWeight: fontWeight.medium,
-  },
-  chipTextActive: { color: colors.white },
-  locationList: {
-    maxHeight: 200,
-    borderWidth: 1,
-    borderColor: colors.gray[200],
-    borderRadius: borderRadius.md,
-  },
-  locationItem: {
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.gray[100],
-  },
-  locationItemActive: {
-    backgroundColor: colors.primary[50],
-  },
-  locationItemText: {
-    fontSize: fontSize.sm,
-    color: colors.gray[700],
-  },
-  locationItemTextActive: {
-    color: colors.primary[700],
-    fontWeight: fontWeight.semibold,
-  },
-  locationZone: {
-    fontSize: fontSize.xs,
-    color: colors.gray[400],
-    marginTop: 1,
-  },
-  emptyTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[700],
+    padding: wp.space.section,
   },
 });

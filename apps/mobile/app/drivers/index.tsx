@@ -4,283 +4,224 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   RefreshControl,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { useDrivers } from '../../src/hooks/useDrivers';
 import { useAuthStore } from '../../src/stores/authStore';
-import { Card } from '../../src/components/ui/Card';
-import { Input } from '../../src/components/ui/Input';
-import { Badge } from '../../src/components/ui/Badge';
 import { Loading } from '../../src/components/ui/Loading';
-import { brand, colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
+import {
+  PaperBackground,
+  Masthead,
+  TabStrip,
+  LedgerRow,
+  Stamp,
+  MonoText,
+  InkButton,
+} from '../../src/components/wp';
+import { wp, fmtKickerDate } from '../../src/constants/warehousePaper';
 import type { UserRole, InvitationStatus } from '../../src/types';
 
-const STATUS_BADGE: Record<InvitationStatus, { label: string; variant: 'success' | 'warning' | 'error' | 'neutral' }> = {
-  active: { label: 'Active', variant: 'success' },
-  pending: { label: 'Pending', variant: 'warning' },
-  expired: { label: 'Expired', variant: 'error' },
-  no_invitation: { label: 'No Invite', variant: 'neutral' },
+type Filter = 'all' | 'active' | 'pending' | 'expired';
+
+const STAMP: Record<InvitationStatus, { label: string; color: string }> = {
+  active: { label: 'ACTIVE', color: wp.color.green },
+  pending: { label: 'PENDING', color: wp.color.amber },
+  expired: { label: 'EXPIRED', color: wp.color.red },
+  no_invitation: { label: 'NO INVITE', color: wp.color.ink3 },
 };
 
 export default function DriversListScreen() {
   const router = useRouter();
   const hasRole = useAuthStore((s) => s.hasRole);
   const [search, setSearch] = useState('');
-  const [showInactive, setShowInactive] = useState(false);
+  const [filter, setFilter] = useState<Filter>('all');
 
-  const { data, isLoading, isRefetching, refetch } = useDrivers(!showInactive);
+  const canManage = hasRole(
+    'admin' as UserRole,
+    'zone_manager' as UserRole,
+    'location_manager' as UserRole,
+  );
 
-  const canManage = hasRole('admin' as UserRole, 'zone_manager' as UserRole, 'location_manager' as UserRole);
+  const { data, isLoading, isRefetching, refetch } = useDrivers(false);
+  const drivers = data?.drivers ?? [];
+
+  const counts = useMemo(() => {
+    let active = 0, pending = 0, expired = 0;
+    for (const d of drivers) {
+      if (d.invitation_status === 'active') active++;
+      else if (d.invitation_status === 'pending') pending++;
+      else if (d.invitation_status === 'expired') expired++;
+    }
+    return { all: drivers.length, active, pending, expired };
+  }, [drivers]);
 
   const filtered = useMemo(() => {
-    const drivers = data?.drivers ?? [];
-    if (!search.trim()) return drivers;
-    const q = search.toLowerCase();
-    return drivers.filter(
-      (d) =>
-        d.full_name?.toLowerCase().includes(q) ||
-        d.email?.toLowerCase().includes(q) ||
-        d.phone?.toLowerCase().includes(q),
-    );
-  }, [data, search]);
+    const q = search.trim().toLowerCase();
+    return drivers.filter((d) => {
+      if (filter !== 'all' && d.invitation_status !== filter) return false;
+      if (!q) return true;
+      return (
+        (d.full_name ?? '').toLowerCase().includes(q) ||
+        (d.email ?? '').toLowerCase().includes(q) ||
+        (d.phone ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [drivers, search, filter]);
 
   if (!canManage) {
     return (
-      <SafeAreaView style={styles.container}>
-        <Stack.Screen options={{ title: 'Drivers' }} />
-        <View style={styles.emptyState}>
-          <Ionicons name="lock-closed" size={48} color={colors.gray[300]} />
-          <Text style={styles.emptyTitle}>Access Denied</Text>
-          <Text style={styles.emptySubtitle}>Manager access required</Text>
-        </View>
-      </SafeAreaView>
+      <PaperBackground>
+        <Stack.Screen options={{ headerShown: false }} />
+        <SafeAreaView style={styles.safe}>
+          <Masthead kicker="ACCESS" title="Denied" backUseRouter />
+          <View style={styles.denied}>
+            <MonoText size={11} tracking={1.5} upper color={wp.color.ink3}>
+              Manager access required
+            </MonoText>
+          </View>
+        </SafeAreaView>
+      </PaperBackground>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <Stack.Screen
-        options={{
-          title: 'Drivers',
-          headerStyle: { backgroundColor: brand.gradientStart },
-          headerTintColor: colors.white,
-          headerTitleStyle: { fontWeight: fontWeight.semibold },
-          headerRight: () => (
-            <TouchableOpacity
-              onPress={() => router.push('/drivers/create')}
-              style={{ marginRight: spacing.md }}
-            >
-              <Ionicons name="person-add" size={22} color={colors.white} />
-            </TouchableOpacity>
-          ),
-        }}
-      />
+    <PaperBackground>
+      <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
+        {isLoading ? (
+          <Loading fullScreen message="" />
+        ) : (
+          <ScrollView
+            contentContainerStyle={styles.scroll}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefetching}
+                onRefresh={refetch}
+                tintColor={wp.color.ink2}
+              />
+            }
+          >
+            <Masthead
+              kicker={`DRIVER ROSTER — ${fmtKickerDate()}`}
+              title="Drivers"
+              backUseRouter
+            />
 
-      <View style={styles.searchBar}>
-        <Input
-          placeholder="Search by name, email or phone..."
-          value={search}
-          onChangeText={setSearch}
-          containerStyle={styles.searchInput}
-        />
-      </View>
+            <TabStrip<Filter>
+              items={[
+                { key: 'all', label: 'All', count: counts.all },
+                { key: 'active', label: 'Active', count: counts.active },
+                { key: 'pending', label: 'Pending', count: counts.pending },
+                { key: 'expired', label: 'Expired', count: counts.expired },
+              ]}
+              active={filter}
+              onChange={setFilter}
+            />
 
-      {/* Filter chips */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.chipRow}
-      >
-        <TouchableOpacity
-          style={[styles.chip, !showInactive && styles.chipActive]}
-          onPress={() => setShowInactive(false)}
-        >
-          <Text style={[styles.chipText, !showInactive && styles.chipTextActive]}>
-            Active Only
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.chip, showInactive && styles.chipActive]}
-          onPress={() => setShowInactive(true)}
-        >
-          <Text style={[styles.chipText, showInactive && styles.chipTextActive]}>
-            All Drivers
-          </Text>
-        </TouchableOpacity>
-      </ScrollView>
+            <View style={styles.searchRow}>
+              <View style={styles.search}>
+                <Text allowFontScaling={false} style={styles.searchGlyph}>⌕</Text>
+                <TextInput
+                  value={search}
+                  onChangeText={setSearch}
+                  placeholder="name · email · phone"
+                  placeholderTextColor={wp.color.ink3}
+                  style={styles.searchInput}
+                />
+              </View>
+              <InkButton label="+ New" onPress={() => router.push('/drivers/create')} />
+            </View>
 
-      {isLoading ? (
-        <Loading message="Loading drivers..." fullScreen />
-      ) : filtered.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Ionicons name="car-outline" size={48} color={colors.gray[300]} />
-          <Text style={styles.emptyTitle}>No drivers found</Text>
-          <Text style={styles.emptySubtitle}>
-            {search ? 'Try a different search term' : 'No drivers match the selected filter'}
-          </Text>
-        </View>
-      ) : (
-        <ScrollView
-          contentContainerStyle={styles.list}
-          refreshControl={
-            <RefreshControl refreshing={isRefetching} onRefresh={refetch} />
-          }
-        >
-          <Text style={styles.resultCount}>
-            {filtered.length} driver{filtered.length !== 1 ? 's' : ''}
-          </Text>
-          {filtered.map((driver) => {
-            const statusBadge = STATUS_BADGE[driver.invitation_status] ?? STATUS_BADGE.no_invitation;
-            return (
-              <TouchableOpacity
-                key={driver.id}
-                activeOpacity={0.7}
-                onPress={() => router.push(`/drivers/${driver.id}`)}
-              >
-                <Card style={styles.driverCard}>
-                  <View style={styles.cardRow}>
-                    <View style={[styles.avatar, !driver.is_active && styles.avatarInactive]}>
-                      <Text style={styles.avatarText}>
-                        {(driver.full_name ?? '?').charAt(0).toUpperCase()}
-                      </Text>
-                    </View>
-                    <View style={styles.cardInfo}>
-                      <View style={styles.nameRow}>
-                        <Text style={styles.driverName} numberOfLines={1}>
-                          {driver.full_name}
-                        </Text>
-                        {!driver.is_active && <Badge label="Inactive" variant="neutral" />}
-                      </View>
-                      {driver.phone ? (
-                        <Text style={styles.driverDetail} numberOfLines={1}>
-                          {driver.phone}
-                        </Text>
-                      ) : null}
-                      {driver.email ? (
-                        <Text style={styles.driverDetail} numberOfLines={1}>
-                          {driver.email}
-                        </Text>
-                      ) : null}
-                      <View style={styles.metaRow}>
-                        <Badge label={statusBadge.label} variant={statusBadge.variant} />
-                      </View>
-                    </View>
-                    <Ionicons name="chevron-forward" size={18} color={colors.gray[400]} />
-                  </View>
-                </Card>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      )}
-    </SafeAreaView>
+            {filtered.length === 0 ? (
+              <View style={styles.empty}>
+                <MonoText size={11} tracking={1} upper color={wp.color.ink3}>
+                  {search ? 'No matches' : 'No drivers on file'}
+                </MonoText>
+              </View>
+            ) : (
+              filtered.map((d, i) => {
+                const stamp = STAMP[d.invitation_status] ?? STAMP.no_invitation;
+                const isInactive = !d.is_active;
+                const context = [
+                  d.phone ?? d.email ?? '',
+                  isInactive ? 'INACTIVE' : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ');
+                return (
+                  <LedgerRow
+                    key={d.id}
+                    idx={i + 1}
+                    primary={d.full_name ?? '(No name)'}
+                    secondary={context.toUpperCase() || undefined}
+                    trailing={
+                      <Stamp
+                        colorHex={isInactive ? wp.color.ink3 : stamp.color}
+                        rowIndex={i}
+                      >
+                        {isInactive ? 'OFF' : stamp.label}
+                      </Stamp>
+                    }
+                    onPress={() => router.push(`/drivers/${d.id}`)}
+                  />
+                );
+              })
+            )}
+          </ScrollView>
+        )}
+      </SafeAreaView>
+    </PaperBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
-  searchBar: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
-  searchInput: { flex: 1 },
-  chipRow: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    gap: spacing.sm,
-  },
-  chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.gray[200],
-  },
-  chipActive: {
-    backgroundColor: colors.primary[500],
-    borderColor: colors.primary[500],
-  },
-  chipText: {
-    fontSize: fontSize.sm,
-    color: colors.gray[600],
-    fontWeight: fontWeight.medium,
-  },
-  chipTextActive: {
-    color: colors.white,
-  },
-  list: {
-    padding: spacing.lg,
-    gap: spacing.md,
-    paddingBottom: spacing['5xl'],
-  },
-  resultCount: {
-    fontSize: fontSize.sm,
-    color: colors.gray[500],
-    marginBottom: spacing.xs,
-  },
-  driverCard: {
-    marginBottom: 0,
-  },
-  cardRow: {
+  safe: { flex: 1 },
+  scroll: { paddingBottom: 40 },
+
+  searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    gap: 10,
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: 14,
+    paddingBottom: 6,
   },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.primary[500],
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInactive: {
-    backgroundColor: colors.gray[300],
-  },
-  avatarText: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.bold,
-    color: colors.white,
-  },
-  cardInfo: { flex: 1, gap: 2 },
-  nameRow: {
+  search: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    borderBottomWidth: 1.5,
+    borderBottomColor: wp.color.lineD,
+    paddingVertical: 6,
+    gap: 8,
   },
-  driverName: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[900],
-    flexShrink: 1,
+  searchGlyph: {
+    fontFamily: wp.font.mono.fontFamily,
+    fontSize: 12,
+    color: wp.color.ink3,
   },
-  driverDetail: {
-    fontSize: fontSize.sm,
-    color: colors.gray[500],
+  searchInput: {
+    flex: 1,
+    fontFamily: wp.font.mono.fontFamily,
+    fontSize: 14,
+    color: wp.color.ink,
+    padding: 0,
   },
-  metaRow: {
-    flexDirection: 'row',
+
+  empty: {
+    paddingHorizontal: wp.space.screenH,
+    paddingVertical: 40,
     alignItems: 'center',
-    gap: spacing.sm,
-    marginTop: 2,
   },
-  emptyState: {
+
+  denied: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: spacing['3xl'],
-    gap: spacing.md,
-  },
-  emptyTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[700],
-  },
-  emptySubtitle: {
-    fontSize: fontSize.sm,
-    color: colors.gray[500],
-    textAlign: 'center',
+    padding: wp.space.section,
   },
 });

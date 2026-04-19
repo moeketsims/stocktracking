@@ -11,7 +11,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import {
   useStockTakes,
   useStockTake,
@@ -21,18 +20,21 @@ import {
   useCancelStockTake,
 } from '../../src/hooks/useStockTakes';
 import { useAuthStore } from '../../src/stores/authStore';
-import { Card } from '../../src/components/ui/Card';
-import { Badge } from '../../src/components/ui/Badge';
-import { Button } from '../../src/components/ui/Button';
 import { Loading } from '../../src/components/ui/Loading';
-import { brand, colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
-import type { UserRole, StockTakeLine, StockTakeStatus } from '../../src/types';
+import {
+  PaperBackground,
+  Masthead,
+  MonoText,
+  KickerLabel,
+  Stamp,
+  SerifNumber,
+  HardShadowFrame,
+  TickerProgressBar,
+} from '../../src/components/wp';
+import { wp, fmtKickerDate } from '../../src/constants/warehousePaper';
+import type { UserRole, StockTakeLine } from '../../src/types';
 
-const STATUS_BADGE: Record<StockTakeStatus, { label: string; variant: 'success' | 'warning' | 'neutral' }> = {
-  in_progress: { label: 'In Progress', variant: 'warning' },
-  completed: { label: 'Completed', variant: 'success' },
-  cancelled: { label: 'Cancelled', variant: 'neutral' },
-};
+type Tab = 'active' | 'history';
 
 export default function StockTakeScreen() {
   const router = useRouter();
@@ -41,7 +43,7 @@ export default function StockTakeScreen() {
   const canManage = hasRole('admin' as UserRole, 'zone_manager' as UserRole, 'location_manager' as UserRole);
 
   const [activeStockTakeId, setActiveStockTakeId] = useState<string | null>(null);
-  const [tab, setTab] = useState<'active' | 'history'>('active');
+  const [tab, setTab] = useState<Tab>('active');
 
   const { data: stockTakesData, isLoading: listLoading, isRefetching, refetch } = useStockTakes({ limit: 50 });
   const { data: activeData, isLoading: detailLoading } = useStockTake(activeStockTakeId ?? '');
@@ -50,29 +52,34 @@ export default function StockTakeScreen() {
   const completeMutation = useCompleteStockTake();
   const cancelMutation = useCancelStockTake();
 
-  if (!canManage) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <Stack.Screen options={{ title: 'Stock Take' }} />
-        <View style={styles.emptyState}>
-          <Ionicons name="lock-closed" size={48} color={colors.gray[300]} />
-          <Text style={styles.emptyTitle}>Access Denied</Text>
-          <Text style={styles.emptySubtitle}>Manager access required</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   const stockTakes = stockTakesData?.stock_takes ?? [];
   const inProgressTake = stockTakes.find((st) => st.status === 'in_progress');
   const historyTakes = stockTakes.filter((st) => st.status !== 'in_progress');
 
-  // Auto-select in-progress stock take
+  // Effect must run on every render path to satisfy rules of hooks — keep it
+  // above any early `return`. The body itself no-ops when canManage is false
+  // because stockTakesData won't be populated anyway.
   useEffect(() => {
     if (inProgressTake && !activeStockTakeId) {
       setActiveStockTakeId(inProgressTake.id);
     }
   }, [inProgressTake, activeStockTakeId]);
+
+  if (!canManage) {
+    return (
+      <PaperBackground>
+        <Stack.Screen options={{ headerShown: false }} />
+        <SafeAreaView style={styles.container}>
+          <Masthead kicker="ACCESS" title="Restricted" backUseRouter />
+          <View style={styles.emptyState}>
+            <KickerLabel size={11} tracking={1.5} color={wp.color.ink3}>
+              Manager access required
+            </KickerLabel>
+          </View>
+        </SafeAreaView>
+      </PaperBackground>
+    );
+  }
 
   const handleStartNew = () => {
     if (inProgressTake) {
@@ -99,7 +106,7 @@ export default function StockTakeScreen() {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Complete',
-          onPress: () => {
+          onPress: () =>
             completeMutation.mutate(
               { id: activeStockTakeId },
               {
@@ -108,8 +115,7 @@ export default function StockTakeScreen() {
                   refetch();
                 },
               },
-            );
-          },
+            ),
         },
       ],
     );
@@ -117,90 +123,94 @@ export default function StockTakeScreen() {
 
   const handleCancel = () => {
     if (!activeStockTakeId) return;
-    Alert.alert(
-      'Cancel Stock Take',
-      'This will discard all counts. Are you sure?',
-      [
-        { text: 'No', style: 'cancel' },
-        {
-          text: 'Yes, Cancel',
-          style: 'destructive',
-          onPress: () => {
-            cancelMutation.mutate(activeStockTakeId, {
-              onSuccess: () => {
-                setActiveStockTakeId(null);
-                refetch();
-              },
-            });
-          },
-        },
-      ],
-    );
+    Alert.alert('Cancel Stock Take', 'This will discard all counts. Are you sure?', [
+      { text: 'No', style: 'cancel' },
+      {
+        text: 'Yes, Cancel',
+        style: 'destructive',
+        onPress: () =>
+          cancelMutation.mutate(activeStockTakeId, {
+            onSuccess: () => {
+              setActiveStockTakeId(null);
+              refetch();
+            },
+          }),
+      },
+    ]);
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <Stack.Screen
-        options={{
-          title: 'Stock Take',
-          headerStyle: { backgroundColor: brand.gradientStart },
-          headerTintColor: colors.white,
-          headerTitleStyle: { fontWeight: fontWeight.semibold },
-        }}
-      />
-
-      {/* Tab bar */}
-      <View style={styles.tabBar}>
-        <TouchableOpacity
-          style={[styles.tabItem, tab === 'active' && styles.tabItemActive]}
-          onPress={() => setTab('active')}
-        >
-          <Text style={[styles.tabText, tab === 'active' && styles.tabTextActive]}>
-            Active Count
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tabItem, tab === 'history' && styles.tabItemActive]}
-          onPress={() => setTab('history')}
-        >
-          <Text style={[styles.tabText, tab === 'history' && styles.tabTextActive]}>
-            History
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {listLoading ? (
-        <Loading message="Loading stock takes..." fullScreen />
-      ) : tab === 'active' ? (
-        <ActiveTab
-          activeStockTakeId={activeStockTakeId}
-          activeData={activeData}
-          detailLoading={detailLoading}
-          onStartNew={handleStartNew}
-          onComplete={handleComplete}
-          onCancel={handleCancel}
-          onUpdateLine={(lineId, countedQty) => {
-            if (!activeStockTakeId) return;
-            updateLineMutation.mutate({
-              stockTakeId: activeStockTakeId,
-              lineId,
-              data: { counted_qty: countedQty },
-            });
-          }}
-          createLoading={createMutation.isPending}
-          completeLoading={completeMutation.isPending}
-          updateLoading={updateLineMutation.isPending}
-          isRefetching={isRefetching}
-          refetch={refetch}
+    <PaperBackground>
+      <Stack.Screen options={{ headerShown: false }} />
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <Masthead
+          kicker={`STOCK TAKE — ${fmtKickerDate()}`}
+          title="Count it up"
+          backUseRouter
         />
-      ) : (
-        <HistoryTab
-          stockTakes={historyTakes}
-          isRefetching={isRefetching}
-          refetch={refetch}
-        />
-      )}
-    </SafeAreaView>
+
+        {/* Tab strip — mono labels, 3px ink underline on active */}
+        <View style={styles.tabStrip}>
+          {(['active', 'history'] as Tab[]).map((t) => {
+            const on = tab === t;
+            return (
+              <TouchableOpacity
+                key={t}
+                activeOpacity={0.7}
+                onPress={() => setTab(t)}
+                style={[styles.tab, on && styles.tabActive]}
+              >
+                <MonoText
+                  size={11}
+                  weight={on ? 700 : 500}
+                  tracking={1.5}
+                  upper
+                  color={on ? wp.color.ink : wp.color.ink3}
+                >
+                  {t === 'active' ? 'Active count' : 'History'}
+                </MonoText>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {listLoading ? (
+          <Loading message="" fullScreen />
+        ) : tab === 'active' ? (
+          <ActiveTab
+            activeStockTakeId={activeStockTakeId}
+            activeData={activeData}
+            detailLoading={detailLoading}
+            onStartNew={handleStartNew}
+            onComplete={handleComplete}
+            onCancel={handleCancel}
+            onUpdateLine={(lineId, countedQty) => {
+              if (!activeStockTakeId) return;
+              updateLineMutation.mutate({
+                stockTakeId: activeStockTakeId,
+                lineId,
+                data: { counted_qty: countedQty },
+              });
+            }}
+            createLoading={createMutation.isPending}
+            completeLoading={completeMutation.isPending}
+            updateLoading={updateLineMutation.isPending}
+            isRefetching={isRefetching}
+            refetch={refetch}
+          />
+        ) : (
+          <HistoryTab
+            stockTakes={historyTakes}
+            isRefetching={isRefetching}
+            refetch={refetch}
+            onOpen={(id) => {
+              setActiveStockTakeId(id);
+              setTab('active');
+            }}
+          />
+        )}
+      </SafeAreaView>
+    </PaperBackground>
   );
 }
 
@@ -233,64 +243,63 @@ function ActiveTab({
 }) {
   if (!activeStockTakeId) {
     return (
-      <View style={styles.emptyState}>
-        <Ionicons name="clipboard-outline" size={56} color={colors.gray[300]} />
-        <Text style={styles.emptyTitle}>No Active Stock Take</Text>
-        <Text style={styles.emptySubtitle}>
-          Start a new stock take to count your current inventory
+      <View style={styles.noActiveWrap}>
+        <Text allowFontScaling={false} style={styles.noActiveTitle}>
+          No active count
         </Text>
-        <Button
-          title="Start Stock Take"
+        <MonoText size={11} tracking={1} upper color={wp.color.ink3} style={{ marginTop: 6 }}>
+          Start a new stock take to begin counting
+        </MonoText>
+        <TouchableOpacity
+          activeOpacity={0.85}
           onPress={onStartNew}
-          loading={createLoading}
-          icon={<Ionicons name="add-circle-outline" size={20} color={colors.white} />}
-        />
+          disabled={createLoading}
+          style={styles.startBtn}
+        >
+          <Text allowFontScaling={false} style={styles.startBtnLabel}>
+            {createLoading ? 'STARTING…' : 'START STOCK TAKE'}
+          </Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
-  if (detailLoading) {
-    return <Loading message="Loading stock take..." fullScreen />;
-  }
+  if (detailLoading) return <Loading message="" fullScreen />;
 
   const stockTake = activeData?.stock_take;
   const lines = activeData?.lines ?? [];
   const countedLines = lines.filter((l) => l.counted_qty !== null).length;
-  const allCounted = countedLines === lines.length && lines.length > 0;
+  const totalLines = lines.length;
+  const allCounted = countedLines === totalLines && totalLines > 0;
+  const progress = totalLines > 0 ? countedLines / totalLines : 0;
+  const locationName = stockTake?.locations?.name ?? 'Location';
 
   return (
     <ScrollView
-      contentContainerStyle={styles.list}
-      refreshControl={
-        <RefreshControl refreshing={isRefetching} onRefresh={refetch} />
-      }
+      contentContainerStyle={styles.scroll}
+      refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={wp.color.ink2} />}
     >
-      {/* Progress header */}
-      <Card>
-        <View style={styles.progressHeader}>
-          <Text style={styles.progressTitle}>
-            {stockTake?.locations?.name ?? 'Stock Take'}
-          </Text>
-          <Text style={styles.progressCount}>
-            {countedLines} / {lines.length} items counted
-          </Text>
-          <View style={styles.progressBar}>
-            <View
-              style={[
-                styles.progressFill,
-                {
-                  width: lines.length > 0 ? `${(countedLines / lines.length) * 100}%` : '0%',
-                  backgroundColor: allCounted ? colors.success : colors.primary[500],
-                },
-              ]}
-            />
+      {/* Progress voucher */}
+      <HardShadowFrame style={{ marginBottom: 12 }}>
+        <View style={styles.voucher}>
+          <View style={styles.progHead}>
+            <Text allowFontScaling={false} style={styles.progTitle} numberOfLines={1}>
+              {locationName}
+            </Text>
+            <MonoText size={11} color={wp.color.ink2}>
+              <Text style={{ fontWeight: '700', color: wp.color.ink }}>{countedLines}</Text>
+              {' / '}{totalLines} COUNTED
+            </MonoText>
+          </View>
+          <View style={{ marginTop: 12 }}>
+            <TickerProgressBar progress={progress} />
           </View>
         </View>
-      </Card>
+      </HardShadowFrame>
 
-      {/* Count lines */}
+      {/* Item vouchers */}
       {lines.map((line) => (
-        <StockTakeLineRow
+        <StockTakeLineVoucher
           key={line.id}
           line={line}
           onSave={(qty) => onUpdateLine(line.id, qty)}
@@ -298,28 +307,31 @@ function ActiveTab({
         />
       ))}
 
-      {/* Action buttons */}
-      <View style={styles.actionRow}>
+      {/* Action stack */}
+      <View style={styles.actionStack}>
         {allCounted && (
-          <Button
-            title="Complete Stock Take"
+          <TouchableOpacity
+            activeOpacity={0.85}
             onPress={onComplete}
-            loading={completeLoading}
-            style={{ flex: 1 }}
-          />
+            disabled={completeLoading}
+            style={styles.primaryBtn}
+          >
+            <Text allowFontScaling={false} style={styles.primaryBtnLabel}>
+              {completeLoading ? 'COMPLETING…' : 'COMPLETE STOCK TAKE'}
+            </Text>
+          </TouchableOpacity>
         )}
-        <Button
-          title="Cancel"
-          variant="danger"
-          onPress={onCancel}
-          style={allCounted ? undefined : { flex: 1 }}
-        />
+        <TouchableOpacity activeOpacity={0.7} onPress={onCancel} style={styles.cancelBtn}>
+          <Text allowFontScaling={false} style={styles.cancelBtnLabel}>
+            CANCEL COUNT
+          </Text>
+        </TouchableOpacity>
       </View>
     </ScrollView>
   );
 }
 
-function StockTakeLineRow({
+function StockTakeLineVoucher({
   line,
   onSave,
   saving,
@@ -328,89 +340,84 @@ function StockTakeLineRow({
   onSave: (qty: number) => void;
   saving: boolean;
 }) {
-  const [countText, setCountText] = useState(
-    line.counted_qty !== null ? String(line.counted_qty) : '',
-  );
+  const [count, setCount] = useState(line.counted_qty !== null ? String(line.counted_qty) : '');
   const [dirty, setDirty] = useState(false);
 
-  const handleChange = (text: string) => {
-    setCountText(text);
-    setDirty(true);
-  };
+  const expected = line.expected_qty;
+  const counted = line.counted_qty;
+  const variance = counted !== null ? counted - expected : null;
+  const isCounted = counted !== null;
 
-  const handleSave = () => {
-    const qty = parseFloat(countText);
-    if (isNaN(qty) || qty < 0) {
-      Alert.alert('Invalid', 'Enter a valid quantity');
-      return;
-    }
-    onSave(qty);
+  const handleBlur = () => {
+    if (!dirty) return;
+    const parsed = parseInt(count, 10);
+    if (!isNaN(parsed) && parsed >= 0) onSave(parsed);
     setDirty(false);
   };
 
-  const variance = line.variance;
-  const hasVariance = variance !== null && Math.abs(variance) > 0.01;
-
   return (
-    <Card style={styles.lineCard}>
-      <View style={styles.lineHeader}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.itemName}>{line.items?.name ?? 'Unknown Item'}</Text>
-          <Text style={styles.itemSku}>
-            {line.items?.sku ?? ''} {line.items?.unit ? `(${line.items.unit})` : ''}
-          </Text>
+    <HardShadowFrame style={{ marginBottom: 12 }}>
+      <View style={styles.voucher}>
+        <View style={styles.itemHead}>
+          <View style={{ flex: 1 }}>
+            <Text allowFontScaling={false} style={styles.itemTitle} numberOfLines={1}>
+              {line.items?.name ?? 'Item'}
+            </Text>
+            <MonoText size={10} tracking={1.3} upper color={wp.color.ink3} style={{ marginTop: 2 }}>
+              SKU {line.items?.sku ?? '—'}
+            </MonoText>
+          </View>
+          {isCounted && (
+            <Stamp color="green" rotate={3}>
+              COUNTED
+            </Stamp>
+          )}
         </View>
-        {line.counted_qty !== null && (
-          <Ionicons
-            name="checkmark-circle"
-            size={22}
-            color={hasVariance ? colors.warning : colors.success}
-          />
-        )}
-      </View>
 
-      <View style={styles.countRow}>
-        <View style={styles.countCol}>
-          <Text style={styles.countLabel}>Expected</Text>
-          <Text style={styles.countValue}>{line.expected_qty}</Text>
-        </View>
-        <View style={styles.countCol}>
-          <Text style={styles.countLabel}>Counted</Text>
-          <TextInput
-            style={styles.countInput}
-            value={countText}
-            onChangeText={handleChange}
-            keyboardType="numeric"
-            placeholder="0"
-            placeholderTextColor={colors.gray[400]}
-          />
-        </View>
-        <View style={styles.countCol}>
-          <Text style={styles.countLabel}>Variance</Text>
-          <Text
-            style={[
-              styles.countValue,
-              hasVariance && {
-                color: (variance ?? 0) > 0 ? colors.success : colors.error,
-                fontWeight: fontWeight.bold,
-              },
-            ]}
-          >
-            {variance !== null ? (variance > 0 ? `+${variance}` : String(variance)) : '---'}
-          </Text>
+        <View style={styles.gridWrap}>
+          <View style={styles.gridCol}>
+            <KickerLabel size={9} tracking={1.5} color={wp.color.ink3}>Expected</KickerLabel>
+            <MonoText size={22} weight={700} color={wp.color.ink} style={{ marginTop: 4 }}>
+              {expected.toLocaleString()}
+            </MonoText>
+          </View>
+
+          <View style={styles.gridCol}>
+            <KickerLabel size={9} tracking={1.5} color={wp.color.ink3}>Counted</KickerLabel>
+            <TextInput
+              value={count}
+              onChangeText={(v) => {
+                setCount(v);
+                setDirty(true);
+              }}
+              onBlur={handleBlur}
+              keyboardType="number-pad"
+              placeholder="—"
+              placeholderTextColor={wp.color.ink3}
+              editable={!saving}
+              style={styles.countedInput}
+            />
+          </View>
+
+          <View style={styles.gridCol}>
+            <KickerLabel size={9} tracking={1.5} color={wp.color.ink3}>Variance</KickerLabel>
+            {variance === null ? (
+              <MonoText size={22} color={wp.color.ink3} style={{ marginTop: 4 }}>—</MonoText>
+            ) : (
+              <SerifNumber
+                size={24}
+                tracking={-1}
+                leading={1}
+                color={variance < 0 ? wp.color.red : variance > 0 ? wp.color.green : wp.color.ink}
+                style={{ marginTop: 2 }}
+              >
+                {variance > 0 ? `+${variance}` : String(variance)}
+              </SerifNumber>
+            )}
+          </View>
         </View>
       </View>
-
-      {dirty && (
-        <Button
-          title="Save Count"
-          size="sm"
-          onPress={handleSave}
-          loading={saving}
-          style={{ marginTop: spacing.sm }}
-        />
-      )}
-    </Card>
+    </HardShadowFrame>
   );
 }
 
@@ -418,195 +425,246 @@ function HistoryTab({
   stockTakes,
   isRefetching,
   refetch,
+  onOpen,
 }: {
   stockTakes: any[];
   isRefetching: boolean;
   refetch: () => void;
+  onOpen: (id: string) => void;
 }) {
   if (stockTakes.length === 0) {
     return (
-      <View style={styles.emptyState}>
-        <Ionicons name="time-outline" size={48} color={colors.gray[300]} />
-        <Text style={styles.emptyTitle}>No History</Text>
-        <Text style={styles.emptySubtitle}>Completed stock takes will appear here</Text>
+      <View style={styles.noActiveWrap}>
+        <Text allowFontScaling={false} style={styles.noActiveTitle}>
+          No history
+        </Text>
+        <MonoText size={11} tracking={1} upper color={wp.color.ink3} style={{ marginTop: 6 }}>
+          Completed stock takes will appear here
+        </MonoText>
       </View>
     );
   }
 
   return (
     <ScrollView
-      contentContainerStyle={styles.list}
-      refreshControl={
-        <RefreshControl refreshing={isRefetching} onRefresh={refetch} />
-      }
+      contentContainerStyle={styles.scroll}
+      refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={wp.color.ink2} />}
     >
-      {stockTakes.map((st) => {
-        const badge = STATUS_BADGE[st.status as StockTakeStatus] ?? STATUS_BADGE.cancelled;
-        return (
-          <Card key={st.id}>
-            <View style={styles.historyRow}>
+      {stockTakes.map((st) => (
+        <HardShadowFrame key={st.id} style={{ marginBottom: 10 }}>
+          <TouchableOpacity activeOpacity={0.75} onPress={() => onOpen(st.id)} style={styles.voucher}>
+            <View style={styles.itemHead}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.historyLocation}>
-                  {st.locations?.name ?? 'Unknown Location'}
+                <Text allowFontScaling={false} style={styles.itemTitle} numberOfLines={1}>
+                  {st.locations?.name ?? 'Unknown'}
                 </Text>
-                <Text style={styles.historyDate}>
-                  {new Date(st.started_at).toLocaleDateString()}
-                  {st.initiated_by_name ? ` by ${st.initiated_by_name}` : ''}
-                </Text>
-                <Text style={styles.historyMeta}>
-                  {st.total_lines} items | {st.variance_count ?? 0} variance{(st.variance_count ?? 0) !== 1 ? 's' : ''}
-                </Text>
+                <MonoText size={10} tracking={1.3} upper color={wp.color.ink3} style={{ marginTop: 2 }}>
+                  {new Date(st.started_at).toLocaleDateString().toUpperCase()}
+                  {st.initiated_by_name ? ` · ${st.initiated_by_name.toUpperCase()}` : ''}
+                </MonoText>
               </View>
-              <Badge label={badge.label} variant={badge.variant} />
+              <Stamp
+                color={st.status === 'completed' ? 'green' : 'ink'}
+                rotate={st.status === 'completed' ? 3 : -3}
+              >
+                {st.status === 'completed' ? 'COMPLETE' : 'CANCELLED'}
+              </Stamp>
             </View>
-          </Card>
-        );
-      })}
+
+            <View style={[styles.gridWrap, { borderTopWidth: 1, borderTopColor: wp.color.line, borderStyle: 'dashed', paddingTop: 12, marginTop: 10 }]}>
+              <View style={styles.gridCol}>
+                <KickerLabel size={9} tracking={1.5} color={wp.color.ink3}>Items</KickerLabel>
+                <MonoText size={18} weight={700} color={wp.color.ink} style={{ marginTop: 2 }}>
+                  {st.total_lines}
+                </MonoText>
+              </View>
+              <View style={styles.gridCol}>
+                <KickerLabel size={9} tracking={1.5} color={wp.color.ink3}>Counted</KickerLabel>
+                <MonoText size={18} weight={700} color={wp.color.ink} style={{ marginTop: 2 }}>
+                  {st.lines_counted}
+                </MonoText>
+              </View>
+              <View style={styles.gridCol}>
+                <KickerLabel size={9} tracking={1.5} color={wp.color.ink3}>Variance</KickerLabel>
+                <SerifNumber
+                  size={20}
+                  tracking={-0.5}
+                  leading={1}
+                  color={(st.variance_count ?? 0) > 0 ? wp.color.amber : wp.color.ink}
+                  style={{ marginTop: 2 }}
+                >
+                  {st.variance_count ?? 0}
+                </SerifNumber>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </HardShadowFrame>
+      ))}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
-  tabBar: {
+  container: { flex: 1 },
+
+  // Tab strip
+  tabStrip: {
     flexDirection: 'row',
-    backgroundColor: colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.gray[200],
+    borderBottomWidth: wp.border.mid,
+    borderBottomColor: wp.color.lineD,
   },
-  tabItem: {
+  tab: {
     flex: 1,
-    paddingVertical: spacing.md,
+    paddingVertical: 12,
     alignItems: 'center',
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
   },
-  tabItemActive: {
-    borderBottomColor: colors.primary[500],
+  tabActive: {
+    // 3px ink underline, -1.5px so it sits flush with the masthead rule
+    borderBottomWidth: 3,
+    borderBottomColor: wp.color.ink,
+    marginBottom: -1.5,
   },
-  tabText: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.medium,
-    color: colors.gray[500],
-  },
-  tabTextActive: {
-    color: colors.primary[500],
-    fontWeight: fontWeight.semibold,
-  },
-  list: {
-    padding: spacing.lg,
-    gap: spacing.md,
-    paddingBottom: spacing['5xl'],
-  },
-  progressHeader: {
-    gap: spacing.sm,
-  },
-  progressTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[900],
-  },
-  progressCount: {
-    fontSize: fontSize.sm,
-    color: colors.gray[500],
-  },
-  progressBar: {
-    height: 8,
-    backgroundColor: colors.gray[200],
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  lineCard: {
-    marginBottom: 0,
-  },
-  lineHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  itemName: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[900],
-  },
-  itemSku: {
-    fontSize: fontSize.xs,
-    color: colors.gray[400],
-  },
-  countRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  countCol: {
-    flex: 1,
-    gap: 2,
-  },
-  countLabel: {
-    fontSize: fontSize.xs,
-    color: colors.gray[400],
-    fontWeight: fontWeight.medium,
-  },
-  countValue: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[800],
-  },
-  countInput: {
-    borderWidth: 1,
-    borderColor: colors.gray[300],
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[900],
-    backgroundColor: colors.white,
-    minHeight: 40,
-    textAlign: 'center',
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    marginTop: spacing.md,
-  },
-  historyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  historyLocation: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[900],
-  },
-  historyDate: {
-    fontSize: fontSize.sm,
-    color: colors.gray[500],
-  },
-  historyMeta: {
-    fontSize: fontSize.xs,
-    color: colors.gray[400],
-    marginTop: 2,
+
+  // Scroll / content
+  scroll: {
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: 16,
+    paddingBottom: 40,
   },
   emptyState: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: spacing['3xl'],
-    gap: spacing.md,
+    padding: wp.space.screenH,
   },
-  emptyTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[700],
+
+  // No-active state
+  noActiveWrap: {
+    padding: wp.space.screenH,
+    paddingTop: 60,
+    alignItems: 'center',
   },
-  emptySubtitle: {
-    fontSize: fontSize.sm,
-    color: colors.gray[500],
-    textAlign: 'center',
+  noActiveTitle: {
+    fontFamily: wp.font.serifBold.fontFamily,
+    fontWeight: wp.font.serifBold.fontWeight,
+    fontStyle: 'italic',
+    fontSize: 32,
+    letterSpacing: -1,
+    color: wp.color.ink,
+  },
+  startBtn: {
+    marginTop: 22,
+    paddingVertical: 14,
+    paddingHorizontal: 22,
+    backgroundColor: wp.color.ink,
+    borderWidth: 2,
+    borderColor: wp.color.lineD,
+  },
+  startBtnLabel: {
+    fontFamily: wp.font.monoBold.fontFamily,
+    fontWeight: wp.font.monoBold.fontWeight,
+    fontSize: 12,
+    letterSpacing: 2,
+    color: wp.color.paper,
+  },
+
+  // Voucher (shared)
+  voucher: {
+    backgroundColor: wp.color.voucherBg,
+    borderWidth: 1,
+    borderColor: wp.color.lineD,
+    padding: 14,
+  },
+
+  // Progress voucher
+  progHead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    gap: 10,
+  },
+  progTitle: {
+    fontFamily: wp.font.serifBold.fontFamily,
+    fontWeight: wp.font.serifBold.fontWeight,
+    fontStyle: 'italic',
+    fontSize: 22,
+    letterSpacing: -0.5,
+    color: wp.color.ink,
+    flexShrink: 1,
+  },
+
+  // Item voucher
+  itemHead: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  itemTitle: {
+    fontFamily: wp.font.serifBold.fontFamily,
+    fontWeight: wp.font.serifBold.fontWeight,
+    fontStyle: 'italic',
+    fontSize: 20,
+    color: wp.color.ink,
+  },
+
+  // 3-col grid
+  gridWrap: {
+    flexDirection: 'row',
+    marginTop: 12,
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: wp.color.line,
+    borderStyle: 'dashed',
+    paddingTop: 12,
+  },
+  gridCol: {
+    flex: 1,
+  },
+  countedInput: {
+    marginTop: 4,
+    fontFamily: wp.font.monoBold.fontFamily,
+    fontWeight: wp.font.monoBold.fontWeight,
+    fontSize: 22,
+    color: wp.color.ink,
+    borderBottomWidth: 1.5,
+    borderBottomColor: wp.color.lineD,
+    padding: 0,
+    paddingBottom: 2,
+    minWidth: 60,
+  },
+
+  // Action stack
+  actionStack: {
+    marginTop: 18,
+    gap: 10,
+  },
+  primaryBtn: {
+    backgroundColor: wp.color.ink,
+    borderWidth: 2,
+    borderColor: wp.color.lineD,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  primaryBtnLabel: {
+    fontFamily: wp.font.monoBold.fontFamily,
+    fontWeight: wp.font.monoBold.fontWeight,
+    fontSize: 13,
+    letterSpacing: 2,
+    color: wp.color.paper,
+  },
+  cancelBtn: {
+    borderWidth: 1.5,
+    borderColor: wp.color.red,
+    paddingVertical: 12,
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  cancelBtnLabel: {
+    fontFamily: wp.font.monoBold.fontFamily,
+    fontWeight: wp.font.monoBold.fontWeight,
+    fontSize: 11,
+    letterSpacing: 2,
+    color: wp.color.red,
   },
 });

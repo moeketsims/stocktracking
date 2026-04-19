@@ -1,6 +1,9 @@
 import { useCallback, useState } from 'react';
 import { Alert, Platform } from 'react-native';
-import * as FileSystem from 'expo-file-system';
+// expo-file-system 18+ split into a new module surface; the classic
+// `cacheDirectory` + `downloadAsync` helpers we use live in the
+// `legacy` subpath now. See the migration note in the package README.
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as Haptics from 'expo-haptics';
 import { useAuthStore } from '../stores/authStore';
