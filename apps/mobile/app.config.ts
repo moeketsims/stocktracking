@@ -34,8 +34,12 @@ const config: ExpoConfig = {
       foregroundImage: './assets/adaptive-icon.png',
       backgroundColor: '#0f172a',
     },
-    edgeToEdgeEnabled: true,
     package: 'com.potatostock.mobile',
+    blockedPermissions: [
+      'android.permission.RECORD_AUDIO',
+      'android.permission.READ_EXTERNAL_STORAGE',
+      'android.permission.WRITE_EXTERNAL_STORAGE',
+    ],
   },
   web: {
     favicon: './assets/favicon.png',
@@ -43,6 +47,9 @@ const config: ExpoConfig = {
   },
   extra: {
     apiUrl: process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000',
+    testAuthAlways: process.env.EXPO_PUBLIC_TEST_AUTH_ALWAYS === 'true',
+    testAuthEmail: process.env.EXPO_PUBLIC_TEST_AUTH_EMAIL,
+    testAuthPassword: process.env.EXPO_PUBLIC_TEST_AUTH_PASSWORD,
     eas: easProjectId ? { projectId: easProjectId } : {},
   },
   plugins: [
