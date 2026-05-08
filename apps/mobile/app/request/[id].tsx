@@ -192,17 +192,25 @@ export default function RequestDetailScreen() {
 
   // --- Submit handlers ---
 
+  const parseOptionalOdometer = (value: string): number | undefined | null => {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    if (!/^\d+$/.test(trimmed)) return null;
+    return Number(trimmed);
+  };
+
   const handleAcceptSubmit = () => {
     if (!selectedVehicleId) {
       Alert.alert('Required', 'Please select a vehicle.');
       return;
     }
-    if (!odometerStart) {
-      Alert.alert('Required', 'Please enter the odometer start reading.');
-      return;
-    }
     if (!acceptFromId) {
       Alert.alert('Required', `Please select a ${acceptFromType === 'supplier' ? 'supplier' : 'pickup location'}.`);
+      return;
+    }
+    const parsedOdometerStart = parseOptionalOdometer(odometerStart);
+    if (parsedOdometerStart === null) {
+      Alert.alert('Invalid', 'Starting kilometers must be a whole number.');
       return;
     }
     // Call createTrip directly — the backend endpoint handles accepting
@@ -214,7 +222,7 @@ export default function RequestDetailScreen() {
         data: {
           vehicle_id: selectedVehicleId,
           driver_id: user?.id,
-          odometer_start: Number(odometerStart),
+          odometer_start: parsedOdometerStart,
           auto_start: true,
           estimated_arrival_time: estimatedArrival || undefined,
           supplier_id: acceptFromType === 'supplier' ? acceptFromId : undefined,
@@ -305,12 +313,17 @@ export default function RequestDetailScreen() {
       Alert.alert('Required', 'Please select a vehicle.');
       return;
     }
+    const parsedTripOdometerStart = parseOptionalOdometer(tripOdometerStart);
+    if (parsedTripOdometerStart === null) {
+      Alert.alert('Invalid', 'Starting kilometers must be a whole number.');
+      return;
+    }
     createTripMutation.mutate(
       {
         id: request.id,
         data: {
           vehicle_id: tripVehicleId,
-          odometer_start: tripOdometerStart ? Number(tripOdometerStart) : undefined,
+          odometer_start: parsedTripOdometerStart,
           supplier_id: tripSupplierId || undefined,
           from_location_id: tripFromLocationId || undefined,
           auto_start: true,
@@ -369,6 +382,9 @@ export default function RequestDetailScreen() {
   const availableVehicles = vehicles.filter((v: any) => v.is_active && v.is_available !== false);
 
   const locations = locationsQuery.data ?? [];
+  const pickupLocations = locations.filter((location: any) => (
+    location.type === 'warehouse' && location.id !== request.location_id
+  ));
   const suppliers = suppliersQuery.data ?? [];
 
   const shortId = request.id.slice(-4).toUpperCase();
@@ -630,8 +646,15 @@ export default function RequestDetailScreen() {
                 </ScrollView>
               )}
 
+              <View style={styles.lockedDestination}>
+                <Text style={styles.lockedDestinationLabel}>Deliver To</Text>
+                <Text style={styles.lockedDestinationValue}>
+                  {request.location?.name ?? 'Request location'}
+                </Text>
+              </View>
+
               {/* Source type */}
-              <Text style={styles.fieldLabel}>Pickup From *</Text>
+              <Text style={styles.fieldLabel}>Pickup Source *</Text>
               <View style={styles.formActions}>
                 <TouchableOpacity
                   style={[styles.pickerChip, { flex: 1, justifyContent: 'center' }, acceptFromType === 'supplier' && styles.pickerChipActive]}
@@ -648,12 +671,14 @@ export default function RequestDetailScreen() {
               </View>
 
               {/* Source selection */}
-              <Text style={styles.fieldLabel}>{acceptFromType === 'supplier' ? 'Select Supplier *' : 'Select Location *'}</Text>
+              <Text style={styles.fieldLabel}>
+                {acceptFromType === 'supplier' ? 'Pickup Supplier *' : 'Pickup Warehouse *'}
+              </Text>
               {(acceptFromType === 'supplier' ? suppliersQuery.isLoading : locationsQuery.isLoading) ? (
                 <ActivityIndicator size="small" color={brand.accent} />
               ) : (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerRow}>
-                  {(acceptFromType === 'supplier' ? suppliers : locations).map((item: any) => (
+                  {(acceptFromType === 'supplier' ? suppliers : pickupLocations).map((item: any) => (
                     <TouchableOpacity
                       key={item.id}
                       style={[styles.pickerChip, acceptFromId === item.id && styles.pickerChipActive]}
@@ -664,14 +689,14 @@ export default function RequestDetailScreen() {
                       </Text>
                     </TouchableOpacity>
                   ))}
-                  {(acceptFromType === 'supplier' ? suppliers : locations).length === 0 && (
-                    <Text style={styles.emptyPickerText}>No {acceptFromType === 'supplier' ? 'suppliers' : 'locations'} found</Text>
+                  {(acceptFromType === 'supplier' ? suppliers : pickupLocations).length === 0 && (
+                    <Text style={styles.emptyPickerText}>No {acceptFromType === 'supplier' ? 'suppliers' : 'warehouses'} found</Text>
                   )}
                 </ScrollView>
               )}
 
               <Input
-                label="Odometer Start (km) *"
+                label="Odometer Start (km, optional)"
                 value={odometerStart}
                 onChangeText={setOdometerStart}
                 keyboardType="numeric"
@@ -886,7 +911,7 @@ export default function RequestDetailScreen() {
                 ))}
               </ScrollView>
 
-              <Text style={[styles.fieldLabel, { marginTop: spacing.sm }]}>From Location (optional)</Text>
+              <Text style={[styles.fieldLabel, { marginTop: spacing.sm }]}>Pickup Warehouse (optional)</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerRow}>
                 <TouchableOpacity
                   style={[styles.pickerChip, !tripFromLocationId && styles.pickerChipActive]}
@@ -896,7 +921,7 @@ export default function RequestDetailScreen() {
                     None
                   </Text>
                 </TouchableOpacity>
-                {locations.map((l) => (
+                {pickupLocations.map((l) => (
                   <TouchableOpacity
                     key={l.id}
                     style={[
@@ -1214,5 +1239,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
     marginTop: spacing.lg,
+  },
+  lockedDestination: {
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.gray[50],
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  lockedDestinationLabel: {
+    fontSize: fontSize.xs,
+    color: colors.gray[500],
+    fontWeight: fontWeight.medium,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  lockedDestinationValue: {
+    fontSize: fontSize.md,
+    color: colors.gray[900],
+    fontWeight: fontWeight.semibold,
   },
 });
