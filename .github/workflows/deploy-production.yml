@@ -3,6 +3,7 @@ name: Deploy to Production
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: deploy-production
@@ -43,4 +44,4 @@ jobs:
       - name: Post-deploy health check
         run: |
           sleep 15
-          curl -sf "${{ secrets.APP_URL }}/health" || echo "::warning::Health check failed — dyno may still be starting"
+          curl -sf "${{ secrets.APP_URL }}/health" || echo "::warning::Health check failed - dyno may still be starting"

@@ -819,7 +819,7 @@ async def create_trip_from_request(
                                 driver_name=driver_name or "A driver",
                                 vehicle_reg=vehicle.data["registration_number"],
                                 vehicle_desc=f"{vehicle.data.get('make', '')} {vehicle.data.get('model', '')}".strip(),
-                                supplier_name=supplier.data["name"],
+                                supplier_name=origin_name,
                                 trip_number=trip_number,
                                 trip_id=created_trip["id"],
                                 estimated_arrival_time=trip_request.estimated_arrival_time
@@ -833,7 +833,7 @@ async def create_trip_from_request(
                                 driver_name=driver_name or "A driver",
                                 vehicle_reg=vehicle.data["registration_number"],
                                 vehicle_desc=f"{vehicle.data.get('make', '')} {vehicle.data.get('model', '')}".strip(),
-                                supplier_name=supplier.data["name"],
+                                supplier_name=origin_name,
                                 trip_number=trip_number,
                                 trip_id=created_trip["id"]
                             )

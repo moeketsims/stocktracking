@@ -459,8 +459,11 @@ async def get_driver_awaiting_km_trip(user_data: dict = Depends(get_current_user
 
         logger.info(f"[AWAITING_KM] Found {len(result.data or [])} completed trips")
 
-        # Filter for trips without odometer_end (awaiting km submission)
-        awaiting_km_trips = [t for t in (result.data or []) if t.get("odometer_end") is None]
+        # Only trips with a starting KM should ask the driver for a closing KM.
+        awaiting_km_trips = [
+            t for t in (result.data or [])
+            if t.get("odometer_start") is not None and t.get("odometer_end") is None
+        ]
 
         logger.info(f"[AWAITING_KM] Trips awaiting km: {len(awaiting_km_trips)}")
 
