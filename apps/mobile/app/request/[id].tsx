@@ -611,6 +611,16 @@ export default function RequestDetailScreen() {
             <Card>
               <Text style={styles.sectionTitle}>Accept & Deliver</Text>
 
+              {/* Show where stock is going — not editable */}
+              <View style={styles.deliveryInfoBanner}>
+                <Ionicons name="location" size={16} color={colors.primary[500]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.deliveryInfoLabel}>Delivering to</Text>
+                  <Text style={styles.deliveryInfoValue}>{request.location?.name ?? 'Unknown'}</Text>
+                </View>
+                <Text style={styles.deliveryInfoQty}>{request.quantity_bags} bags</Text>
+              </View>
+
               <Text style={styles.fieldLabel}>Vehicle *</Text>
               {vehiclesQuery.isLoading ? (
                 <ActivityIndicator size="small" color={colors.primary[500]} />
@@ -1260,5 +1270,34 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     color: colors.gray[900],
     fontWeight: fontWeight.semibold,
+  },
+  deliveryInfoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.primary[50],
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.primary[100],
+  },
+  deliveryInfoLabel: {
+    fontSize: fontSize.xs,
+    fontWeight: fontWeight.medium,
+    color: colors.gray[500],
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.3,
+  },
+  deliveryInfoValue: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+    color: colors.gray[900],
+    marginTop: 2,
+  },
+  deliveryInfoQty: {
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.bold,
+    color: colors.primary[600],
   },
 });
