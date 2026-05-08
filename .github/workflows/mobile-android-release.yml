@@ -55,7 +55,7 @@ jobs:
         run: npm run export:android
 
       - name: Build production Android App Bundle
-        run: npx eas-cli build --platform android --profile production --non-interactive --no-wait
+        run: npx eas-cli build --platform android --profile production --non-interactive
 
   submit:
     name: Submit To Google Play
