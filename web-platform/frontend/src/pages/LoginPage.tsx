@@ -197,7 +197,9 @@ export default function LoginPage({ onForgotPassword, onAcceptInviteCode }: Logi
         </form>
 
         <p className="text-center text-xs text-gray-500 mt-6">
-          Powered by Supabase
+          <a href="/privacy" className="hover:text-gray-700 hover:underline">
+            Privacy Policy
+          </a>
         </p>
       </Card>
     </div>

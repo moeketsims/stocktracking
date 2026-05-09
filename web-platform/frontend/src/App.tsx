@@ -36,6 +36,7 @@ import AcceptInviteCodePage from './pages/AcceptInviteCodePage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import SubmitKmPage from './pages/SubmitKmPage';
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 
 // Lazy loaded pages (code splitting)
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
@@ -75,7 +76,8 @@ type PublicPage =
   | 'accept-invite'
   | 'accept-invite-code'
   | 'reset-password'
-  | 'submit-km';
+  | 'submit-km'
+  | 'privacy';
 
 type TabId =
   | 'dashboard'
@@ -108,6 +110,10 @@ function getInitialPublicPageState(): { publicPage: PublicPage; inviteToken: str
   // Handle submit-km page (public, no auth required)
   if (pathname === '/submit-km' && token) {
     return { publicPage: 'submit-km', inviteToken: '', resetToken: '', kmSubmissionToken: token };
+  }
+
+  if (pathname === '/privacy') {
+    return { publicPage: 'privacy', inviteToken: '', resetToken: '', kmSubmissionToken: '' };
   }
 
   // Handle invitation
@@ -198,6 +204,10 @@ function App() {
   // Handle km submission - completely public page, no auth check needed
   if (publicPage === 'submit-km' && kmSubmissionToken) {
     return <SubmitKmPage />;
+  }
+
+  if (publicPage === 'privacy') {
+    return <PrivacyPolicyPage />;
   }
 
   // Handle invitation acceptance - this should work regardless of auth status
