@@ -4,7 +4,8 @@ This checklist is for the Potato Stock Android production release.
 
 ## Build
 
-- Production backend URL: `https://stocktracker-0560a415bf9e.herokuapp.com`
+- Production backend URL: `https://stocktracker-frontend-baaede6418cc.herokuapp.com`
+- Staging backend URL: `https://stocktracker-0560a415bf9e.herokuapp.com`
 - Android package: `com.potatostock.mobile`
 - Build profile: `production`
 - Submit profile: `production` -> Google Play `internal` track
@@ -19,10 +20,11 @@ This checklist is for the Potato Stock Android production release.
 - Google service account JSON is uploaded to EAS credentials for Play submissions.
 - GitHub secret `EXPO_TOKEN` is configured before using `.github/workflows/mobile-android-release.yml`.
 - Play Console App access includes a valid reviewer login and PIN.
-- Privacy Policy URL is published and entered in Play Console.
+- Privacy Policy URL is published and entered in Play Console: `https://stocktracker-frontend-baaede6418cc.herokuapp.com/privacy`.
 - Data Safety form declares account data, contact details, operational stock/delivery data, camera barcode scanning, and push notification usage.
 - App content rating questionnaire is completed.
 - Target audience is set to business/internal adult users, not children.
+- If using a new personal Google Play developer account, closed testing has at least 12 opted-in testers for 14 continuous days before requesting production access.
 
 ## Internal Test Pass Criteria
 

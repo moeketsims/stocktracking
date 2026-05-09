@@ -25,7 +25,7 @@ jobs:
         working-directory: apps/mobile
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-      EXPO_PUBLIC_API_URL: https://stocktracker-0560a415bf9e.herokuapp.com
+      EXPO_PUBLIC_API_URL: https://stocktracker-frontend-baaede6418cc.herokuapp.com
       EXPO_EAS_PROJECT_ID: 412d6a6e-d94f-4a14-adce-779b409be29a
 
     steps:
