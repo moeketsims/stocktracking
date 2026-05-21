@@ -19,7 +19,7 @@ export const wp = {
     voucherBg: '#F6F1E2',
     ink: '#1A1916',
     ink2: '#5A5651',
-    ink3: '#8F8A7F',
+    ink3: '#6F695F',
     // Dashed-divider color darkened so it still registers against the
     // warmer paper (was #D4CCB9).
     line: '#C9C0A8',

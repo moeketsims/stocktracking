@@ -100,9 +100,8 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   primary: {
-    fontFamily: wp.font.serifMid.fontFamily,
-    fontWeight: wp.font.serifMid.fontWeight,
-    fontStyle: 'italic',
+    fontFamily: wp.font.sansSemi.fontFamily,
+    fontWeight: wp.font.sansSemi.fontWeight,
     fontSize: 17,
     color: wp.color.ink,
   },

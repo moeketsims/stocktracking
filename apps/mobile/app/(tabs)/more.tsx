@@ -31,7 +31,7 @@ type StatusTone = 'red' | 'amber' | 'green' | 'ink3';
 interface LedgerEntry {
   key: string;
   label: string;
-  status: string;
+  status?: string;
   tone: StatusTone;
   onPress: () => void;
   visible: boolean;
@@ -76,7 +76,7 @@ export default function BackOfficeScreen() {
     {
       key: 'alerts',
       label: 'Alerts',
-      status: alertCount > 0 ? `${alertCount} open` : '—',
+      status: alertCount > 0 ? `${alertCount} open` : 'None',
       tone: alertCount > 0 ? 'red' : 'ink3',
       onPress: () => router.push('/alerts'),
       visible: true,
@@ -84,23 +84,23 @@ export default function BackOfficeScreen() {
     {
       key: 'deliveries',
       label: 'Pending deliveries',
-      status: deliveryCount > 0 ? `${deliveryCount} inbound` : '—',
+      status: deliveryCount > 0 ? `${deliveryCount} inbound` : 'None',
       tone: deliveryCount > 0 ? 'amber' : 'ink3',
       onPress: () => router.push('/alerts'),
       visible: isManager,
     },
-    { key: 'loans', label: 'Loans', status: '—', tone: 'ink3', onPress: () => router.push('/loans'), visible: isManager },
-    { key: 'drivers', label: 'Drivers', status: '—', tone: 'ink3', onPress: () => router.push('/drivers'), visible: isManager },
-    { key: 'batches', label: 'Batches', status: '—', tone: 'ink3', onPress: () => router.push('/stock/batches'), visible: isManager },
-    { key: 'users', label: 'User management', status: '—', tone: 'ink3', onPress: () => router.push('/users'), visible: isManager },
-    { key: 'stock-take', label: 'Stock take', status: '—', tone: 'ink3', onPress: () => router.push('/stock-take'), visible: isManager },
-    { key: 'vehicles', label: 'Vehicles', status: '—', tone: 'ink3', onPress: () => router.push('/vehicles'), visible: canManageVehicles || isManager },
-    { key: 'locations', label: 'Locations', status: '—', tone: 'ink3', onPress: () => router.push('/locations'), visible: isAdminOrZone },
-    { key: 'zones', label: 'Zones', status: '—', tone: 'ink3', onPress: () => router.push('/zones'), visible: isAdminOrZone },
-    { key: 'suppliers', label: 'Suppliers', status: '—', tone: 'ink3', onPress: () => router.push('/suppliers'), visible: isAdmin },
-    { key: 'reports', label: 'Reports & analytics', status: '—', tone: 'ink3', onPress: () => router.push('/reports'), visible: isManager },
-    { key: 'notifications', label: 'Notifications', status: '—', tone: 'ink3', onPress: () => router.push('/notifications'), visible: true },
-    { key: 'settings', label: 'Settings', status: '—', tone: 'ink3', onPress: () => router.push('/settings'), visible: true },
+    { key: 'loans', label: 'Loans', tone: 'ink3', onPress: () => router.push('/loans'), visible: isManager },
+    { key: 'drivers', label: 'Drivers', tone: 'ink3', onPress: () => router.push('/drivers'), visible: isManager },
+    { key: 'batches', label: 'Batches', tone: 'ink3', onPress: () => router.push('/stock/batches'), visible: isManager },
+    { key: 'users', label: 'User management', tone: 'ink3', onPress: () => router.push('/users'), visible: isManager },
+    { key: 'stock-take', label: 'Stock take', tone: 'ink3', onPress: () => router.push('/stock-take'), visible: isManager },
+    { key: 'vehicles', label: 'Vehicles', tone: 'ink3', onPress: () => router.push('/vehicles'), visible: canManageVehicles || isManager },
+    { key: 'locations', label: 'Locations', tone: 'ink3', onPress: () => router.push('/locations'), visible: isAdminOrZone },
+    { key: 'zones', label: 'Zones', tone: 'ink3', onPress: () => router.push('/zones'), visible: isAdminOrZone },
+    { key: 'suppliers', label: 'Suppliers', tone: 'ink3', onPress: () => router.push('/suppliers'), visible: isAdmin },
+    { key: 'reports', label: 'Reports & analytics', tone: 'ink3', onPress: () => router.push('/reports'), visible: isManager },
+    { key: 'notifications', label: 'Notifications', tone: 'ink3', onPress: () => router.push('/notifications'), visible: true },
+    { key: 'settings', label: 'Settings', tone: 'ink3', onPress: () => router.push('/settings'), visible: true },
   ], [alertCount, deliveryCount, isAdmin, isAdminOrZone, isManager, canManageVehicles, router]);
 
   const visible = entries.filter((e) => e.visible);
@@ -181,20 +181,24 @@ export default function BackOfficeScreen() {
                 <Text allowFontScaling={false} style={styles.entryName}>
                   {entry.label}
                 </Text>
-                <MonoText
-                  size={10}
-                  tracking={1}
-                  upper
-                  color={TONE_COLOR[entry.tone]}
-                  style={styles.statusCol}
-                >
-                  {entry.status}
-                </MonoText>
+                <View style={styles.statusCol}>
+                  {entry.status ? (
+                    <MonoText
+                      size={10}
+                      tracking={1}
+                      upper
+                      color={TONE_COLOR[entry.tone]}
+                      style={styles.statusText}
+                    >
+                      {entry.status}
+                    </MonoText>
+                  ) : null}
+                </View>
                 <Text allowFontScaling={false} style={styles.chev}>›</Text>
               </TouchableOpacity>
             ))}
 
-            {/* Sign out — outlined red, hard 1×1 red shadow */}
+            {/* Sign out: filled and labelled so the red action is unambiguous. */}
             <View style={styles.signOutWrap}>
               <HardShadowFrame offset={1} color={wp.color.red}>
                 <TouchableOpacity
@@ -204,7 +208,7 @@ export default function BackOfficeScreen() {
                   style={styles.signOutBtn}
                 >
                   <Text allowFontScaling={false} style={styles.signOutText}>
-                    {logout.isPending ? 'SIGNING OUT…' : 'SIGN OUT →'}
+                    {logout.isPending ? 'SIGNING OUT...' : 'LOG OUT'}
                   </Text>
                 </TouchableOpacity>
               </HardShadowFrame>
@@ -319,14 +323,15 @@ const styles = StyleSheet.create({
   },
   entryName: {
     flex: 1,
-    fontFamily: wp.font.serifMid.fontFamily,
-    fontWeight: wp.font.serifMid.fontWeight,
-    fontStyle: 'italic',
+    fontFamily: wp.font.sansSemi.fontFamily,
+    fontWeight: wp.font.sansSemi.fontWeight,
     fontSize: 17,
     color: wp.color.ink,
   },
   statusCol: {
     width: 110,
+  },
+  statusText: {
     textAlign: 'right',
   },
   chevSpacer: {
@@ -350,8 +355,8 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: wp.color.red,
     paddingVertical: 12,
-    paddingHorizontal: 24,
-    backgroundColor: 'transparent',
+    paddingHorizontal: 32,
+    backgroundColor: wp.color.red,
     alignItems: 'center',
   },
   signOutText: {
@@ -359,7 +364,7 @@ const styles = StyleSheet.create({
     fontWeight: wp.font.monoBold.fontWeight,
     fontSize: 11,
     letterSpacing: 2,
-    color: wp.color.red,
+    color: wp.color.paper,
     textTransform: 'uppercase',
   },
 

@@ -48,6 +48,13 @@ function shortTicketNumber(uuid: string): string {
   return uuid.slice(-4).toUpperCase();
 }
 
+function ageSeverity(createdAt: string): 'normal' | 'stale' | 'overdue' {
+  const days = (Date.now() - new Date(createdAt).getTime()) / 86400000;
+  if (days >= 14) return 'overdue';
+  if (days >= 3) return 'stale';
+  return 'normal';
+}
+
 export default function RequestsScreen() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
@@ -146,10 +153,27 @@ export default function RequestsScreen() {
                       {' · '}
                       {timeAgo(urgent.created_at)}
                     </MonoText>
+                    {ageSeverity(urgent.created_at) !== 'normal' && (
+                      <MonoText
+                        size={10}
+                        weight={700}
+                        tracking={1}
+                        upper
+                        color={wp.color.red}
+                        style={{ marginTop: 6 }}
+                      >
+                        {ageSeverity(urgent.created_at) === 'overdue' ? 'Overdue' : 'Needs follow-up'}
+                      </MonoText>
+                    )}
                   </View>
-                  <SerifNumber size={36} tracking={-1} leading={1} color={wp.color.red}>
-                    {String(urgent.quantity_bags)}
-                  </SerifNumber>
+                  <View style={styles.urgentQty}>
+                    <SerifNumber size={36} tracking={-1} leading={1} color={wp.color.red}>
+                      {String(urgent.quantity_bags)}
+                    </SerifNumber>
+                    <MonoText size={10} weight={700} tracking={1} upper color={wp.color.red}>
+                      Bags
+                    </MonoText>
+                  </View>
                 </TouchableOpacity>
               </View>
             </View>
@@ -175,9 +199,10 @@ export default function RequestsScreen() {
                   key={r.id}
                   ticketNumber={shortTicketNumber(r.id)}
                   title={r.location?.name ?? 'Unknown'}
-                  meta={`${(r.requester?.full_name ?? 'Unknown').toUpperCase()} · ${timeAgo(r.created_at).toUpperCase()}`}
+                  meta={`${(r.requester?.full_name ?? 'Unknown').toUpperCase()} · ${timeAgo(r.created_at).toUpperCase()}${ageSeverity(r.created_at) !== 'normal' ? ' · OVERDUE' : ''}`}
                   quantityBags={r.quantity_bags}
                   status={r.status}
+                  stampLabel={ageSeverity(r.created_at) !== 'normal' ? 'OVERDUE' : undefined}
                   rowIndex={i}
                   onPress={() => router.push(`/request/${r.id}`)}
                 />
@@ -262,7 +287,7 @@ function SummaryStat({
       <MonoText size={22} weight={700} color={color}>
         {value}
       </MonoText>
-      <KickerLabel size={10} tracking={1.5} color={wp.color.ink3} style={{ marginTop: 2 }}>
+      <KickerLabel size={10} tracking={1.1} color={wp.color.ink2} style={{ marginTop: 2 }}>
         {label}
       </KickerLabel>
     </View>
@@ -309,6 +334,10 @@ const styles = StyleSheet.create({
     fontWeight: wp.font.sansBold.fontWeight,
     fontSize: 15,
     color: wp.color.ink,
+  },
+  urgentQty: {
+    alignItems: 'center',
+    minWidth: 54,
   },
 
   sectionHead: {
