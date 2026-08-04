@@ -35,11 +35,15 @@ interface AuthState {
   accessToken: string | null;
   /** Whether a local unlock PIN is configured. `null` until first checked. */
   pinConfigured: boolean | null;
+  /** Whether the configured PIN has been entered for this app session. */
+  pinUnlocked: boolean;
 
   // Actions
   setAuth: (user: UserProfile, accessToken: string, refreshToken: string) => Promise<void>;
   clearAuth: () => Promise<void>;
   setUser: (user: UserProfile) => void;
+  setAccessToken: (accessToken: string) => Promise<void>;
+  unlockPin: () => void;
   loadStoredAuth: () => Promise<void>;
   /**
    * Re-read whether a PIN is configured. Call from screens that mutate
@@ -62,6 +66,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   accessToken: null,
   pinConfigured: null,
+  pinUnlocked: false,
 
   setAuth: async (user, accessToken, refreshToken) => {
     await storage.setItem('access_token', accessToken);
@@ -74,6 +79,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       user,
       accessToken,
       pinConfigured: pinExists,
+      pinUnlocked: false,
     });
   },
 
@@ -87,10 +93,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       user: null,
       accessToken: null,
       pinConfigured: null,
+      pinUnlocked: false,
     });
   },
 
   setUser: (user) => set({ user }),
+
+  setAccessToken: async (accessToken) => {
+    await storage.setItem('access_token', accessToken);
+    set({ accessToken });
+  },
+
+  unlockPin: () => set({ pinUnlocked: true }),
 
   loadStoredAuth: async () => {
     try {
@@ -105,18 +119,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           user,
           accessToken,
           pinConfigured: pinExists,
+          pinUnlocked: false,
         });
       } else {
-        set({ isLoading: false, pinConfigured: null });
+        set({ isLoading: false, pinConfigured: null, pinUnlocked: false });
       }
     } catch {
-      set({ isLoading: false });
+      set({ isLoading: false, pinUnlocked: false });
     }
   },
 
   refreshPinConfigured: async () => {
     const exists = await hasPin();
-    set({ pinConfigured: exists });
+    set({ pinConfigured: exists, pinUnlocked: exists ? get().pinUnlocked : false });
   },
 
   hasRole: (...roles) => {

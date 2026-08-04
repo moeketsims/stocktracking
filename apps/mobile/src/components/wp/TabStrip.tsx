@@ -1,6 +1,5 @@
 import React from 'react';
-import { View, TouchableOpacity, StyleSheet } from 'react-native';
-import { MonoText } from './MonoText';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { wp } from '../../constants/warehousePaper';
 
 export interface TabItem<T extends string> {
@@ -16,9 +15,19 @@ interface Props<T extends string> {
 }
 
 /**
- * Horizontal tab strip — equal flex, mono 11pt labels, active gets a
- * 3px solid ink underline (margin-bottom -1.5 so it sits flush with the
- * masthead rule above). Inline counts sit next to labels in ink3.
+ * Horizontal filter tabs — equal flex, active gets a 3px solid ink underline
+ * (margin-bottom -1.5 so it sits flush with the rule above).
+ *
+ * This is the ONE filter affordance in the app. Filters must not look like
+ * buttons: a bordered uppercase rectangle is the costume the action buttons
+ * wear, and a viewer cannot tell "narrows this list" from "mutates stock" when
+ * both are drawn identically. An underline says "you are viewing this subset"
+ * and carries no press-me weight.
+ *
+ * Labels are sentence-case 13pt sans, not 11pt tracked uppercase mono:
+ * uppercase destroys word-shape cues and letter-tracking pulls words apart,
+ * which is the worst case for glancing at a phone on a warehouse floor.
+ * Counts stay mono so digits stay tabular and columns of numbers line up.
  */
 export function TabStrip<T extends string>({ items, active, onChange }: Props<T>) {
   return (
@@ -30,23 +39,15 @@ export function TabStrip<T extends string>({ items, active, onChange }: Props<T>
             key={t.key}
             activeOpacity={0.7}
             onPress={() => onChange(t.key)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: on }}
+            accessibilityLabel={t.count != null ? `${t.label}, ${t.count}` : t.label}
             style={[styles.tab, on && styles.tabActive]}
           >
-            <MonoText
-              size={11}
-              weight={on ? 700 : 500}
-              tracking={1.5}
-              upper
-              color={on ? wp.color.ink : wp.color.ink3}
-            >
+            <Text style={[styles.label, on && styles.labelActive]} numberOfLines={1}>
               {t.label}
-              {t.count != null ? (
-                <MonoText size={11} weight={500} color={wp.color.ink3}>
-                  {'  '}
-                  {t.count}
-                </MonoText>
-              ) : null}
-            </MonoText>
+              {t.count != null ? <Text style={styles.count}>{'  '}{t.count}</Text> : null}
+            </Text>
           </TouchableOpacity>
         );
       })}
@@ -63,11 +64,28 @@ const styles = StyleSheet.create({
   tab: {
     flex: 1,
     paddingVertical: 12,
+    paddingHorizontal: 4,
     alignItems: 'center',
   },
   tabActive: {
     borderBottomWidth: 3,
     borderBottomColor: wp.color.ink,
     marginBottom: -1.5,
+  },
+  label: {
+    fontFamily: wp.font.sansMid.fontFamily,
+    fontWeight: wp.font.sansMid.fontWeight,
+    fontSize: wp.size.body,
+    letterSpacing: 0.2,
+    color: wp.color.ink3,
+  },
+  labelActive: {
+    fontFamily: wp.font.sansBold.fontFamily,
+    fontWeight: wp.font.sansBold.fontWeight,
+    color: wp.color.ink,
+  },
+  count: {
+    fontFamily: wp.font.mono.fontFamily,
+    fontWeight: wp.font.mono.fontWeight,
   },
 });

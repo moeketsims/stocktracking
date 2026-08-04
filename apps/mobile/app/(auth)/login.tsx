@@ -9,6 +9,7 @@ import {
   Platform,
   ScrollView,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -22,6 +23,21 @@ import {
 import { wp } from '../../src/constants/warehousePaper';
 import { APP_VERSION } from '../../src/constants/config';
 import { useLogin } from '../../src/hooks/useAuth';
+import { isDevAutoAuthEnabled } from '../../src/utils/devAutoAuth';
+import { clearPin } from '../../src/utils/pin';
+
+function getLoginErrorMessage(error: unknown): string | null {
+  if (!error) return null;
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'response' in error &&
+    typeof (error as { response?: { data?: { detail?: unknown } } }).response?.data?.detail === 'string'
+  ) {
+    return (error as { response: { data: { detail: string } } }).response.data.detail;
+  }
+  return 'Login failed. Please check your credentials.';
+}
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -29,12 +45,38 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const login = useLogin();
+  const showTestLogin = isDevAutoAuthEnabled();
 
   const canSubmit = email.trim().length > 0 && password.trim().length > 0;
+  const loginError = getLoginErrorMessage(login.error);
 
   const handleLogin = () => {
     if (!canSubmit) return;
+    login.reset();
     login.mutate({ email: email.trim(), password });
+  };
+
+  const handleTestLogin = () => {
+    login.reset();
+    login.mutate({ email: 'test@admin.com', password: 'password123' });
+  };
+
+  const handleForgotPin = () => {
+    Alert.alert(
+      'Reset device PIN?',
+      'This clears the PIN saved on this phone. Sign in afterward to create a new PIN.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset PIN',
+          style: 'destructive',
+          onPress: async () => {
+            await clearPin();
+            Alert.alert('PIN reset', 'Sign in now to create a new four-digit PIN.');
+          },
+        },
+      ],
+    );
   };
 
   const year = new Date().getFullYear();
@@ -125,12 +167,33 @@ export default function LoginScreen() {
                 {login.isPending ? (
                   <ActivityIndicator color={wp.color.paper} size="small" />
                 ) : (
-                  <Text allowFontScaling={false} style={styles.buttonLabel}>
+                  <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.buttonLabel}>
                     Sign in
                   </Text>
                 )}
               </TouchableOpacity>
             </View>
+
+            {loginError ? (
+              <View style={styles.errorBox}>
+                <MonoText size={11} tracking={1.1} upper weight={700} color={wp.color.red}>
+                  {loginError}
+                </MonoText>
+              </View>
+            ) : null}
+
+            {showTestLogin ? (
+              <TouchableOpacity
+                activeOpacity={0.75}
+                onPress={handleTestLogin}
+                disabled={login.isPending}
+                style={styles.testButton}
+              >
+                <MonoText size={11} tracking={1.5} upper weight={700} color={wp.color.ink}>
+                  Use Heroku Test Admin
+                </MonoText>
+              </TouchableOpacity>
+            ) : null}
 
             {/* Recovery + onboarding alternatives */}
             <View style={styles.altLinks}>
@@ -152,9 +215,7 @@ export default function LoginScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 activeOpacity={0.6}
-                onPress={() => {
-                  /* placeholder — forgot flow not yet built */
-                }}
+                onPress={handleForgotPin}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 <MonoText
@@ -165,7 +226,7 @@ export default function LoginScreen() {
                   color={wp.color.ink2}
                   style={styles.altLinkSub}
                 >
-                  Forgot password?
+                  Forgot PIN?
                 </MonoText>
               </TouchableOpacity>
             </View>
@@ -229,14 +290,17 @@ function Field({
       </View>
       <View style={styles.underline}>
         <TextInput
+          maxFontSizeMultiplier={wp.fontScale.text}
           {...rest}
           value={value}
           onChangeText={onChangeText}
           placeholderTextColor="transparent"
           style={styles.input}
         />
+        {/* The cap below must match the TextInput's above — this Text is drawn
+            *over* the field, so a different multiplier desyncs the two. */}
         {empty && placeholder ? (
-          <Text allowFontScaling={false} style={styles.placeholder} pointerEvents="none">
+          <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.placeholder} pointerEvents="none">
             {placeholder}
           </Text>
         ) : null}
@@ -346,6 +410,22 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     color: wp.color.paper,
     textTransform: 'uppercase',
+  },
+  errorBox: {
+    marginTop: 14,
+    borderWidth: 1,
+    borderColor: wp.color.red,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(194, 59, 31, 0.07)',
+  },
+  testButton: {
+    marginTop: 14,
+    borderWidth: 1.5,
+    borderColor: wp.color.lineD,
+    paddingVertical: 12,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
   },
 
   altLinks: {

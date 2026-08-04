@@ -7,7 +7,7 @@ import {
   type TextInputProps,
   type ViewStyle,
 } from 'react-native';
-import { colors, borderRadius, spacing, fontSize, fontWeight } from '../../constants/theme';
+import { wp } from '../../constants/warehousePaper';
 
 interface InputProps extends TextInputProps {
   label?: string;
@@ -15,20 +15,34 @@ interface InputProps extends TextInputProps {
   containerStyle?: ViewStyle;
 }
 
+/**
+ * Warehouse-paper text field.
+ *
+ * Was a rounded grey Material input with a blue focus ring — the only blue in
+ * the app, on a screen otherwise built from ink rules on cream. Now: square
+ * 1.5px ink border, cream ground, border thickening on focus, and red reserved
+ * for genuine errors. The label is sentence-case sans, not tracked uppercase,
+ * because a field label is something you read rather than a stamp.
+ */
 export function Input({ label, error, containerStyle, style, ...props }: InputProps) {
   const [focused, setFocused] = useState(false);
 
   return (
     <View style={[styles.container, containerStyle]}>
-      {label && <Text style={styles.label}>{label}</Text>}
+      {label && (
+        <Text style={styles.label} maxFontSizeMultiplier={wp.fontScale.text}>
+          {label}
+        </Text>
+      )}
       <TextInput
+        maxFontSizeMultiplier={wp.fontScale.text}
         style={[
           styles.input,
           focused && styles.focused,
           error && styles.errorBorder,
           style,
         ]}
-        placeholderTextColor={colors.gray[400]}
+        placeholderTextColor={wp.color.ink3}
         onFocus={(e) => {
           setFocused(true);
           props.onFocus?.(e);
@@ -39,40 +53,48 @@ export function Input({ label, error, containerStyle, style, ...props }: InputPr
         }}
         {...props}
       />
-      {error && <Text style={styles.errorText}>{error}</Text>}
+      {error && (
+        <Text style={styles.errorText} maxFontSizeMultiplier={wp.fontScale.text}>
+          {error}
+        </Text>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    gap: spacing.xs,
+    gap: wp.space.xs,
   },
   label: {
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.medium,
-    color: colors.gray[700],
+    fontFamily: wp.font.sansSemi.fontFamily,
+    fontWeight: wp.font.sansSemi.fontWeight,
+    fontSize: wp.size.body,
+    letterSpacing: 0.2,
+    color: wp.color.ink2,
   },
   input: {
-    borderWidth: 1,
-    borderColor: colors.gray[300],
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    fontSize: fontSize.md,
-    color: colors.gray[900],
-    backgroundColor: colors.white,
+    borderWidth: wp.border.mid,
+    borderColor: wp.color.lineD,
+    paddingHorizontal: wp.space.md,
+    paddingVertical: wp.space.md,
+    fontFamily: wp.font.mono.fontFamily,
+    fontWeight: wp.font.mono.fontWeight,
+    fontSize: wp.size.bodyLg,
+    color: wp.color.ink,
+    backgroundColor: wp.color.voucherBg,
     minHeight: 44,
   },
   focused: {
-    borderColor: colors.primary[500],
-    borderWidth: 2,
+    borderWidth: wp.border.thick,
   },
   errorBorder: {
-    borderColor: colors.error,
+    borderColor: wp.color.red,
   },
   errorText: {
-    fontSize: fontSize.xs,
-    color: colors.error,
+    fontFamily: wp.font.sansMid.fontFamily,
+    fontWeight: wp.font.sansMid.fontWeight,
+    fontSize: wp.size.meta,
+    color: wp.color.red,
   },
 });

@@ -178,7 +178,7 @@ export default function DeliveriesReportScreen() {
                       key={day.date}
                       idx={i + 1}
                       primary={day.date.slice(5)}
-                      secondary={`IN ${(day.received_kg / 10).toFixed(0)} · OUT ${(day.issued_kg / 10).toFixed(0)}`}
+                      secondary={`In ${(day.received_kg / 10).toFixed(0)} · out ${(day.issued_kg / 10).toFixed(0)}`}
                       trailing={
                         <MonoText size={14} weight={700} color={c}>
                           {netBags >= 0 ? '+' : ''}
@@ -211,7 +211,7 @@ export default function DeliveriesReportScreen() {
                       key={loc.location_id}
                       idx={i + 1}
                       primary={loc.location_name}
-                      secondary={`WASTE ${loc.waste_rate_pct.toFixed(1)}% · RECV ${(loc.total_received_kg / 10).toFixed(0)} BAGS`}
+                      secondary={`Waste ${loc.waste_rate_pct.toFixed(1)}% · received ${(loc.total_received_kg / 10).toFixed(0)} bags`}
                       trailing={
                         <Stamp colorHex={c} rowIndex={i}>
                           {`${loc.efficiency_score.toFixed(0)}pt`}

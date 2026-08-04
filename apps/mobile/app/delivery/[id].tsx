@@ -185,7 +185,7 @@ function ChooseMode({
             <View style={{ marginLeft: 10 }}>
               <MonoText size={11} tracking={1.5} color={wp.color.ink3}>BAGS</MonoText>
               <MonoText size={10} tracking={1} color={wp.color.ink3} style={{ marginTop: 2 }}>
-                FOR {location.toUpperCase()}
+                For {location}
               </MonoText>
             </View>
           </View>
@@ -194,12 +194,12 @@ function ChooseMode({
 
       <View style={styles.chooseActions}>
         <TouchableOpacity activeOpacity={0.85} onPress={onScan} style={styles.primaryAction}>
-          <Text allowFontScaling={false} style={styles.primaryActionLabel}>
+          <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.primaryActionLabel}>
             SCAN BARCODES
           </Text>
         </TouchableOpacity>
         <TouchableOpacity activeOpacity={0.7} onPress={onManual} style={styles.secondaryAction}>
-          <Text allowFontScaling={false} style={styles.secondaryActionLabel}>
+          <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.secondaryActionLabel}>
             MANUAL ENTRY
           </Text>
         </TouchableOpacity>
@@ -263,6 +263,7 @@ function ManualMode({
             </TouchableOpacity>
           </View>
           <TextInput
+            maxFontSizeMultiplier={wp.fontScale.text}
             value={manualBags}
             onChangeText={setManualBags}
             keyboardType="number-pad"
@@ -275,6 +276,7 @@ function ManualMode({
         <DFieldBox label="Notes · optional" noDivider>
           <View style={styles.notesBox}>
             <TextInput
+              maxFontSizeMultiplier={wp.fontScale.text}
               placeholder="Any notes about the delivery…"
               placeholderTextColor={wp.color.ink3}
               value={notes}
@@ -353,6 +355,7 @@ function ConfirmMode({
         <DFieldBox label="Notes · optional" noDivider>
           <View style={styles.notesBox}>
             <TextInput
+              maxFontSizeMultiplier={wp.fontScale.text}
               placeholder="Driver notes…"
               placeholderTextColor={wp.color.ink3}
               value={notes}

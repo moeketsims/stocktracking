@@ -113,7 +113,7 @@ export default function SettingsScreen() {
               <MonoText size={11} tracking={1} upper weight={600} color={wp.color.ink3}>
                 Change PIN
               </MonoText>
-              <Text allowFontScaling={false} style={styles.actionChev}>
+              <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.actionChev}>
                 ›
               </Text>
             </TouchableOpacity>
@@ -131,7 +131,7 @@ export default function SettingsScreen() {
               >
                 {pinEnabled === false ? 'Set up a PIN' : 'Turn off PIN'}
               </MonoText>
-              <Text allowFontScaling={false} style={styles.actionChev}>
+              <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.actionChev}>
                 ›
               </Text>
             </TouchableOpacity>
@@ -154,7 +154,7 @@ export default function SettingsScreen() {
                 {logout.isPending ? (
                   <ActivityIndicator color={wp.color.red} size="small" />
                 ) : (
-                  <Text allowFontScaling={false} style={styles.signOutLabel}>
+                  <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.signOutLabel}>
                     Sign out
                   </Text>
                 )}
@@ -182,7 +182,7 @@ function ProfileRow({
         {label}
       </MonoText>
       <Text
-        allowFontScaling={false}
+        maxFontSizeMultiplier={wp.fontScale.text}
         style={[styles.rowValue, mono && styles.rowValueMono]}
         numberOfLines={1}
       >
@@ -368,6 +368,7 @@ function ThresholdInput({
         {label}
       </MonoText>
       <TextInput
+        maxFontSizeMultiplier={wp.fontScale.text}
         keyboardType="number-pad"
         value={value}
         onChangeText={onChange}

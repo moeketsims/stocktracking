@@ -142,7 +142,7 @@ export default function LogWasteScreen() {
                       style={[styles.reasonChip, selected && styles.reasonChipSelected]}
                     >
                       <Text
-                        allowFontScaling={false}
+                        maxFontSizeMultiplier={wp.fontScale.compact}
                         style={[styles.reasonLabel, selected && styles.reasonLabelSelected]}
                       >
                         {r.label}
@@ -156,6 +156,7 @@ export default function LogWasteScreen() {
             <DFieldBox label="Notes · optional" noDivider>
               <View style={styles.notesBox}>
                 <TextInput
+                  maxFontSizeMultiplier={wp.fontScale.text}
                   placeholder="Details about the loss…"
                   placeholderTextColor={wp.color.ink3}
                   value={notes}

@@ -128,10 +128,10 @@ export default function CreateLoanScreen() {
                       >
                         <View style={[styles.checkbox, selected && styles.checkboxChecked]}>
                           {selected && (
-                            <Text allowFontScaling={false} style={styles.checkMark}>✓</Text>
+                            <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.checkMark}>✓</Text>
                           )}
                         </View>
-                        <Text allowFontScaling={false} style={styles.locName}>
+                        <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.locName}>
                           {l.name}
                         </Text>
                         <MonoText size={9} tracking={1} upper color={wp.color.ink3}>
@@ -201,6 +201,7 @@ export default function CreateLoanScreen() {
             <DFieldBox label="Notes · optional" noDivider>
               <View style={styles.notesBox}>
                 <TextInput
+                  maxFontSizeMultiplier={wp.fontScale.text}
                   value={notes}
                   onChangeText={setNotes}
                   placeholder="Any additional details…"
@@ -241,13 +242,13 @@ function DateCol({
         {label}
       </MonoText>
       <TouchableOpacity activeOpacity={0.6} onPress={onInc} style={styles.dateArrow}>
-        <Text allowFontScaling={false} style={styles.dateArrowText}>↑</Text>
+        <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.dateArrowText}>↑</Text>
       </TouchableOpacity>
       <MonoText size={22} weight={700} color={wp.color.ink} style={styles.dateValue}>
         {value}
       </MonoText>
       <TouchableOpacity activeOpacity={0.6} onPress={onDec} style={styles.dateArrow}>
-        <Text allowFontScaling={false} style={styles.dateArrowText}>↓</Text>
+        <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.dateArrowText}>↓</Text>
       </TouchableOpacity>
     </View>
   );

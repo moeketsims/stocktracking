@@ -2,6 +2,7 @@ import React from 'react';
 import { Platform, StyleSheet, Text } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../src/stores/authStore';
 import { wp } from '../../src/constants/warehousePaper';
 import type { UserRole } from '../../src/types';
@@ -73,6 +74,10 @@ export default function TabLayout() {
   const user = useAuthStore((s) => s.user);
   const role = user?.role ?? 'staff';
   const initialTab = getInitialTab(role);
+  const insets = useSafeAreaInsets();
+  const bottomInset = Platform.OS === 'web' ? 0 : insets.bottom;
+  const bottomPadding = Math.max(bottomInset, Platform.OS === 'android' ? 28 : 18);
+  const tabBarHeight = 58 + bottomPadding;
 
   return (
     <Tabs
@@ -84,8 +89,8 @@ export default function TabLayout() {
           borderTopWidth: wp.border.mid,
           borderTopColor: wp.color.lineD,
           paddingTop: 6,
-          paddingBottom: Platform.OS === 'ios' ? 22 : 12,
-          height: Platform.OS === 'ios' ? 80 : 64,
+          paddingBottom: bottomPadding,
+          height: tabBarHeight,
           // Disable platform shadows — paper aesthetic uses borders only.
           elevation: 0,
           shadowOpacity: 0,
@@ -107,7 +112,7 @@ export default function TabLayout() {
             ),
             tabBarLabel: ({ focused }) => (
               <Text
-                allowFontScaling={false}
+                maxFontSizeMultiplier={wp.fontScale.compact}
                 numberOfLines={1}
                 style={[
                   styles.label,

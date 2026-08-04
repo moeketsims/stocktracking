@@ -43,7 +43,7 @@ export function PrimaryBar({ label, onPress, disabled, loading }: Props) {
           {loading ? (
             <ActivityIndicator color={wp.color.paper} size="small" />
           ) : (
-            <Text allowFontScaling={false} style={styles.label}>
+            <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.label}>
               {label}
             </Text>
           )}

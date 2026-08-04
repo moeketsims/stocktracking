@@ -124,8 +124,9 @@ export default function DriversListScreen() {
 
             <View style={styles.searchRow}>
               <View style={styles.search}>
-                <Text allowFontScaling={false} style={styles.searchGlyph}>⌕</Text>
+                <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.searchGlyph}>⌕</Text>
                 <TextInput
+                  maxFontSizeMultiplier={wp.fontScale.text}
                   value={search}
                   onChangeText={setSearch}
                   placeholder="name · email · phone"
@@ -157,7 +158,7 @@ export default function DriversListScreen() {
                     key={d.id}
                     idx={i + 1}
                     primary={d.full_name ?? '(No name)'}
-                    secondary={context.toUpperCase() || undefined}
+                    secondary={context || undefined}
                     trailing={
                       <Stamp
                         colorHex={isInactive ? wp.color.ink3 : stamp.color}

@@ -111,7 +111,7 @@ export default function TransferStockScreen() {
             <DFieldBox label="From">
               <View style={styles.fromTile}>
                 <MonoText size={10} tracking={1.5} color={wp.color.paper}>◉</MonoText>
-                <Text allowFontScaling={false} style={styles.fromTitle}>
+                <Text maxFontSizeMultiplier={wp.fontScale.display} style={styles.fromTitle}>
                   {fromLocation?.name ?? user?.location_name ?? 'Your location'}
                 </Text>
                 <View style={styles.fromMeta}>
@@ -149,7 +149,7 @@ export default function TransferStockScreen() {
                         <View style={[styles.checkbox, selected && styles.checkboxChecked]}>
                           {selected && (
                             <Text
-                              allowFontScaling={false}
+                              maxFontSizeMultiplier={wp.fontScale.compact}
                               style={styles.checkMark}
                             >
                               ✓
@@ -157,7 +157,7 @@ export default function TransferStockScreen() {
                           )}
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text allowFontScaling={false} style={styles.destName}>
+                          <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.destName}>
                             {loc.name}
                           </Text>
                           <MonoText

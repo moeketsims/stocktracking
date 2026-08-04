@@ -36,7 +36,7 @@ export function SerifNumber({
   return (
     <Text
       {...rest}
-      allowFontScaling={false}
+      maxFontSizeMultiplier={wp.fontScale.display}
       numberOfLines={autoShrink ? 1 : undefined}
       adjustsFontSizeToFit={autoShrink}
       minimumFontScale={minimumFontScale}

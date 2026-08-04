@@ -22,6 +22,7 @@ export default function PinSetupScreen() {
   const params = useLocalSearchParams<{ mode?: string }>();
   const isChange = params.mode === 'change';
   const refreshPinConfigured = useAuthStore((s) => s.refreshPinConfigured);
+  const unlockPin = useAuthStore((s) => s.unlockPin);
 
   const [phase, setPhase] = useState<Phase>(isChange ? 'current' : 'choose');
   const [current, setCurrent] = useState('');
@@ -122,6 +123,7 @@ export default function PinSetupScreen() {
         // routing pass sees pinConfigured=true and lets the user through
         // instead of bouncing them back to pin-setup.
         await refreshPinConfigured();
+        unlockPin();
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         // After "Change PIN" we go back to where we came from (settings).
         // After initial setup we land in the main app.
@@ -136,7 +138,7 @@ export default function PinSetupScreen() {
         setError('Could not save PIN. Try again.');
       }
     })();
-  }, [second, first, phase, router, isChange, refreshPinConfigured]);
+  }, [second, first, phase, router, isChange, refreshPinConfigured, unlockPin]);
 
   const value =
     phase === 'current' ? current : phase === 'choose' ? first : second;

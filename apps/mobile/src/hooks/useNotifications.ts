@@ -6,6 +6,7 @@ import { registerForPushNotifications, submitPushToken } from '../utils/notifica
 import { useAuthStore } from '../stores/authStore';
 import { notificationsApi } from '../api/notifications';
 import { STALE_TIME } from '../constants/config';
+import { assertOnlineBeforeMutation } from '../utils/offline';
 
 export function useNotificationFeed() {
   return useQuery({
@@ -26,7 +27,10 @@ export function useUnreadNotificationCount() {
 export function useMarkNotificationRead() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => notificationsApi.markRead(id).then((r) => r.data),
+    mutationFn: async (id: string) => {
+      await assertOnlineBeforeMutation('mark this notification read');
+      return notificationsApi.markRead(id).then((r) => r.data);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['notifications'] });
     },
@@ -36,7 +40,10 @@ export function useMarkNotificationRead() {
 export function useMarkAllNotificationsRead() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => notificationsApi.markAllRead().then((r) => r.data),
+    mutationFn: async () => {
+      await assertOnlineBeforeMutation('mark notifications read');
+      return notificationsApi.markAllRead().then((r) => r.data);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['notifications'] });
     },

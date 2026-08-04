@@ -25,6 +25,8 @@ import { STALE_TIME } from '../src/constants/config';
 import { brand } from '../src/constants/theme';
 import { useNotifications } from '../src/hooks/useNotifications';
 import OfflineBanner from '../src/components/OfflineBanner';
+import { decideAuthRedirect } from '../src/utils/authRouting';
+import { ensureDevAutoAuth, isDevAutoAuthEnabled } from '../src/utils/devAutoAuth';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -43,9 +45,11 @@ const queryClient = new QueryClient({
 });
 
 function AuthGuard({ children, fontsLoaded }: { children: React.ReactNode; fontsLoaded: boolean }) {
+  const [devAutoAuthLoading, setDevAutoAuthLoading] = useState(false);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isLoading = useAuthStore((s) => s.isLoading);
   const pinConfigured = useAuthStore((s) => s.pinConfigured);
+  const pinUnlocked = useAuthStore((s) => s.pinUnlocked);
   const loadStoredAuth = useAuthStore((s) => s.loadStoredAuth);
   const segments = useSegments();
   const router = useRouter();
@@ -54,45 +58,44 @@ function AuthGuard({ children, fontsLoaded }: { children: React.ReactNode; fonts
     loadStoredAuth();
   }, [loadStoredAuth]);
 
-  // Register push notifications when authenticated
   useNotifications();
 
   useEffect(() => {
-    if (isLoading || !fontsLoaded) return;
+    if (isLoading || !fontsLoaded || !isDevAutoAuthEnabled()) return;
 
-    const segs = segments as string[];
-    const inAuthGroup = segs[0] === '(auth)';
-    const currentRoute = segs[1];
+    setDevAutoAuthLoading(true);
+    ensureDevAutoAuth()
+      .catch((error) => {
+        console.error('Dev auto-auth failed', error);
+      })
+      .finally(() => setDevAutoAuthLoading(false));
+  }, [isAuthenticated, isLoading, fontsLoaded]);
 
-    if (!isAuthenticated) {
-      // No session at all → require email/password login OR an invite-code
-      // redemption. Both are valid pre-authentication entry points.
-      const allowedUnauth = currentRoute === 'login' || currentRoute === 'accept-code';
-      if (!inAuthGroup || !allowedUnauth) {
-        router.replace('/(auth)/login');
-      }
-      return;
+  useEffect(() => {
+    if (isLoading || !fontsLoaded || devAutoAuthLoading) return;
+
+    const bypassPinForDev = isDevAutoAuthEnabled();
+
+    const redirect = decideAuthRedirect({
+      isAuthenticated,
+      pinConfigured: bypassPinForDev ? true : pinConfigured,
+      pinUnlocked: bypassPinForDev ? true : pinUnlocked,
+      segments: segments as string[],
+    });
+
+    if (redirect) {
+      router.replace(redirect);
     }
-
-    // Authenticated branch — wait until we know whether a PIN is configured.
-    if (pinConfigured === null) return;
-
-    // No PIN configured → must set one before entering the app.
-    if (!pinConfigured) {
-      if (currentRoute !== 'pin-setup') {
-        router.replace('/(auth)/pin-setup');
-      }
-      return;
-    }
-
-    // PIN configured. Leave the user on the PIN entry screen (the screen
-    // routes home on success) or on pin-setup (used for "Change PIN" from
-    // settings). Bounce them out of any other auth-group route — usually
-    // a `login` left over from a fresh sign-in.
-    if (inAuthGroup && currentRoute !== 'pin' && currentRoute !== 'pin-setup') {
-      router.replace('/(auth)/pin');
-    }
-  }, [isAuthenticated, isLoading, fontsLoaded, segments, router, pinConfigured]);
+  }, [
+    isAuthenticated,
+    isLoading,
+    fontsLoaded,
+    devAutoAuthLoading,
+    segments,
+    router,
+    pinConfigured,
+    pinUnlocked,
+  ]);
 
   useEffect(() => {
     if (!isLoading && fontsLoaded) {
@@ -100,7 +103,7 @@ function AuthGuard({ children, fontsLoaded }: { children: React.ReactNode; fonts
     }
   }, [isLoading, fontsLoaded]);
 
-  if (isLoading || !fontsLoaded) {
+  if (isLoading || !fontsLoaded || devAutoAuthLoading) {
     return <Loading fullScreen message="Loading..." />;
   }
 
@@ -130,19 +133,19 @@ export default function RootLayout() {
       <ErrorBoundary>
         <AuthGuard fontsLoaded={fontsLoaded}>
           <View style={styles.root}>
-          <OfflineBanner />
-          <StatusBar style="dark" />
-          <Stack
-            screenOptions={{
-              headerStyle: { backgroundColor: brand.gradientStart },
-              headerTintColor: '#ffffff',
-              headerTitleStyle: { fontWeight: '700', fontSize: 17 },
-              headerShadowVisible: false,
-            }}
-          >
-            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          </Stack>
+            <OfflineBanner />
+            <StatusBar style="dark" />
+            <Stack
+              screenOptions={{
+                headerStyle: { backgroundColor: brand.gradientStart },
+                headerTintColor: '#ffffff',
+                headerTitleStyle: { fontWeight: '700', fontSize: 17 },
+                headerShadowVisible: false,
+              }}
+            >
+              <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            </Stack>
           </View>
         </AuthGuard>
       </ErrorBoundary>

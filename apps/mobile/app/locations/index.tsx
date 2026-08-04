@@ -116,8 +116,9 @@ export default function LocationsListScreen() {
 
           <View style={styles.searchRow}>
             <View style={styles.search}>
-              <Text allowFontScaling={false} style={styles.searchGlyph}>⌕</Text>
+              <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.searchGlyph}>⌕</Text>
               <TextInput
+                maxFontSizeMultiplier={wp.fontScale.text}
                 value={search}
                 onChangeText={setSearch}
                 placeholder="name · address · zone"
@@ -155,7 +156,7 @@ export default function LocationsListScreen() {
                       key={loc.id}
                       idx={i + 1}
                       primary={loc.name}
-                      secondary={(loc.address ?? '').toUpperCase() || undefined}
+                      secondary={loc.address || undefined}
                       trailing={
                         <Stamp
                           colorHex={isShop ? '#1F3A8A' : wp.color.amber}

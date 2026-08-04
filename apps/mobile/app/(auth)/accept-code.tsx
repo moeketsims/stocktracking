@@ -136,6 +136,7 @@ export default function AcceptCodeScreen() {
                 </View>
                 <View style={styles.underline}>
                   <TextInput
+                    maxFontSizeMultiplier={wp.fontScale.text}
                     value={displayCode}
                     onChangeText={(t) => {
                       setCode(t);
@@ -159,6 +160,7 @@ export default function AcceptCodeScreen() {
                 </MonoText>
                 <View style={styles.underline}>
                   <TextInput
+                    maxFontSizeMultiplier={wp.fontScale.text}
                     value={password}
                     onChangeText={(t) => {
                       setPassword(t);
@@ -181,6 +183,7 @@ export default function AcceptCodeScreen() {
                 </MonoText>
                 <View style={styles.underline}>
                   <TextInput
+                    maxFontSizeMultiplier={wp.fontScale.text}
                     value={confirm}
                     onChangeText={(t) => {
                       setConfirm(t);

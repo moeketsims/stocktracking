@@ -80,7 +80,7 @@ export function PinKeypad({ value, onChange, shake, disabled }: Props) {
               disabled={disabled}
               style={[styles.key, disabled && styles.keyDisabled]}
             >
-              <Text allowFontScaling={false} style={styles.keyLabel}>
+              <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.keyLabel}>
                 {k}
               </Text>
             </TouchableOpacity>

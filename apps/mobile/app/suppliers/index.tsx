@@ -71,8 +71,9 @@ export default function SuppliersScreen() {
 
             <View style={styles.searchRow}>
               <View style={styles.search}>
-                <Text allowFontScaling={false} style={styles.searchGlyph}>⌕</Text>
+                <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.searchGlyph}>⌕</Text>
                 <TextInput
+                  maxFontSizeMultiplier={wp.fontScale.text}
                   value={search}
                   onChangeText={setSearch}
                   placeholder="name · contact · phone"
@@ -96,7 +97,7 @@ export default function SuppliersScreen() {
                     key={s.id}
                     idx={i + 1}
                     primary={s.name}
-                    secondary={ctx ? ctx.toUpperCase() : undefined}
+                    secondary={ctx || undefined}
                     trailing={
                       <Stamp colorHex={wp.color.ink} rowIndex={i}>
                         {`N°${String(i + 1).padStart(2, '0')}`}

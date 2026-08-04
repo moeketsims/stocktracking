@@ -97,7 +97,7 @@ export function KitchenStampButton({ onWithdraw, disabled }: Props) {
           >
             <View style={[styles.stamp, disabled && styles.stampDisabled]}>
               <Text
-                allowFontScaling={false}
+                maxFontSizeMultiplier={wp.fontScale.compact}
                 style={styles.minus}
               >
                 −1
@@ -131,7 +131,7 @@ export function KitchenStampButton({ onWithdraw, disabled }: Props) {
                   ]}
                   onPress={() => handleSelectAmount(amount)}
                 >
-                  <Text allowFontScaling={false} style={styles.menuMinus}>−{amount}</Text>
+                  <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.menuMinus}>−{amount}</Text>
                   <MonoText size={9} weight={700} tracking={1.2} color={wp.color.ink2} upper>
                     {amount === 1 ? 'Bag' : 'Bags'}
                   </MonoText>

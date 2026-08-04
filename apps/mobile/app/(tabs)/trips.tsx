@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useTrips } from '../../src/hooks/useTrips';
 import { useAuthStore } from '../../src/stores/authStore';
 import { Loading } from '../../src/components/ui/Loading';
@@ -34,12 +35,23 @@ const STATUS_STAMP: Record<TripStatus, { label: string; color: string }> = {
   planned: { label: 'PLANNED', color: wp.color.amber },
   in_progress: { label: 'IN TRANSIT', color: wp.color.pipeline.in_delivery ?? '#5B2CA5' },
   completed: { label: 'DONE', color: wp.color.green },
-  cancelled: { label: 'CANCEL', color: wp.color.ink3 },
+  cancelled: { label: 'CANCELLED', color: wp.color.ink3 },
 };
 
-function shortTripNumber(n: string): string {
-  const m = n.match(/\d+/);
-  return m ? m[0].slice(-4) : n.slice(-4).toUpperCase();
+/**
+ * Sequence portion of a trip number, for the narrow ticket stub.
+ *
+ * "TRP-2026-0035" → "0035". The previous implementation used a non-global
+ * `match(/\d+/)`, which returned the first digit run — the YEAR — and then
+ * worked around the resulting "2026" by falling back to a UUID fragment when it
+ * happened to equal the current year. That made the list and the detail screen
+ * disagree about the same trip, and would have silently started printing "2026"
+ * on 1 January. Taking the LAST numeric segment is what was meant throughout.
+ */
+function tripSequence(n: string | null | undefined, id?: string): string {
+  const segments = (n ?? '').match(/\d+/g);
+  if (segments?.length) return segments[segments.length - 1];
+  return (n || id || '').slice(-4).toUpperCase();
 }
 
 export default function TripsScreen() {
@@ -112,7 +124,7 @@ export default function TripsScreen() {
             }
           >
             <Masthead
-              kicker={`DISPATCH LOG — ${fmtKickerDate()}`}
+              kicker={fmtKickerDate()}
               title="Trips"
             />
 
@@ -121,7 +133,7 @@ export default function TripsScreen() {
                 { label: 'Active', value: counts.active },
                 { label: 'Done this wk', value: counts.doneWk },
                 { label: 'This mo', value: counts.doneMo },
-                { label: 'Cancel', value: counts.cancel, color: wp.color.red },
+                { label: 'Cancelled', value: counts.cancel, color: wp.color.red },
               ]}
             />
 
@@ -138,12 +150,13 @@ export default function TripsScreen() {
             {/* Search + New */}
             <View style={styles.searchRow}>
               <View style={styles.search}>
-                <Text allowFontScaling={false} style={styles.searchGlyph}>⌕</Text>
+                <Ionicons name="search" size={16} color={wp.color.ink2} />
                 <TextInput
+                  maxFontSizeMultiplier={wp.fontScale.text}
                   value={search}
                   onChangeText={setSearch}
                   placeholder="trip # · reg · driver"
-                  placeholderTextColor={wp.color.ink3}
+                  placeholderTextColor={wp.color.ink2}
                   style={styles.searchInput}
                 />
               </View>
@@ -241,15 +254,15 @@ function TripVoucher({
   const driver = trip.driver_name ?? 'Unassigned';
   const when = trip.completed_at
     ? new Date(trip.completed_at).toLocaleDateString('en-US', { day: '2-digit', month: 'short' }).toUpperCase()
-    : timeAgo(trip.created_at).toUpperCase();
+    : timeAgo(trip.created_at);
 
   return (
     <HardShadowFrame style={{ marginBottom: 10, opacity: faded ? 0.75 : 1 }}>
       <TouchableOpacity activeOpacity={0.75} onPress={onPress} style={styles.voucher}>
         <View style={styles.stub}>
-          <MonoText size={9} color={wp.color.ink3}>N°</MonoText>
+          <MonoText size={9} color={wp.color.ink3}>TRIP</MonoText>
           <MonoText size={12} weight={700} color={wp.color.ink}>
-            {shortTripNumber(trip.trip_number)}
+            {tripSequence(trip.trip_number, trip.id)}
           </MonoText>
         </View>
         <View style={styles.stubDivider}>
@@ -257,13 +270,13 @@ function TripVoucher({
         </View>
         <View style={styles.body}>
           <View style={styles.routeRow}>
-            <Text allowFontScaling={false} style={styles.routeText} numberOfLines={1}>
+            <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.routeText} numberOfLines={2}>
               {from}
             </Text>
             <MonoText size={12} color={wp.color.ink3} style={styles.arrow}>
               →
             </MonoText>
-            <Text allowFontScaling={false} style={styles.routeText} numberOfLines={1}>
+            <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.routeText} numberOfLines={2}>
               {to}
             </Text>
           </View>
@@ -271,8 +284,8 @@ function TripVoucher({
             size={9}
             tracking={1.2}
             upper
-            color={wp.color.ink3}
-            numberOfLines={1}
+            color={wp.color.ink2}
+            numberOfLines={2}
             style={{ marginTop: 4 }}
           >
             {vehicle} · {driver} · {when}
@@ -312,9 +325,12 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    borderBottomWidth: 1.5,
+    borderWidth: 1.5,
     borderBottomColor: wp.color.lineD,
-    paddingVertical: 6,
+    borderColor: wp.color.lineD,
+    backgroundColor: wp.color.voucherBg,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     gap: 8,
   },
   searchGlyph: {
@@ -398,9 +414,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   routeText: {
-    fontFamily: wp.font.serifMid.fontFamily,
-    fontWeight: wp.font.serifMid.fontWeight,
-    fontStyle: 'italic',
+    fontFamily: wp.font.sansSemi.fontFamily,
+    fontWeight: wp.font.sansSemi.fontWeight,
     fontSize: 15,
     color: wp.color.ink,
     flexShrink: 1,

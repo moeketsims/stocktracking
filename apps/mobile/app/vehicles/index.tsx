@@ -107,8 +107,9 @@ export default function VehiclesScreen() {
 
             <View style={styles.searchRow}>
               <View style={styles.search}>
-                <Text allowFontScaling={false} style={styles.searchGlyph}>⌕</Text>
+                <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.searchGlyph}>⌕</Text>
                 <TextInput
+                  maxFontSizeMultiplier={wp.fontScale.text}
                   value={search}
                   onChangeText={setSearch}
                   placeholder="reg · make · model"
@@ -142,7 +143,7 @@ export default function VehiclesScreen() {
                     key={v.id}
                     idx={i + 1}
                     primary={v.registration_number}
-                    secondary={context.toUpperCase()}
+                    secondary={context}
                     trailing={
                       <Stamp colorHex={stamp.color} rowIndex={i}>
                         {stamp.label}

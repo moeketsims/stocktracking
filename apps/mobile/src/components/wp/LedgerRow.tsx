@@ -43,14 +43,19 @@ export function LedgerRow({
         </MonoText>
       )}
       <View style={styles.body}>
-        <Text allowFontScaling={false} style={styles.primary} numberOfLines={1}>
+        <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.primary} numberOfLines={1}>
           {primary}
         </Text>
+        {/* The secondary line carries DATA — a driver's location, a vehicle's
+            make, a user's role. It was 10pt uppercase tracked mono, which
+            stacks three legibility penalties on the same string: below the
+            12pt floor, no word-shape cues, and letters pushed apart. Sentence
+            case at the `meta` size reads at a glance; hierarchy against
+            `primary` still comes from size and colour. */}
         {secondary ? (
           <MonoText
-            size={10}
-            tracking={1}
-            upper
+            size={wp.size.meta}
+            tracking={0.2}
             color={wp.color.ink3}
             numberOfLines={1}
             style={{ marginTop: 2 }}
@@ -66,7 +71,7 @@ export function LedgerRow({
         </MonoText>
       ) : null}
       {chev ? (
-        <Text allowFontScaling={false} style={styles.chev}>›</Text>
+        <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.chev}>›</Text>
       ) : null}
     </View>
   );
@@ -100,9 +105,8 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   primary: {
-    fontFamily: wp.font.serifMid.fontFamily,
-    fontWeight: wp.font.serifMid.fontWeight,
-    fontStyle: 'italic',
+    fontFamily: wp.font.sansSemi.fontFamily,
+    fontWeight: wp.font.sansSemi.fontWeight,
     fontSize: 17,
     color: wp.color.ink,
   },

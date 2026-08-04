@@ -171,12 +171,11 @@ export default function TransactionsScreen() {
               const color = TYPE_COLOR[tx.type] ?? wp.color.ink;
               const meta = [
                 formatStamp(tx.created_at),
-                tx.location_from ? `FROM ${tx.location_from}` : null,
-                tx.location_to ? `TO ${tx.location_to}` : null,
+                tx.location_from ? `From ${tx.location_from}` : null,
+                tx.location_to ? `To ${tx.location_to}` : null,
               ]
                 .filter(Boolean)
-                .join(' · ')
-                .toUpperCase();
+                .join(' · ');
               return (
                 <LedgerRow
                   key={tx.id}
@@ -210,7 +209,7 @@ export default function TransactionsScreen() {
           )}
 
           {items.length > 0 && (
-            <Text allowFontScaling={false} style={styles.pageInfo}>
+            <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.pageInfo}>
               {`SHOWING ${offset + 1}–${offset + items.length} OF ${total}`}
             </Text>
           )}

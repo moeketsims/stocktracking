@@ -27,7 +27,7 @@ import {
 import {
   wp,
   fmtKickerDate,
-  publicationNumber,
+  fmtSyncedAt,
   stockStatusColor,
   stockStatusLabel,
 } from '../../src/constants/warehousePaper';
@@ -104,11 +104,11 @@ export default function DashboardScreen() {
         >
           <Masthead
             variant="dashboard"
-            kicker={`VOL.7 · ${fmtKickerDate()}`}
-            rightKicker={user?.location_name ? `ED. ${user.location_name.toUpperCase()}` : undefined}
-            title={'The\nStockroom'}
+            kicker={fmtKickerDate()}
+            rightKicker={user?.location_name ? user.location_name.toUpperCase() : undefined}
+            title="Home"
             managerName={user?.full_name ?? user?.email ?? undefined}
-            pubNumber={publicationNumber(user?.id)}
+            syncedLabel={fmtSyncedAt(dashboard.dataUpdatedAt)}
           />
 
           {/* Hero — On hand today */}
@@ -223,7 +223,7 @@ export default function DashboardScreen() {
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text
                       numberOfLines={1}
-                      allowFontScaling={false}
+                      maxFontSizeMultiplier={wp.fontScale.text}
                       style={styles.locationName}
                     >
                       {b.location_name}

@@ -12,6 +12,7 @@ import {
 } from '../api/stock';
 import { useAuthStore } from '../stores/authStore';
 import { STALE_TIME } from '../constants/config';
+import { assertOnlineBeforeMutation, isOfflineMutationError } from '../utils/offline';
 
 export function useStockBalance(locationId?: string) {
   return useQuery({
@@ -55,14 +56,17 @@ export function useTodayTransactions(locationId?: string) {
 export function useIssueStock() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: IssueStockPayload) =>
-      stockApi.issue(data).then((r) => r.data),
+    mutationFn: async (data: IssueStockPayload) => {
+      await assertOnlineBeforeMutation('issue stock');
+      return stockApi.issue(data).then((r) => r.data);
+    },
     onSuccess: (data) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       qc.invalidateQueries({ queryKey: ['stock'] });
       qc.invalidateQueries({ queryKey: ['transactions'] });
     },
     onError: (error: any) => {
+      if (isOfflineMutationError(error)) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', error.response?.data?.detail ?? 'Failed to issue stock');
     },
@@ -72,14 +76,17 @@ export function useIssueStock() {
 export function useReturnStock() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: IssueStockPayload) =>
-      stockApi.return(data).then((r) => r.data),
+    mutationFn: async (data: IssueStockPayload) => {
+      await assertOnlineBeforeMutation('return stock');
+      return stockApi.return(data).then((r) => r.data);
+    },
     onSuccess: () => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       qc.invalidateQueries({ queryKey: ['stock'] });
       qc.invalidateQueries({ queryKey: ['transactions'] });
     },
     onError: (error: any) => {
+      if (isOfflineMutationError(error)) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', error.response?.data?.detail ?? 'Failed to return stock');
     },
@@ -91,14 +98,17 @@ export function useReturnStock() {
 export function useTransferStock() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: TransferStockPayload) =>
-      stockApi.transfer(data).then((r) => r.data),
+    mutationFn: async (data: TransferStockPayload) => {
+      await assertOnlineBeforeMutation('transfer stock');
+      return stockApi.transfer(data).then((r) => r.data);
+    },
     onSuccess: () => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       qc.invalidateQueries({ queryKey: ['stock'] });
       qc.invalidateQueries({ queryKey: ['transactions'] });
     },
     onError: (error: any) => {
+      if (isOfflineMutationError(error)) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', error.response?.data?.detail ?? 'Failed to transfer stock');
     },
@@ -110,14 +120,17 @@ export function useTransferStock() {
 export function useLogWaste() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: WastePayload) =>
-      stockApi.waste(data).then((r) => r.data),
+    mutationFn: async (data: WastePayload) => {
+      await assertOnlineBeforeMutation('log waste');
+      return stockApi.waste(data).then((r) => r.data);
+    },
     onSuccess: (data) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       qc.invalidateQueries({ queryKey: ['stock'] });
       qc.invalidateQueries({ queryKey: ['transactions'] });
     },
     onError: (error: any) => {
+      if (isOfflineMutationError(error)) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', error.response?.data?.detail ?? 'Failed to log waste');
     },
@@ -137,8 +150,10 @@ export function useAdjustmentReasons() {
 export function useCreateAdjustment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: AdjustmentPayload) =>
-      stockApi.createAdjustment(data).then((r) => r.data),
+    mutationFn: async (data: AdjustmentPayload) => {
+      await assertOnlineBeforeMutation('create an adjustment');
+      return stockApi.createAdjustment(data).then((r) => r.data);
+    },
     onSuccess: (data) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       qc.invalidateQueries({ queryKey: ['stock'] });
@@ -146,6 +161,7 @@ export function useCreateAdjustment() {
       qc.invalidateQueries({ queryKey: ['batches'] });
     },
     onError: (error: any) => {
+      if (isOfflineMutationError(error)) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', error.response?.data?.detail ?? 'Failed to create adjustment');
     },
@@ -181,13 +197,16 @@ export function useBatchHistory(id: string) {
 export function useEditBatch() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: BatchEditPayload }) =>
-      stockApi.editBatch(id, data).then((r) => r.data),
+    mutationFn: async ({ id, data }: { id: string; data: BatchEditPayload }) => {
+      await assertOnlineBeforeMutation('edit this batch');
+      return stockApi.editBatch(id, data).then((r) => r.data);
+    },
     onSuccess: (data, variables) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       qc.invalidateQueries({ queryKey: ['batches'] });
     },
     onError: (error: any) => {
+      if (isOfflineMutationError(error)) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', error.response?.data?.detail ?? 'Failed to edit batch');
     },
@@ -199,14 +218,17 @@ export function useEditBatch() {
 export function useCreateStockRequest() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: CreateStockRequestPayload) =>
-      stockApi.createStockRequest(data).then((r) => r.data),
+    mutationFn: async (data: CreateStockRequestPayload) => {
+      await assertOnlineBeforeMutation('create a stock request');
+      return stockApi.createStockRequest(data).then((r) => r.data);
+    },
     onSuccess: () => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       qc.invalidateQueries({ queryKey: ['requests'] });
       qc.invalidateQueries({ queryKey: ['stock'] });
     },
     onError: (error: any) => {
+      if (isOfflineMutationError(error)) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', error.response?.data?.detail ?? 'Failed to create request');
     },

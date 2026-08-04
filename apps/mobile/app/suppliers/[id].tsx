@@ -107,7 +107,7 @@ function MetaRow({ label, value }: { label: string; value: string }) {
       >
         {label}
       </MonoText>
-      <Text allowFontScaling={false} style={styles.metaValue}>
+      <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.metaValue}>
         {value}
       </Text>
     </View>

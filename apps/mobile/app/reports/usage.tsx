@@ -190,7 +190,7 @@ export default function UsageScreen() {
                     key={row.date}
                     idx={i + 1}
                     primary={row.date.slice(5)}
-                    secondary={`IN ${row.received_bags.toFixed(0)} · OUT ${row.issued_bags.toFixed(0)} · WASTE ${row.wasted_bags.toFixed(0)}`}
+                    secondary={`In ${row.received_bags.toFixed(0)} · out ${row.issued_bags.toFixed(0)} · waste ${row.wasted_bags.toFixed(0)}`}
                     chev={false}
                   />
                 ))}

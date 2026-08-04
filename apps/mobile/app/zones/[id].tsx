@@ -121,7 +121,7 @@ export default function ZoneDetailScreen() {
                     key={loc.id}
                     idx={i + 1}
                     primary={loc.name}
-                    secondary={(loc.address ?? '').toUpperCase() || undefined}
+                    secondary={loc.address || undefined}
                     trailing={
                       <Stamp colorHex={wp.color.amber} rowIndex={i}>
                         WHSE
@@ -148,7 +148,7 @@ export default function ZoneDetailScreen() {
                     key={loc.id}
                     idx={i + 1}
                     primary={loc.name}
-                    secondary={(loc.address ?? '').toUpperCase() || undefined}
+                    secondary={loc.address || undefined}
                     trailing={
                       <Stamp colorHex="#1F3A8A" rowIndex={i}>
                         SHOP

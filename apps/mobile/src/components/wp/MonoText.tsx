@@ -35,6 +35,7 @@ export function MonoText({
 }: Props) {
   return (
     <Text
+      maxFontSizeMultiplier={wp.fontScale.text}
       {...rest}
       style={[
         {

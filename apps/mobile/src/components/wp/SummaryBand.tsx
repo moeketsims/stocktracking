@@ -39,7 +39,7 @@ export function SummaryBand({ items }: Props) {
           >
             {String(it.value)}
           </MonoText>
-          <KickerLabel size={9} tracking={1.5} color={wp.color.ink3} style={{ marginTop: 2 }}>
+          <KickerLabel size={10} tracking={1.1} color={wp.color.ink2} style={{ marginTop: 2 }}>
             {it.label}
           </KickerLabel>
         </View>

@@ -21,6 +21,8 @@ import {
   Stamp,
   SerifNumber,
   HardShadowFrame,
+  TabStrip,
+  InkButton,
 } from '../../src/components/wp';
 import { wp, fmtKickerDate } from '../../src/constants/warehousePaper';
 import type { BatchListItem } from '../../src/api/stock';
@@ -59,44 +61,24 @@ export default function BatchesScreen() {
           backUseRouter
         />
 
-        {/* Tab strip */}
-        <View style={styles.tabStrip}>
-          {([
-            { key: 'all' as FilterType, label: 'All', count: counts.all },
-            { key: 'expiring_soon' as FilterType, label: 'Expiring', count: counts.expiring_soon },
-          ]).map((t) => {
-            const on = filter === t.key;
-            return (
-              <TouchableOpacity
-                key={t.key}
-                activeOpacity={0.7}
-                onPress={() => setFilter(t.key)}
-                style={[styles.tab, on && styles.tabActive]}
-              >
-                <MonoText
-                  size={11}
-                  weight={on ? 700 : 500}
-                  tracking={1.5}
-                  upper
-                  color={on ? wp.color.ink : wp.color.ink3}
-                >
-                  {t.label}
-                  {'  '}
-                  {t.count}
-                </MonoText>
-              </TouchableOpacity>
-            );
-          })}
-          <TouchableOpacity
-            activeOpacity={0.7}
+        {/* Was a local copy of the tab strip with the Export *action* wedged in
+            as a fourth tab — so a button that writes a file looked like a view
+            filter. Filters now use the shared TabStrip; Export is a button. */}
+        <TabStrip<FilterType>
+          items={[
+            { key: 'all', label: 'All', count: counts.all },
+            { key: 'expiring_soon', label: 'Expiring', count: counts.expiring_soon },
+          ]}
+          active={filter}
+          onChange={setFilter}
+        />
+
+        <View style={styles.actionRow}>
+          <InkButton
+            label="Export"
             onPress={() => exportBatches()}
-            disabled={exportLoading}
-            style={styles.exportTab}
-          >
-            <MonoText size={11} weight={600} tracking={1} upper color={wp.color.ink2}>
-              {exportLoading ? 'Exporting…' : 'Export'}
-            </MonoText>
-          </TouchableOpacity>
+            loading={exportLoading}
+          />
         </View>
 
         {query.isLoading ? (
@@ -110,7 +92,7 @@ export default function BatchesScreen() {
             renderItem={({ item, index }) => <BatchVoucher item={item} rowIndex={index} onPress={() => router.push(`/stock/batch/${item.id}`)} />}
             ListEmptyComponent={
               <View style={styles.empty}>
-                <Text allowFontScaling={false} style={styles.emptyTitle}>
+                <Text maxFontSizeMultiplier={wp.fontScale.display} style={styles.emptyTitle}>
                   No batches
                 </Text>
                 <MonoText size={11} tracking={1} upper color={wp.color.ink3} style={{ marginTop: 6 }}>
@@ -149,7 +131,7 @@ function BatchVoucher({
             <KickerLabel size={10} tracking={1.5} color={wp.color.ink3}>
               BATCH N° {item.batch_id_display}
             </KickerLabel>
-            <Text allowFontScaling={false} style={styles.voucherTitle} numberOfLines={1}>
+            <Text maxFontSizeMultiplier={wp.fontScale.display} style={styles.voucherTitle} numberOfLines={1}>
               {item.item_name}
             </Text>
           </View>
@@ -202,7 +184,7 @@ function MetaRow({ label, value, last }: { label: string; value: string; last?: 
       <MonoText size={10} tracking={1.3} upper color={wp.color.ink3}>
         {label}
       </MonoText>
-      <Text allowFontScaling={false} style={styles.metaValue} numberOfLines={1}>
+      <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.metaValue} numberOfLines={1}>
         {value}
       </Text>
     </View>
@@ -213,26 +195,11 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
 
   // Tab strip
-  tabStrip: {
+  actionRow: {
     flexDirection: 'row',
-    borderBottomWidth: wp.border.mid,
-    borderBottomColor: wp.color.lineD,
-  },
-  tab: {
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  tabActive: {
-    borderBottomWidth: 3,
-    borderBottomColor: wp.color.ink,
-    marginBottom: -1.5,
-  },
-  exportTab: {
-    marginLeft: 'auto',
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingHorizontal: wp.space.screenH,
+    paddingTop: 12,
   },
 
   list: {

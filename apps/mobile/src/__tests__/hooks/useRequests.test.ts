@@ -1,6 +1,8 @@
 import { renderHook, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
+import NetInfo from '@react-native-community/netinfo';
+import { Alert } from 'react-native';
 import { useAvailableRequests, useMyRequests, useAcceptRequest } from '../../hooks/useRequests';
 
 // Mock expo-haptics
@@ -35,7 +37,10 @@ jest.mock('../../constants/config', () => ({
 
 function createWrapper() {
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    defaultOptions: {
+      queries: { retry: false, gcTime: Infinity },
+      mutations: { retry: false, gcTime: Infinity },
+    },
   });
   return ({ children }: { children: React.ReactNode }) =>
     React.createElement(QueryClientProvider, { client: queryClient }, children);
@@ -93,5 +98,20 @@ describe('useAcceptRequest', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(mockAccept).toHaveBeenCalledWith('request-123');
+  });
+
+  it('blocks accept while offline before calling the API', async () => {
+    (NetInfo.fetch as jest.Mock).mockResolvedValueOnce({ isConnected: false });
+
+    const { result } = renderHook(() => useAcceptRequest(), { wrapper: createWrapper() });
+
+    result.current.mutate('request-123');
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(mockAccept).not.toHaveBeenCalled();
+    expect(Alert.alert).toHaveBeenCalledWith(
+      "You're offline",
+      'Cannot accept this request while offline. Please check your connection and try again.',
+    );
   });
 });

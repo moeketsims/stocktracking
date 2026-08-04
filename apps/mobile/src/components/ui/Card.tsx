@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, StyleSheet, type ViewStyle } from 'react-native';
-import { colors, borderRadius, spacing, shadow } from '../../constants/theme';
+import { wp } from '../../constants/warehousePaper';
 
 type CardVariant = 'default' | 'outlined' | 'tinted' | 'elevated';
 
@@ -12,53 +12,40 @@ interface CardProps {
   tintColor?: string; // custom tint background color
 }
 
+/**
+ * Warehouse-paper card.
+ *
+ * This used to be a rounded white Material card with a blurred drop shadow —
+ * a second, competing design language living on the same screens as the
+ * squared-off ink-ruled vouchers. On `app/request/[id].tsx` the two appear
+ * inches apart, which is the loudest "assembled from two templates" tell in
+ * the app. Props are unchanged so the call sites don't move; only the paint
+ * differs: square corners, 1px ink rule, cream voucher ground.
+ *
+ * `variant` is retained for API compatibility but no longer forks the surface —
+ * the point of merging the two systems is that there is ONE card. `tinted`
+ * still honours a caller's colour, because callers use it to flag state.
+ */
 export function Card({ children, style, padded = true, variant = 'default', tintColor }: CardProps) {
-  const variantStyle = getVariantStyle(variant, tintColor);
+  const tint =
+    variant === 'tinted' && tintColor
+      ? { borderColor: tintColor, backgroundColor: `${tintColor}0D` }
+      : null;
 
   return (
-    <View style={[styles.card, variantStyle, padded && styles.padded, style]}>
+    <View style={[styles.card, tint, padded && styles.padded, style]}>
       {children}
     </View>
   );
 }
 
-function getVariantStyle(variant: CardVariant, tintColor?: string): ViewStyle {
-  switch (variant) {
-    case 'outlined':
-      return {
-        backgroundColor: colors.white,
-        borderWidth: 1,
-        borderColor: colors.gray[200],
-        // Override shadow by resetting it
-        shadowOpacity: 0,
-        elevation: 0,
-      };
-    case 'tinted':
-      return {
-        backgroundColor: tintColor ?? colors.surface.brand,
-        borderWidth: 1,
-        borderColor: tintColor ? `${tintColor}80` : colors.primary[100],
-        shadowOpacity: 0,
-        elevation: 0,
-      };
-    case 'elevated':
-      return {
-        backgroundColor: colors.white,
-        ...shadow.lg,
-      };
-    case 'default':
-    default:
-      return {};
-  }
-}
-
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.white,
-    borderRadius: borderRadius.lg,
-    ...shadow.md,
+    backgroundColor: wp.color.voucherBg,
+    borderWidth: wp.border.thin,
+    borderColor: wp.color.lineD,
   },
   padded: {
-    padding: spacing.lg,
+    padding: wp.space.lg,
   },
 });

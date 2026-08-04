@@ -48,6 +48,13 @@ function shortTicketNumber(uuid: string): string {
   return uuid.slice(-4).toUpperCase();
 }
 
+function ageSeverity(createdAt: string): 'normal' | 'stale' | 'overdue' {
+  const days = (Date.now() - new Date(createdAt).getTime()) / 86400000;
+  if (days >= 14) return 'overdue';
+  if (days >= 3) return 'stale';
+  return 'normal';
+}
+
 export default function RequestsScreen() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
@@ -115,7 +122,7 @@ export default function RequestsScreen() {
           }
         >
           <Masthead
-            kicker={`ORDER DESK — ${fmtKickerDate()}`}
+            kicker={fmtKickerDate()}
             title="Requests"
           />
 
@@ -137,7 +144,7 @@ export default function RequestsScreen() {
                   style={styles.urgentRow}
                 >
                   <View style={{ flex: 1 }}>
-                    <Text allowFontScaling={false} style={styles.urgentTitle}>
+                    <Text maxFontSizeMultiplier={wp.fontScale.display} style={styles.urgentTitle}>
                       {urgent.location?.name ?? 'Unknown'}
                     </Text>
                     <MonoText size={11} color={wp.color.ink2} style={{ marginTop: 2 }}>
@@ -146,10 +153,27 @@ export default function RequestsScreen() {
                       {' · '}
                       {timeAgo(urgent.created_at)}
                     </MonoText>
+                    {ageSeverity(urgent.created_at) !== 'normal' && (
+                      <MonoText
+                        size={10}
+                        weight={700}
+                        tracking={1}
+                        upper
+                        color={wp.color.red}
+                        style={{ marginTop: 6 }}
+                      >
+                        {ageSeverity(urgent.created_at) === 'overdue' ? 'Overdue' : 'Needs follow-up'}
+                      </MonoText>
+                    )}
                   </View>
-                  <SerifNumber size={36} tracking={-1} leading={1} color={wp.color.red}>
-                    {String(urgent.quantity_bags)}
-                  </SerifNumber>
+                  <View style={styles.urgentQty}>
+                    <SerifNumber size={36} tracking={-1} leading={1} color={wp.color.red}>
+                      {String(urgent.quantity_bags)}
+                    </SerifNumber>
+                    <MonoText size={10} weight={700} tracking={1} upper color={wp.color.red}>
+                      Bags
+                    </MonoText>
+                  </View>
                 </TouchableOpacity>
               </View>
             </View>
@@ -175,9 +199,24 @@ export default function RequestsScreen() {
                   key={r.id}
                   ticketNumber={shortTicketNumber(r.id)}
                   title={r.location?.name ?? 'Unknown'}
-                  meta={`${(r.requester?.full_name ?? 'Unknown').toUpperCase()} · ${timeAgo(r.created_at).toUpperCase()}`}
+                  // Two facts, not three. The age flag used to be appended here
+                  // as well, which overflowed the line and truncated the most
+                  // important word to "OVE…" — while the stamp on the same row
+                  // already said OVERDUE. Dropping it removes the duplication
+                  // and the truncation together.
+                  meta={`${r.requester?.full_name ?? 'Unknown'} · ${timeAgo(r.created_at)}`}
                   quantityBags={r.quantity_bags}
                   status={r.status}
+                  // Don't collapse both age buckets into "OVERDUE": a 3-day-old
+                  // ticket and a 3-week-old one are different situations, and
+                  // the urgent callout above already distinguishes them.
+                  stampLabel={
+                    ageSeverity(r.created_at) === 'overdue'
+                      ? 'OVERDUE'
+                      : ageSeverity(r.created_at) === 'stale'
+                        ? 'FOLLOW UP'
+                        : undefined
+                  }
                   rowIndex={i}
                   onPress={() => router.push(`/request/${r.id}`)}
                 />
@@ -199,11 +238,11 @@ export default function RequestsScreen() {
                 onPress={toggleHistory}
                 activeOpacity={0.7}
               >
-                <Text allowFontScaling={false} style={styles.completedLabel}>
+                <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.completedLabel}>
                   {history.length} completed {history.length === 1 ? 'ticket' : 'tickets'}
                 </Text>
                 <View style={styles.completedAction}>
-                  <Text allowFontScaling={false} style={styles.completedView}>
+                  <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.completedView}>
                     {historyExpanded ? 'HIDE' : 'VIEW'}
                   </Text>
                   <Ionicons
@@ -226,14 +265,14 @@ export default function RequestsScreen() {
                         <MonoText size={10} color={wp.color.ink3} style={{ width: 64 }}>
                           N° {shortTicketNumber(r.id)}
                         </MonoText>
-                        <Text allowFontScaling={false} style={styles.historyName} numberOfLines={1}>
+                        <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.historyName} numberOfLines={1}>
                           {r.location?.name ?? 'Unknown'}
                         </Text>
                         <MonoText size={14} weight={700} color={wp.color.ink} style={styles.historyQty}>
                           {r.quantity_bags}
                         </MonoText>
                         <MonoText size={10} color={wp.color.ink3} style={styles.historyTime}>
-                          {timeAgo(r.created_at).toUpperCase()}
+                          {timeAgo(r.created_at)}
                         </MonoText>
                       </TouchableOpacity>
                     </View>
@@ -262,7 +301,7 @@ function SummaryStat({
       <MonoText size={22} weight={700} color={color}>
         {value}
       </MonoText>
-      <KickerLabel size={10} tracking={1.5} color={wp.color.ink3} style={{ marginTop: 2 }}>
+      <KickerLabel size={10} tracking={1.1} color={wp.color.ink2} style={{ marginTop: 2 }}>
         {label}
       </KickerLabel>
     </View>
@@ -309,6 +348,10 @@ const styles = StyleSheet.create({
     fontWeight: wp.font.sansBold.fontWeight,
     fontSize: 15,
     color: wp.color.ink,
+  },
+  urgentQty: {
+    alignItems: 'center',
+    minWidth: 54,
   },
 
   sectionHead: {

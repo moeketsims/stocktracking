@@ -8,6 +8,7 @@ import {
   TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../../src/stores/authStore';
 import {
@@ -31,6 +32,7 @@ import {
   SerifNumber,
   Stamp,
   InkButton,
+  TabStrip,
   TapeAccent,
   KitchenStampButton,
 } from '../../src/components/wp';
@@ -182,8 +184,8 @@ export default function StockScreen() {
             }
           >
             <Masthead
-              kicker={`INVENTORY ROLL — ${fmtKickerDate()}`}
-              title="Stock Count"
+              kicker={fmtKickerDate()}
+              title="Stock"
             />
 
             {/* Summary band */}
@@ -195,49 +197,64 @@ export default function StockScreen() {
             </View>
 
             {/* Action strip */}
+            {/* One primary, five secondary. Six identically-weighted buttons
+                gave no answer to "what do I press?" — Issue is the action a
+                location manager performs daily, so it carries solid ink and the
+                rest stay outlined. Each row is an even 3-up grid, which also
+                removes the ragged 4-then-2 wrap. */}
             <View style={styles.actionStrip}>
-              <InkButton label="Issue" onPress={() => router.push('/stock/issue')} />
-              <InkButton label="Transfer" onPress={() => router.push('/stock/transfer')} />
-              <InkButton label="Request" onPress={() => router.push('/stock/create-request')} />
-              <InkButton label="Stocktake" onPress={() => router.push('/stock-take')} />
-              <InkButton label="Waste" onPress={() => router.push('/stock/waste')} />
+              <InkButton
+                label="Issue"
+                variant="solid"
+                onPress={() => router.push('/stock/issue')}
+                style={styles.actionCell}
+              />
+              <InkButton label="Transfer" onPress={() => router.push('/stock/transfer')} style={styles.actionCell} />
+              <InkButton label="Request" onPress={() => router.push('/stock/create-request')} style={styles.actionCell} />
+              <InkButton label="Stocktake" onPress={() => router.push('/stock-take')} style={styles.actionCell} />
+              <InkButton label="Waste" onPress={() => router.push('/stock/waste')} style={styles.actionCell} />
               <InkButton
                 label="Export"
                 onPress={() => exportStock()}
                 loading={exportLoading}
+                style={styles.actionCell}
               />
             </View>
 
             {/* Search */}
+            {/* An uppercase tracked placeholder sitting on a hairline rule read
+                as a section heading, not a field. A boxed input with a search
+                glyph and sentence-case placeholder is unambiguously typeable. */}
             <View style={styles.searchWrap}>
-              <TextInput
-                placeholder="SEARCH LOCATIONS"
-                placeholderTextColor={wp.color.ink3}
-                value={search}
-                onChangeText={setSearch}
-                style={styles.search}
-              />
+              <View style={styles.searchBox}>
+                <Ionicons name="search" size={15} color={wp.color.ink3} />
+                <TextInput
+                  maxFontSizeMultiplier={wp.fontScale.text}
+                  placeholder="Search locations"
+                  placeholderTextColor={wp.color.ink3}
+                  value={search}
+                  onChangeText={setSearch}
+                  style={styles.search}
+                  accessibilityLabel="Search locations"
+                  returnKeyType="search"
+                  clearButtonMode="while-editing"
+                />
+              </View>
             </View>
 
-            {/* Filter chips */}
-            <View style={styles.filterRow}>
-              <FilterChip
-                active={filter === 'all'}
-                onPress={() => setFilter('all')}
-                label="All"
-                count={rawLocations.length}
-              />
-              <FilterChip
-                active={filter === 'critical'}
-                onPress={() => setFilter(filter === 'critical' ? 'all' : 'critical')}
-                label="Needs"
-                count={criticalCt + lowCt}
-              />
-              <FilterChip
-                active={filter === 'sufficient'}
-                onPress={() => setFilter(filter === 'sufficient' ? 'all' : 'sufficient')}
-                label="In stock"
-                count={sufficientCt}
+            {/* Filters — the shared underline TabStrip, same as Trips, Users,
+                Vehicles, Locations and Loans. This screen used to draw its own
+                bordered chips, so Stock's filters looked like buttons while
+                every other screen's looked like tabs. */}
+            <View style={styles.filterWrap}>
+              <TabStrip<FilterMode>
+                items={[
+                  { key: 'all', label: 'All', count: rawLocations.length },
+                  { key: 'critical', label: 'Needs', count: criticalCt + lowCt },
+                  { key: 'sufficient', label: 'In stock', count: sufficientCt },
+                ]}
+                active={filter}
+                onChange={setFilter}
               />
             </View>
 
@@ -288,7 +305,7 @@ export default function StockScreen() {
                     >
                       <View style={[styles.attBar, { backgroundColor: accent }]} />
                       <View style={styles.attInfo}>
-                        <Text allowFontScaling={false} style={styles.attName}>
+                        <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.attName}>
                           {item.location_name}
                         </Text>
                         <View style={styles.attMetaRow}>
@@ -304,15 +321,18 @@ export default function StockScreen() {
                           </MonoText>
                         </View>
                       </View>
-                      <SerifNumber
-                        size={36}
-                        tracking={-1}
-                        leading={1}
+                      {/* Mono, not italic display serif. This is the number the
+                          user acts on, and an italic Fraunces "0" is the least
+                          legible glyph in the system — Fraunces is reserved for
+                          screen titles and earned hero numbers. */}
+                      <MonoText
+                        size={wp.size.statBig}
+                        weight={700}
                         color={accent}
                         style={styles.attBags}
                       >
                         {String(bags)}
-                      </SerifNumber>
+                      </MonoText>
                       <Stamp colorHex={accent} rowIndex={i}>
                         {isCritical ? 'CRITICAL' : 'LOW'}
                       </Stamp>
@@ -337,7 +357,7 @@ export default function StockScreen() {
                       <MonoText size={10} color={wp.color.ink3} style={styles.okIndex}>
                         {String(i + 1).padStart(2, '0')}
                       </MonoText>
-                      <Text allowFontScaling={false} style={styles.okName}>
+                      <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.okName}>
                         {item.location_name}
                       </Text>
                       <MonoText size={16} weight={600} color={wp.color.ink} style={styles.okBags}>
@@ -385,8 +405,8 @@ export default function StockScreen() {
           }
         >
           <Masthead
-            kicker={`KITCHEN LEDGER — ${(user?.location_name ?? 'Kitchen').toUpperCase()}`}
-            title="On the shelf"
+            kicker={(user?.location_name ?? 'Kitchen').toUpperCase()}
+            title="Stock"
           />
 
           {/* Hero bag counter */}
@@ -507,31 +527,6 @@ function SummaryCell({
   );
 }
 
-function FilterChip({
-  active,
-  onPress,
-  label,
-  count,
-}: {
-  active: boolean;
-  onPress: () => void;
-  label: string;
-  count: number;
-}) {
-  return (
-    <Text
-      onPress={onPress}
-      allowFontScaling={false}
-      style={[styles.chip, active && styles.chipActive]}
-    >
-      <Text style={[styles.chipText, active && styles.chipTextActive]}>
-        {label.toUpperCase()}{' '}
-      </Text>
-      <Text style={[styles.chipCount, active && styles.chipCountActive]}>{count}</Text>
-    </Text>
-  );
-}
-
 const styles = StyleSheet.create({
   safe: { flex: 1 },
   scroll: { paddingBottom: 120 },
@@ -556,52 +551,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: wp.space.screenH,
     paddingVertical: 16,
   },
+  // Even 3-up grid. Auto-width buttons wrapped 4-then-2 with a ragged tail,
+  // which read as an accident; a fixed basis makes the strip a deliberate block.
+  actionCell: {
+    flexGrow: 1,
+    flexBasis: '30%',
+  },
 
   searchWrap: {
     paddingHorizontal: wp.space.screenH,
     paddingBottom: 8,
   },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 10,
+    borderWidth: wp.border.thin,
+    borderColor: wp.color.lineD,
+    backgroundColor: wp.color.voucherBg,
+  },
   search: {
+    flex: 1,
     fontFamily: wp.font.mono.fontFamily,
     fontWeight: wp.font.mono.fontWeight,
-    fontSize: 11,
+    fontSize: wp.size.body,
     color: wp.color.ink,
-    letterSpacing: 1,
-    borderBottomWidth: 1,
-    borderBottomColor: wp.color.line,
-    paddingVertical: 8,
+    letterSpacing: 0.2,
+    paddingVertical: 10,
   },
-  filterRow: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: wp.space.screenH,
-    paddingBottom: 12,
+  filterWrap: {
+    marginBottom: 14,
   },
-  chip: {
-    borderWidth: 1,
-    borderColor: wp.color.lineD,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: 'transparent',
-  },
-  chipActive: {
-    backgroundColor: wp.color.ink,
-  },
-  chipText: {
-    fontFamily: wp.font.monoSemi.fontFamily,
-    fontWeight: wp.font.monoSemi.fontWeight,
-    fontSize: 10,
-    letterSpacing: 1,
-    color: wp.color.ink,
-  },
-  chipTextActive: { color: wp.color.paper },
-  chipCount: {
-    fontFamily: wp.font.monoBold.fontFamily,
-    fontWeight: wp.font.monoBold.fontWeight,
-    fontSize: 10,
-    color: wp.color.ink2,
-  },
-  chipCountActive: { color: wp.color.paper },
 
   deliveriesBanner: {
     flexDirection: 'row',
