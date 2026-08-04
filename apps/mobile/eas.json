@@ -38,7 +38,7 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://stocktracker-0560a415bf9e.herokuapp.com"
+        "EXPO_PUBLIC_API_URL": "https://stocktracker-frontend-baaede6418cc.herokuapp.com"
       }
     }
   },

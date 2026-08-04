@@ -765,10 +765,11 @@ async def create_trip_from_request(
                 "is_completed": False,
             },
         ]
-        try:
-            supabase.table("trip_stops").insert(stops_data).execute()
-        except Exception as stop_err:
-            print(f"[TRIP STOPS] Error creating stops: {stop_err}")
+        stops_result = supabase.table("trip_stops").insert(stops_data).execute()
+        if not stops_result.data or stops_result.error:
+            error_msg = f"Trip created but stops failed: {stops_result.error}"
+            print(f"[TRIP STOPS] {error_msg}")
+            raise HTTPException(status_code=500, detail=error_msg)
 
         # Create trip_requests junction record
         try:
@@ -776,7 +777,8 @@ async def create_trip_from_request(
                 "id": str(uuid4()),
                 "trip_id": created_trip["id"],
                 "request_id": request_id,
-                "status": "assigned",
+                "planned_qty_bags": existing.data.get("quantity_bags", 1),
+                "status": "pending",
             }).execute()
         except Exception as tr_err:
             print(f"[TRIP REQUESTS] Error creating junction: {tr_err}")

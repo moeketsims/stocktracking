@@ -651,6 +651,16 @@ export default function RequestDetailScreen() {
             <Card>
               <Text style={styles.sectionTitle}>Accept & Deliver</Text>
 
+              {/* Show where stock is going — not editable */}
+              <View style={styles.deliveryInfoBanner}>
+                <Ionicons name="location" size={16} color={wp.color.ink2} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.deliveryInfoLabel}>Delivering to</Text>
+                  <Text style={styles.deliveryInfoValue}>{request.location?.name ?? 'Unknown'}</Text>
+                </View>
+                <Text style={styles.deliveryInfoQty}>{request.quantity_bags} bags</Text>
+              </View>
+
               <Text style={styles.fieldLabel}>Vehicle *</Text>
               {vehiclesQuery.isLoading ? (
                 <ActivityIndicator size="small" color={wp.color.ink} />
@@ -1309,5 +1319,34 @@ const styles = StyleSheet.create({
     fontSize: wp.size.bodyLg,
     color: wp.color.ink,
     fontWeight: '600',
+  },
+  // Arrived on main after this file was ported off `theme.ts`, so it still
+  // carried the old orange/rounded tokens. Same banner, warehouse-paper paint.
+  deliveryInfoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: wp.space.md,
+    backgroundColor: wp.color.voucherBg,
+    padding: wp.space.md,
+    marginBottom: wp.space.lg,
+    borderWidth: 1,
+    borderColor: wp.color.lineD,
+  },
+  deliveryInfoLabel: {
+    fontSize: wp.size.meta,
+    fontWeight: '500',
+    color: wp.color.ink3,
+    letterSpacing: 0.3,
+  },
+  deliveryInfoValue: {
+    fontSize: wp.size.bodyLg,
+    fontWeight: '600',
+    color: wp.color.ink,
+    marginTop: 2,
+  },
+  deliveryInfoQty: {
+    fontSize: wp.size.rowTitle,
+    fontWeight: '700',
+    color: wp.color.ink,
   },
 });
