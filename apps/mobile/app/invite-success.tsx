@@ -210,7 +210,7 @@ function Step({ n, text }: { n: number; text: string }) {
       <MonoText size={10} weight={700} color={wp.color.ink3} style={styles.stepNum}>
         {String(n).padStart(2, '0')}
       </MonoText>
-      <Text allowFontScaling={false} style={styles.stepText}>
+      <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.stepText}>
         {text}
       </Text>
     </View>

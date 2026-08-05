@@ -23,12 +23,18 @@ interface DefaultProps extends BaseProps {
 
 interface DashboardProps extends BaseProps {
   variant: 'dashboard';
-  /** Right-side kicker (e.g. "ED. LAGOS CENTRAL"). Replaces single kicker. */
+  /** Right-side kicker — the active location (e.g. "HARRISMITH"). */
   rightKicker?: string;
-  /** Manager name shown on the sub-line. */
+  /**
+   * Sub-line left: who is signed in. Rendered plainly, without an invented
+   * "Mgr." honorific — the role is already shown on the More tab.
+   */
   managerName?: string;
-  /** Publication number shown on the sub-line. */
-  pubNumber?: string;
+  /**
+   * Sub-line right: data freshness (e.g. "Synced 4m ago"), replacing the
+   * former fake "No. 249" publication number.
+   */
+  syncedLabel?: string;
 }
 
 type Props = DefaultProps | DashboardProps;
@@ -88,20 +94,20 @@ export function Masthead(props: Props) {
           >
             {props.title}
           </SerifNumber>
-          {(props.managerName || props.pubNumber) && (
+          {(props.managerName || props.syncedLabel) && (
             <View style={styles.subRow}>
-              <MonoText size={10} tracking={1.5} upper color={wp.color.ink} weight={500}>
-                {props.managerName ? `Mgr. ${props.managerName}` : ''}
+              <MonoText size={wp.size.meta} tracking={0.4} color={wp.color.ink2} weight={500}>
+                {props.managerName ?? ''}
               </MonoText>
-              <MonoText size={10} tracking={1.5} upper color={wp.color.ink} weight={500}>
-                {props.pubNumber ? `No. ${props.pubNumber}` : ''}
+              <MonoText size={wp.size.meta} tracking={0.4} color={wp.color.ink3} weight={400}>
+                {props.syncedLabel ?? ''}
               </MonoText>
             </View>
           )}
         </>
       ) : (
         <>
-          <KickerLabel size={9} tracking={2} color={wp.color.ink3}>{props.kicker}</KickerLabel>
+          <KickerLabel size={wp.size.kicker} tracking={1.6} color={wp.color.ink3}>{props.kicker}</KickerLabel>
           <SerifNumber
             size={wp.size.titleScreen}
             tracking={-1}

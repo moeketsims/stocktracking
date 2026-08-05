@@ -24,8 +24,8 @@ import {
   useDeclineProposal,
 } from '../../src/hooks/useRequests';
 import { referenceApi } from '../../src/api/reference';
-import { StatusBadge } from '../../src/components/StatusBadge';
-import { Badge } from '../../src/components/ui/Badge';
+// StatusBadge and Badge imports removed: the only consumer was the Linked Trip
+// card, now migrated to wp Stamp. Both components are still used elsewhere.
 import { Button } from '../../src/components/ui/Button';
 import { Card } from '../../src/components/ui/Card';
 import { Input } from '../../src/components/ui/Input';
@@ -34,7 +34,6 @@ import { QueryErrorState } from '../../src/components/ui/QueryErrorState';
 import { useAuthStore } from '../../src/stores/authStore';
 import { formatDateTime, timeAgo } from '../../src/utils/dates';
 import { getUrgencyVariant } from '../../src/utils/status';
-import { brand, colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import {
   PaperBackground,
@@ -44,15 +43,33 @@ import {
   Stamp,
   KickerLabel,
   HardShadowFrame,
+  InkButton,
 } from '../../src/components/wp';
 import { wp, pipelineColor } from '../../src/constants/warehousePaper';
 
 /* ── Design tokens (matching dashboard) ── */
-const WARM_BG  = '#f8fafc';
 const CARD_R   = 16;
 import type { ProposeTimePayload } from '../../src/api/requests';
 
 type ActiveForm = null | 'accept' | 'proposeTime' | 'edit' | 'cancel' | 'createTrip' | 'declineProposal';
+
+/** Kilograms per bag. Matches KG_PER_BAG in the backend's app/utils/conversion.py. */
+const KG_PER_BAG = 10;
+
+/**
+ * Group thousands with a plain comma.
+ *
+ * Deliberately not `toLocaleString()`: on-device that emitted a U+00A0 narrow
+ * space, so the same card showed "10 600kg" beside a raw "15000" — the numbers
+ * looked like they were in different systems. One formatter, one separator.
+ */
+function fmtKg(kg: number): string {
+  return Math.round(kg).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+function fmtBags(kg: number): string {
+  return fmtKg(Math.round(kg / KG_PER_BAG));
+}
 
 const PROPOSE_REASONS: { value: ProposeTimePayload['reason']; label: string }[] = [
   { value: 'vehicle_issue', label: 'Vehicle Issue' },
@@ -419,16 +436,26 @@ export default function RequestDetailScreen() {
   if (request.notes) {
     metaRows.push({ key: 'NOTES', value: request.notes });
   }
+  // Folded in from the former white-rounded "Accepted By" Card. Acceptance is
+  // two more facts about this request, so it belongs in the voucher's own
+  // ledger rather than in a second card in a competing visual language.
+  if (request.acceptor) {
+    metaRows.push({ key: 'ACCEPTED BY', value: request.acceptor.full_name ?? '—' });
+  }
+  if (request.accepted_at) {
+    metaRows.push({ key: 'ACCEPTED', value: formatDateTime(request.accepted_at) });
+  }
 
   return (
     <PaperBackground>
       <Stack.Screen options={{ headerShown: false }} />
       <SafeAreaView style={wpStyles.safe} edges={['bottom']}>
         <Masthead
-          kicker={`REQUEST · ${shortId} · ${new Date(request.created_at)
-            .toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })
-            .toUpperCase()}`}
-          title="Request detail"
+          // Single date format per screen: the body already renders created_at
+          // via formatDateTime ("13 Apr 2026 at 20:47"), so repeating it here in
+          // a locale-pinned en-US form showed one timestamp two ways.
+          kicker="REQUEST"
+          title={shortId}
           backUseRouter
         />
 
@@ -480,7 +507,7 @@ export default function RequestDetailScreen() {
                       {row.key}
                     </MonoText>
                     <Text
-                      allowFontScaling={false}
+                      maxFontSizeMultiplier={wp.fontScale.text}
                       style={wpStyles.metaValue}
                       numberOfLines={2}
                     >
@@ -500,24 +527,35 @@ export default function RequestDetailScreen() {
               </KickerLabel>
               <View style={wpStyles.stockInfo}>
                 <View style={wpStyles.stockRow}>
-                  <MonoText size={10} tracking={1.3} upper color={wp.color.ink3}>
+                  <MonoText size={wp.size.label} tracking={1} upper color={wp.color.ink3}>
                     CURRENT STOCK
                   </MonoText>
-                  <MonoText size={14} weight={700} color={wp.color.ink}>
-                    {(request.current_stock_kg / 10).toFixed(0)}
-                    <MonoText size={14} color={wp.color.ink3}>
+                  {/* fmtBags/fmtKg instead of toLocaleString(): the latter
+                      emits a locale thousands separator (a U+00A0 space on this
+                      device), so "10 600kg" sat next to an unseparated "15000"
+                      on the same card. */}
+                  <MonoText size={wp.size.bodyLg} weight={700} color={wp.color.ink}>
+                    {fmtBags(request.current_stock_kg)} bags
+                    <MonoText size={wp.size.bodyLg} weight={400} color={wp.color.ink3}>
                       {' · '}
-                      {request.current_stock_kg.toLocaleString()}kg
+                      {fmtKg(request.current_stock_kg)} kg
                     </MonoText>
                   </MonoText>
                 </View>
                 {request.target_stock_kg != null && (
                   <View style={[wpStyles.stockRow, wpStyles.stockRowTop]}>
-                    <MonoText size={10} tracking={1.3} upper color={wp.color.ink3}>
+                    <MonoText size={wp.size.label} tracking={1} upper color={wp.color.ink3}>
                       TARGET STOCK
                     </MonoText>
-                    <MonoText size={14} weight={700} color={wp.color.ink}>
-                      {(request.target_stock_kg / 10).toFixed(0)}
+                    {/* Was a bare "15000" with no unit, directly under a row
+                        showing both bags and kg — two numbers the user could not
+                        tell were in different units. Now structurally identical. */}
+                    <MonoText size={wp.size.bodyLg} weight={700} color={wp.color.ink}>
+                      {fmtBags(request.target_stock_kg)} bags
+                      <MonoText size={wp.size.bodyLg} weight={400} color={wp.color.ink3}>
+                        {' · '}
+                        {fmtKg(request.target_stock_kg)} kg
+                      </MonoText>
                     </MonoText>
                   </View>
                 )}
@@ -525,16 +563,7 @@ export default function RequestDetailScreen() {
             </View>
           )}
 
-          {/* Accepted By */}
-          {request.acceptor && (
-            <Card>
-              <Text style={styles.sectionTitle}>Accepted By</Text>
-              <DetailRow icon="person" label="Name" value={request.acceptor.full_name ?? '\u2014'} />
-              {request.accepted_at && (
-                <DetailRow icon="time" label="Accepted" value={formatDateTime(request.accepted_at)} />
-              )}
-            </Card>
-          )}
+          {/* "Accepted By" now lives in the voucher's metaRows above. */}
 
           {/* Time Proposal Review (managers) */}
           {isTimeProposed && canReview && activeForm !== 'declineProposal' && (
@@ -590,20 +619,31 @@ export default function RequestDetailScreen() {
             </Card>
           )}
 
-          {/* Linked Trip */}
+          {/* Linked trip — migrated off ui/Card + ui/Button, which rendered a
+              white 16px-radius card with a blurred shadow, a lavender icon chip
+              and an orange outline button (colors.primary[500] = #f97316), none
+              of which exist in the warehouse-paper palette. */}
           {request.trips && (
-            <Card>
-              <Text style={styles.sectionTitle}>Linked Trip</Text>
-              <DetailRow icon="car" label="Trip" value={request.trips.trip_number} />
-              <StatusBadge status={request.trips.status} type="trip" />
-              <Button
-                title="View Trip"
-                variant="outline"
-                size="sm"
-                onPress={() => router.push(`/trip/${request.trips!.id}`)}
-                style={{ marginTop: spacing.md }}
-              />
-            </Card>
+            <HardShadowFrame style={{ marginBottom: 18 }}>
+              <View style={wpStyles.linkedTrip}>
+                <View style={wpStyles.linkedTripHead}>
+                  <KickerLabel size={wp.size.kicker} tracking={1.5} color={wp.color.ink3}>
+                    Linked trip
+                  </KickerLabel>
+                  <Stamp colorHex={pipelineColor(request.trips.status)}>
+                    {request.trips.status.replace(/_/g, ' ')}
+                  </Stamp>
+                </View>
+                <MonoText size={wp.size.bodyLg} weight={700} color={wp.color.ink}>
+                  {request.trips.trip_number}
+                </MonoText>
+                <InkButton
+                  label="View trip →"
+                  onPress={() => router.push(`/trip/${request.trips!.id}`)}
+                  style={{ marginTop: wp.space.lg }}
+                />
+              </View>
+            </HardShadowFrame>
           )}
 
           {/* Accept Form (driver) */}
@@ -613,7 +653,7 @@ export default function RequestDetailScreen() {
 
               {/* Show where stock is going — not editable */}
               <View style={styles.deliveryInfoBanner}>
-                <Ionicons name="location" size={16} color={colors.primary[500]} />
+                <Ionicons name="location" size={16} color={wp.color.ink2} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.deliveryInfoLabel}>Delivering to</Text>
                   <Text style={styles.deliveryInfoValue}>{request.location?.name ?? 'Unknown'}</Text>
@@ -623,7 +663,7 @@ export default function RequestDetailScreen() {
 
               <Text style={styles.fieldLabel}>Vehicle *</Text>
               {vehiclesQuery.isLoading ? (
-                <ActivityIndicator size="small" color={colors.primary[500]} />
+                <ActivityIndicator size="small" color={wp.color.ink} />
               ) : (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerRow}>
                   {availableVehicles.map((v) => (
@@ -638,7 +678,7 @@ export default function RequestDetailScreen() {
                       <Ionicons
                         name="car"
                         size={14}
-                        color={selectedVehicleId === v.id ? colors.white : colors.gray[600]}
+                        color={selectedVehicleId === v.id ? wp.color.paper : wp.color.ink2}
                       />
                       <Text
                         style={[
@@ -685,7 +725,7 @@ export default function RequestDetailScreen() {
                 {acceptFromType === 'supplier' ? 'Pickup Supplier *' : 'Pickup Warehouse *'}
               </Text>
               {(acceptFromType === 'supplier' ? suppliersQuery.isLoading : locationsQuery.isLoading) ? (
-                <ActivityIndicator size="small" color={brand.accent} />
+                <ActivityIndicator size="small" color={wp.color.ink} />
               ) : (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerRow}>
                   {(acceptFromType === 'supplier' ? suppliers : pickupLocations).map((item: any) => (
@@ -717,7 +757,7 @@ export default function RequestDetailScreen() {
                 value={estimatedArrival}
                 onChangeText={setEstimatedArrival}
                 placeholder="e.g. 2026-04-13 14:00"
-                containerStyle={{ marginTop: spacing.sm }}
+                containerStyle={{ marginTop: wp.space.sm }}
               />
               <View style={styles.formActions}>
                 <Button title="Cancel" variant="ghost" onPress={closeForm} style={{ flex: 1 }} />
@@ -741,7 +781,7 @@ export default function RequestDetailScreen() {
                 onChangeText={setProposedTime}
                 placeholder="e.g. 2026-04-13 14:00"
               />
-              <Text style={[styles.fieldLabel, { marginTop: spacing.sm }]}>Reason *</Text>
+              <Text style={[styles.fieldLabel, { marginTop: wp.space.sm }]}>Reason *</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerRow}>
                 {PROPOSE_REASONS.map((r) => (
                   <TouchableOpacity
@@ -770,7 +810,7 @@ export default function RequestDetailScreen() {
                 placeholder="Additional details..."
                 multiline
                 numberOfLines={3}
-                containerStyle={{ marginTop: spacing.sm }}
+                containerStyle={{ marginTop: wp.space.sm }}
               />
               <View style={styles.formActions}>
                 <Button title="Cancel" variant="ghost" onPress={closeForm} style={{ flex: 1 }} />
@@ -802,7 +842,7 @@ export default function RequestDetailScreen() {
                 placeholder="Optional notes..."
                 multiline
                 numberOfLines={3}
-                containerStyle={{ marginTop: spacing.sm }}
+                containerStyle={{ marginTop: wp.space.sm }}
               />
               <View style={styles.formActions}>
                 <Button title="Cancel" variant="ghost" onPress={closeForm} style={{ flex: 1 }} />
@@ -848,7 +888,7 @@ export default function RequestDetailScreen() {
 
               <Text style={styles.fieldLabel}>Vehicle *</Text>
               {vehiclesQuery.isLoading ? (
-                <ActivityIndicator size="small" color={colors.primary[500]} />
+                <ActivityIndicator size="small" color={wp.color.ink} />
               ) : (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerRow}>
                   {availableVehicles.map((v) => (
@@ -863,7 +903,7 @@ export default function RequestDetailScreen() {
                       <Ionicons
                         name="car"
                         size={14}
-                        color={tripVehicleId === v.id ? colors.white : colors.gray[600]}
+                        color={tripVehicleId === v.id ? wp.color.paper : wp.color.ink2}
                       />
                       <Text
                         style={[
@@ -887,10 +927,10 @@ export default function RequestDetailScreen() {
                 onChangeText={setTripOdometerStart}
                 keyboardType="numeric"
                 placeholder="e.g. 45230"
-                containerStyle={{ marginTop: spacing.sm }}
+                containerStyle={{ marginTop: wp.space.sm }}
               />
 
-              <Text style={[styles.fieldLabel, { marginTop: spacing.sm }]}>Supplier (optional)</Text>
+              <Text style={[styles.fieldLabel, { marginTop: wp.space.sm }]}>Supplier (optional)</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerRow}>
                 <TouchableOpacity
                   style={[styles.pickerChip, !tripSupplierId && styles.pickerChipActive]}
@@ -921,7 +961,7 @@ export default function RequestDetailScreen() {
                 ))}
               </ScrollView>
 
-              <Text style={[styles.fieldLabel, { marginTop: spacing.sm }]}>Pickup Warehouse (optional)</Text>
+              <Text style={[styles.fieldLabel, { marginTop: wp.space.sm }]}>Pickup Warehouse (optional)</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerRow}>
                 <TouchableOpacity
                   style={[styles.pickerChip, !tripFromLocationId && styles.pickerChipActive]}
@@ -957,7 +997,7 @@ export default function RequestDetailScreen() {
                 value={tripEstimatedArrival}
                 onChangeText={setTripEstimatedArrival}
                 placeholder="e.g. 2026-04-13 14:00"
-                containerStyle={{ marginTop: spacing.sm }}
+                containerStyle={{ marginTop: wp.space.sm }}
               />
 
               <View style={styles.formActions}>
@@ -980,7 +1020,7 @@ export default function RequestDetailScreen() {
                   title="Accept Request"
                   onPress={() => openForm('accept')}
                   size="lg"
-                  icon={<Ionicons name="checkmark-circle" size={20} color={colors.white} />}
+                  icon={<Ionicons name="checkmark-circle" size={20} color={wp.color.paper} />}
                 />
               )}
               {canProposeTime && (
@@ -989,7 +1029,7 @@ export default function RequestDetailScreen() {
                   variant="secondary"
                   onPress={() => openForm('proposeTime')}
                   size="lg"
-                  icon={<Ionicons name="time" size={20} color={colors.gray[800]} />}
+                  icon={<Ionicons name="time" size={20} color={wp.color.ink} />}
                 />
               )}
               {canCreateTrip && (
@@ -998,7 +1038,7 @@ export default function RequestDetailScreen() {
                   variant="secondary"
                   onPress={() => openForm('createTrip')}
                   size="lg"
-                  icon={<Ionicons name="car" size={20} color={colors.gray[800]} />}
+                  icon={<Ionicons name="car" size={20} color={wp.color.ink} />}
                 />
               )}
               {canReRequest && (
@@ -1008,7 +1048,7 @@ export default function RequestDetailScreen() {
                   onPress={handleReRequest}
                   loading={reRequestMutation.isPending}
                   size="lg"
-                  icon={<Ionicons name="refresh" size={20} color={colors.primary[500]} />}
+                  icon={<Ionicons name="refresh" size={20} color={wp.color.ink} />}
                 />
               )}
               {canEdit && (
@@ -1017,7 +1057,7 @@ export default function RequestDetailScreen() {
                   variant="outline"
                   onPress={() => openForm('edit')}
                   size="md"
-                  icon={<Ionicons name="create" size={18} color={colors.primary[500]} />}
+                  icon={<Ionicons name="create" size={18} color={wp.color.ink} />}
                 />
               )}
               {canCancel && (
@@ -1026,7 +1066,7 @@ export default function RequestDetailScreen() {
                   variant="danger"
                   onPress={() => openForm('cancel')}
                   size="md"
-                  icon={<Ionicons name="close-circle" size={18} color={colors.white} />}
+                  icon={<Ionicons name="close-circle" size={18} color={wp.color.paper} />}
                 />
               )}
             </View>
@@ -1056,6 +1096,19 @@ const wpStyles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  // Linked-trip block — same voucher surface as the hero above it.
+  linkedTrip: {
+    backgroundColor: wp.color.voucherBg,
+    borderWidth: 1,
+    borderColor: wp.color.lineD,
+    padding: 16,
+  },
+  linkedTripHead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: wp.space.sm,
   },
   heroRow: {
     flexDirection: 'row',
@@ -1123,7 +1176,7 @@ function DetailRow({
   return (
     <View style={styles.detailRow}>
       <View style={styles.detailIconBox}>
-        <Ionicons name={icon} size={14} color={colors.gray[400]} />
+        <Ionicons name={icon} size={14} color={wp.color.ink3} />
       </View>
       <Text style={styles.detailLabel}>{label}</Text>
       <Text style={styles.detailValue}>{value}</Text>
@@ -1132,18 +1185,18 @@ function DetailRow({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: WARM_BG },
+  container: { flex: 1, backgroundColor: wp.color.paper },
   content: { padding: 16, gap: 14, paddingBottom: 48 },
   headerRow: {
     flexDirection: 'row',
-    gap: spacing.sm,
+    gap: wp.space.sm,
     marginBottom: 14,
   },
   section: { gap: 10 },
   sectionTitle: {
     fontSize: 15,
     fontWeight: '600',
-    color: colors.gray[800],
+    color: wp.color.ink,
     letterSpacing: -0.1,
     marginBottom: 12,
   },
@@ -1154,8 +1207,8 @@ const styles = StyleSheet.create({
     minHeight: 34,
   },
   detailIconBox: {
-    width: 26, height: 26, borderRadius: 7,
-    backgroundColor: '#f5f3ff',
+    width: 26, height: 26,
+    backgroundColor: wp.color.paperAlt,
     alignItems: 'center', justifyContent: 'center',
     marginRight: 10,
   },
@@ -1163,34 +1216,33 @@ const styles = StyleSheet.create({
     width: 105,
     fontSize: 13,
     fontWeight: '400',
-    color: colors.gray[400],
+    color: wp.color.ink3,
     letterSpacing: 0.1,
   },
   detailValue: {
     flex: 1,
     fontSize: 14,
     fontWeight: '500',
-    color: colors.gray[900],
+    color: wp.color.ink,
     letterSpacing: -0.1,
   },
   notesSection: {
     marginTop: 14,
     paddingTop: 14,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.gray[100],
+    borderTopColor: wp.color.line,
   },
   notesLabel: {
     fontSize: 12,
     fontWeight: '500',
-    color: colors.gray[400],
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
+    color: wp.color.ink3,
+    letterSpacing: 0.2,
     marginBottom: 6,
   },
   notesText: {
     fontSize: 14,
     fontWeight: '400',
-    color: colors.gray[700],
+    color: wp.color.ink2,
     lineHeight: 20,
   },
   actions: {
@@ -1198,106 +1250,103 @@ const styles = StyleSheet.create({
   },
   // Form styles
   fieldLabel: {
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.medium,
-    color: colors.gray[700],
-    marginBottom: spacing.xs,
+    fontSize: wp.size.body,
+    fontWeight: '500',
+    color: wp.color.ink2,
+    marginBottom: wp.space.xs,
   },
   pickerRow: {
     flexDirection: 'row',
-    marginBottom: spacing.sm,
+    marginBottom: wp.space.sm,
   },
   pickerChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 10,
+    gap: wp.space.xs,
+    paddingHorizontal: wp.space.md,
+    paddingVertical: wp.space.sm,
     borderWidth: 1,
-    borderColor: colors.gray[200],
-    backgroundColor: colors.white,
-    marginRight: spacing.sm,
+    borderColor: wp.color.lineD,
+    backgroundColor: wp.color.voucherBg,
+    marginRight: wp.space.sm,
   },
   pickerChipActive: {
-    backgroundColor: brand.gradientStart,
-    borderColor: brand.gradientStart,
+    backgroundColor: wp.color.ink,
+    borderColor: wp.color.ink,
   },
   pickerChipText: {
-    fontSize: fontSize.sm,
-    color: colors.gray[700],
-    fontWeight: fontWeight.medium,
+    fontSize: wp.size.body,
+    color: wp.color.ink2,
+    fontWeight: '500',
   },
   pickerChipTextActive: {
-    color: colors.white,
+    color: wp.color.paper,
   },
   emptyPickerText: {
-    fontSize: fontSize.sm,
-    color: colors.gray[400],
-    paddingVertical: spacing.sm,
+    fontSize: wp.size.body,
+    color: wp.color.ink3,
+    paddingVertical: wp.space.sm,
   },
   formActions: {
     flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
+    gap: wp.space.sm,
+    marginTop: wp.space.lg,
   },
   proposalCard: {
     borderLeftWidth: 3,
-    borderLeftColor: colors.warning,
+    borderLeftColor: wp.color.amber,
   },
   proposalActions: {
     flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
+    gap: wp.space.sm,
+    marginTop: wp.space.lg,
   },
   lockedDestination: {
     borderWidth: 1,
-    borderColor: colors.gray[200],
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.gray[50],
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.md,
+    borderColor: wp.color.lineD,
+    backgroundColor: wp.color.voucherBg,
+    paddingHorizontal: wp.space.md,
+    paddingVertical: wp.space.sm,
+    marginBottom: wp.space.md,
   },
   lockedDestinationLabel: {
-    fontSize: fontSize.xs,
-    color: colors.gray[500],
-    fontWeight: fontWeight.medium,
-    textTransform: 'uppercase',
+    fontSize: wp.size.meta,
+    color: wp.color.ink3,
+    fontWeight: '500',
     marginBottom: 4,
   },
   lockedDestinationValue: {
-    fontSize: fontSize.md,
-    color: colors.gray[900],
-    fontWeight: fontWeight.semibold,
+    fontSize: wp.size.bodyLg,
+    color: wp.color.ink,
+    fontWeight: '600',
   },
+  // Arrived on main after this file was ported off `theme.ts`, so it still
+  // carried the old orange/rounded tokens. Same banner, warehouse-paper paint.
   deliveryInfoBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
-    backgroundColor: colors.primary[50],
-    borderRadius: borderRadius.md,
-    padding: spacing.md,
-    marginBottom: spacing.lg,
+    gap: wp.space.md,
+    backgroundColor: wp.color.voucherBg,
+    padding: wp.space.md,
+    marginBottom: wp.space.lg,
     borderWidth: 1,
-    borderColor: colors.primary[100],
+    borderColor: wp.color.lineD,
   },
   deliveryInfoLabel: {
-    fontSize: fontSize.xs,
-    fontWeight: fontWeight.medium,
-    color: colors.gray[500],
-    textTransform: 'uppercase' as const,
+    fontSize: wp.size.meta,
+    fontWeight: '500',
+    color: wp.color.ink3,
     letterSpacing: 0.3,
   },
   deliveryInfoValue: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-    color: colors.gray[900],
+    fontSize: wp.size.bodyLg,
+    fontWeight: '600',
+    color: wp.color.ink,
     marginTop: 2,
   },
   deliveryInfoQty: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.bold,
-    color: colors.primary[600],
+    fontSize: wp.size.rowTitle,
+    fontWeight: '700',
+    color: wp.color.ink,
   },
 });

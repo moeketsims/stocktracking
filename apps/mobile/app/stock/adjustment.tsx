@@ -150,7 +150,7 @@ export default function AdjustmentScreen() {
                       style={[styles.chip, selected && styles.chipSelected]}
                     >
                       <Text
-                        allowFontScaling={false}
+                        maxFontSizeMultiplier={wp.fontScale.compact}
                         style={[styles.chipLabel, selected && styles.chipLabelSelected]}
                       >
                         {r.label}
@@ -171,7 +171,7 @@ export default function AdjustmentScreen() {
                     style={[styles.chip, !selectedBatch && styles.chipSelected]}
                   >
                     <Text
-                      allowFontScaling={false}
+                      maxFontSizeMultiplier={wp.fontScale.compact}
                       style={[styles.chipLabel, !selectedBatch && styles.chipLabelSelected]}
                     >
                       Any
@@ -187,7 +187,7 @@ export default function AdjustmentScreen() {
                         style={[styles.chip, selected && styles.chipSelected]}
                       >
                         <Text
-                          allowFontScaling={false}
+                          maxFontSizeMultiplier={wp.fontScale.compact}
                           style={[styles.chipLabel, selected && styles.chipLabelSelected]}
                         >
                           {b.batch_id_display}
@@ -203,6 +203,7 @@ export default function AdjustmentScreen() {
             <DFieldBox label="Notes · optional" noDivider>
               <View style={styles.notesBox}>
                 <TextInput
+                  maxFontSizeMultiplier={wp.fontScale.text}
                   placeholder="Evidence, context, or witness…"
                   placeholderTextColor={wp.color.ink3}
                   value={notes}
@@ -248,7 +249,7 @@ function DirTile({
         style={[styles.tile, selected && styles.tileSelected]}
       >
         <Text
-          allowFontScaling={false}
+          maxFontSizeMultiplier={wp.fontScale.compact}
           style={[
             styles.tileTitle,
             { color: selected ? wp.color.paper : labelColor },

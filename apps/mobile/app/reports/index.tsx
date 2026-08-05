@@ -119,7 +119,7 @@ export default function ReportsHubScreen() {
             <LedgerRow
               idx={1}
               primary="Stock summary"
-              secondary="CURRENT LEVELS ACROSS LOCATIONS"
+              secondary="Current levels across locations"
               onPress={() => router.push('/reports/stock-summary')}
             />
             <LedgerRow
@@ -127,21 +127,21 @@ export default function ReportsHubScreen() {
               primary="Usage trends"
               secondary={
                 summary
-                  ? `${summary.daily_average.toFixed(1)} BAGS/DAY · ${days}D AVG`
-                  : 'DAILY CONSUMPTION · HOURLY PATTERN'
+                  ? `${summary.daily_average.toFixed(1)} bags/day · ${days}d avg`
+                  : 'Daily consumption · hourly pattern'
               }
               onPress={() => router.push('/reports/usage')}
             />
             <LedgerRow
               idx={3}
               primary="Delivery performance"
-              secondary="METRICS · EFFICIENCY · WASTE"
+              secondary="Metrics · efficiency · waste"
               onPress={() => router.push('/reports/deliveries')}
             />
             <LedgerRow
               idx={4}
               primary="Transaction history"
-              secondary="ALL STOCK MOVEMENTS"
+              secondary="All stock movements"
               onPress={() => router.push('/reports/transactions')}
             />
 

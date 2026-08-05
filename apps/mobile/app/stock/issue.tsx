@@ -112,6 +112,7 @@ export default function IssueStockScreen() {
             <DFieldBox label="Notes · optional" noDivider>
               <View style={styles.notesBox}>
                 <TextInput
+                  maxFontSizeMultiplier={wp.fontScale.text}
                   placeholder="Reason for issuing…"
                   placeholderTextColor={wp.color.ink3}
                   value={notes}

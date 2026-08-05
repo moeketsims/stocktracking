@@ -25,7 +25,12 @@ jobs:
         working-directory: apps/mobile
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-      EXPO_PUBLIC_API_URL: https://stocktracker-frontend-baaede6418cc.herokuapp.com
+      # Must match eas.json's production env. Both Heroku domains currently
+      # serve the same deployment, so the drift was harmless — but the
+      # pre-flight export would have been checking a different URL than the one
+      # EAS compiles into the binary, which is exactly the gap you don't want
+      # a release check to have.
+      EXPO_PUBLIC_API_URL: https://stocktracker-0560a415bf9e.herokuapp.com
       EXPO_EAS_PROJECT_ID: 412d6a6e-d94f-4a14-adce-779b409be29a
 
     steps:

@@ -4,6 +4,7 @@ import * as Haptics from 'expo-haptics';
 import { driversApi } from '../api/drivers';
 import type { CreateDriverPayload, UpdateDriverPayload } from '../types';
 import { STALE_TIME } from '../constants/config';
+import { assertOnlineBeforeMutation, isOfflineMutationError } from '../utils/offline';
 
 export function useDrivers(activeOnly = true) {
   return useQuery({
@@ -24,8 +25,10 @@ export function useDriver(id: string) {
 export function useCreateDriver() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: CreateDriverPayload) =>
-      driversApi.create(data).then((r) => r.data),
+    mutationFn: async (data: CreateDriverPayload) => {
+      await assertOnlineBeforeMutation('create a driver');
+      return driversApi.create(data).then((r) => r.data);
+    },
     onSuccess: () => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       qc.invalidateQueries({ queryKey: ['drivers'] });
@@ -34,6 +37,7 @@ export function useCreateDriver() {
       // to the driver in person and share via WhatsApp / SMS.
     },
     onError: (error: any) => {
+      if (isOfflineMutationError(error)) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', error.response?.data?.detail ?? 'Failed to create driver');
     },
@@ -43,13 +47,16 @@ export function useCreateDriver() {
 export function useUpdateDriver() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: UpdateDriverPayload }) =>
-      driversApi.update(id, data).then((r) => r.data),
+    mutationFn: async ({ id, data }: { id: string; data: UpdateDriverPayload }) => {
+      await assertOnlineBeforeMutation('update this driver');
+      return driversApi.update(id, data).then((r) => r.data);
+    },
     onSuccess: () => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       qc.invalidateQueries({ queryKey: ['drivers'] });
     },
     onError: (error: any) => {
+      if (isOfflineMutationError(error)) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', error.response?.data?.detail ?? 'Failed to update driver');
     },
@@ -59,13 +66,17 @@ export function useUpdateDriver() {
 export function useDeactivateDriver() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => driversApi.deactivate(id).then((r) => r.data),
+    mutationFn: async (id: string) => {
+      await assertOnlineBeforeMutation('deactivate this driver');
+      return driversApi.deactivate(id).then((r) => r.data);
+    },
     onSuccess: (data) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       qc.invalidateQueries({ queryKey: ['drivers'] });
       Alert.alert('Success', data.message);
     },
     onError: (error: any) => {
+      if (isOfflineMutationError(error)) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', error.response?.data?.detail ?? 'Failed to deactivate driver');
     },
@@ -75,13 +86,17 @@ export function useDeactivateDriver() {
 export function useResendInvitation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => driversApi.resendInvitation(id).then((r) => r.data),
+    mutationFn: async (id: string) => {
+      await assertOnlineBeforeMutation('resend this invitation');
+      return driversApi.resendInvitation(id).then((r) => r.data);
+    },
     onSuccess: (data) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       qc.invalidateQueries({ queryKey: ['drivers'] });
       Alert.alert('Success', data.message);
     },
     onError: (error: any) => {
+      if (isOfflineMutationError(error)) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', error.response?.data?.detail ?? 'Failed to resend invitation');
     },

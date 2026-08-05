@@ -8,6 +8,7 @@ import {
   type UpdateThresholdsPayload,
 } from '../api/locations';
 import { STALE_TIME } from '../constants/config';
+import { assertOnlineBeforeMutation, isOfflineMutationError } from '../utils/offline';
 
 // ── Queries ─────────────────────────────────────────────────────────
 
@@ -64,8 +65,10 @@ export function useZoneOverview() {
 export function useCreateLocation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: CreateLocationPayload) =>
-      locationsApi.create(data).then((r) => r.data),
+    mutationFn: async (data: CreateLocationPayload) => {
+      await assertOnlineBeforeMutation('create a location');
+      return locationsApi.create(data).then((r) => r.data);
+    },
     onSuccess: (data) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       qc.invalidateQueries({ queryKey: ['locations'] });
@@ -73,6 +76,7 @@ export function useCreateLocation() {
       Alert.alert('Success', data.message);
     },
     onError: (error: any) => {
+      if (isOfflineMutationError(error)) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', error.response?.data?.detail ?? 'Failed to create location');
     },
@@ -82,14 +86,17 @@ export function useCreateLocation() {
 export function useUpdateLocation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: UpdateLocationPayload }) =>
-      locationsApi.update(id, data).then((r) => r.data),
+    mutationFn: async ({ id, data }: { id: string; data: UpdateLocationPayload }) => {
+      await assertOnlineBeforeMutation('update this location');
+      return locationsApi.update(id, data).then((r) => r.data);
+    },
     onSuccess: (data) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       qc.invalidateQueries({ queryKey: ['locations'] });
       Alert.alert('Success', data.message);
     },
     onError: (error: any) => {
+      if (isOfflineMutationError(error)) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', error.response?.data?.detail ?? 'Failed to update location');
     },
@@ -99,7 +106,10 @@ export function useUpdateLocation() {
 export function useDeleteLocation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => locationsApi.delete(id).then((r) => r.data),
+    mutationFn: async (id: string) => {
+      await assertOnlineBeforeMutation('delete this location');
+      return locationsApi.delete(id).then((r) => r.data);
+    },
     onSuccess: (data) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       qc.invalidateQueries({ queryKey: ['locations'] });
@@ -107,6 +117,7 @@ export function useDeleteLocation() {
       Alert.alert('Success', data.message);
     },
     onError: (error: any) => {
+      if (isOfflineMutationError(error)) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', error.response?.data?.detail ?? 'Failed to delete location');
     },
@@ -116,14 +127,17 @@ export function useDeleteLocation() {
 export function useUpdateThresholds() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: UpdateThresholdsPayload }) =>
-      locationsApi.updateThresholds(id, data).then((r) => r.data),
+    mutationFn: async ({ id, data }: { id: string; data: UpdateThresholdsPayload }) => {
+      await assertOnlineBeforeMutation('update these thresholds');
+      return locationsApi.updateThresholds(id, data).then((r) => r.data);
+    },
     onSuccess: () => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       qc.invalidateQueries({ queryKey: ['locations'] });
       Alert.alert('Success', 'Thresholds updated');
     },
     onError: (error: any) => {
+      if (isOfflineMutationError(error)) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', error.response?.data?.detail ?? 'Failed to update thresholds');
     },

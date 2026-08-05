@@ -116,8 +116,9 @@ export default function UsersListScreen() {
 
             <View style={styles.searchRow}>
               <View style={styles.search}>
-                <Text allowFontScaling={false} style={styles.searchGlyph}>⌕</Text>
+                <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.searchGlyph}>⌕</Text>
                 <TextInput
+                  maxFontSizeMultiplier={wp.fontScale.text}
                   value={search}
                   onChangeText={setSearch}
                   placeholder="name · email"
@@ -150,7 +151,7 @@ export default function UsersListScreen() {
                     key={u.id}
                     idx={i + 1}
                     primary={u.full_name ?? '(No name)'}
-                    secondary={context.toUpperCase()}
+                    secondary={context}
                     trailing={
                       <Stamp colorHex={roleColor} rowIndex={i}>
                         {ROLE_LABEL[u.role] ?? u.role.toUpperCase()}

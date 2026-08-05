@@ -144,7 +144,7 @@ export default function CreateTripScreen() {
                       >
                         <View style={[styles.checkbox, selected && styles.checkboxChecked]}>
                           {selected && (
-                            <Text allowFontScaling={false} style={styles.checkMark}>
+                            <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.checkMark}>
                               ✓
                             </Text>
                           )}
@@ -199,6 +199,7 @@ export default function CreateTripScreen() {
             <DFieldBox label="Notes · optional" noDivider>
               <View style={styles.notesBox}>
                 <TextInput
+                  maxFontSizeMultiplier={wp.fontScale.text}
                   value={notes}
                   onChangeText={setNotes}
                   placeholder="Any additional details…"
@@ -250,7 +251,7 @@ function TypeTile({
           {code}
         </MonoText>
         <Text
-          allowFontScaling={false}
+          maxFontSizeMultiplier={wp.fontScale.compact}
           style={[styles.tileLabel, { color: selected ? wp.color.paper : wp.color.ink }]}
         >
           {label}
@@ -296,13 +297,13 @@ function LocationPicker({
           >
             <View style={[styles.checkbox, selected && styles.checkboxChecked]}>
               {selected && (
-                <Text allowFontScaling={false} style={styles.checkMark}>
+                <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.checkMark}>
                   ✓
                 </Text>
               )}
             </View>
             <View style={{ flex: 1 }}>
-              <Text allowFontScaling={false} style={styles.locName}>
+              <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.locName}>
                 {l.name}
               </Text>
               <MonoText

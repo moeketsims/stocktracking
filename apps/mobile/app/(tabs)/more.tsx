@@ -116,22 +116,22 @@ export default function BackOfficeScreen() {
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
           {/* Masthead + ID card (per spec, ID card is INSIDE the masthead block) */}
           <View style={[styles.masthead, { paddingTop: Math.max(insets.top + 16, 60) }]}>
-            <KickerLabel size={9} tracking={2} color={wp.color.ink3}>
-              Staff record — {fmtKickerDate()}
+            <KickerLabel size={wp.size.kicker} tracking={1.6} color={wp.color.ink3}>
+              {fmtKickerDate()}
             </KickerLabel>
-            <Text allowFontScaling={false} style={styles.title}>
-              The Back Office
+            <Text style={styles.title}>
+              More
             </Text>
 
             <HardShadowFrame offset={2} style={{ marginTop: 16 }}>
               <View style={styles.idCard}>
                 <View style={styles.avatar}>
-                  <Text allowFontScaling={false} style={styles.avatarText}>
+                  <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.avatarText}>
                     {initial}
                   </Text>
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text allowFontScaling={false} style={styles.idName} numberOfLines={1}>
+                  <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.idName} numberOfLines={1}>
                     {displayName}
                   </Text>
                   <MonoText
@@ -178,7 +178,7 @@ export default function BackOfficeScreen() {
                 <MonoText size={10} color={wp.color.ink3} style={styles.indexCol}>
                   {String(i + 1).padStart(2, '0')}
                 </MonoText>
-                <Text allowFontScaling={false} style={styles.entryName}>
+                <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.entryName}>
                   {entry.label}
                 </Text>
                 <View style={styles.statusCol}>
@@ -194,11 +194,11 @@ export default function BackOfficeScreen() {
                     </MonoText>
                   ) : null}
                 </View>
-                <Text allowFontScaling={false} style={styles.chev}>›</Text>
+                <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.chev}>›</Text>
               </TouchableOpacity>
             ))}
 
-            {/* Sign out: filled and labelled so the red action is unambiguous. */}
+            {/* Sign out — filled and labelled so the red action is unambiguous. */}
             <View style={styles.signOutWrap}>
               <HardShadowFrame offset={1} color={wp.color.red}>
                 <TouchableOpacity
@@ -207,7 +207,7 @@ export default function BackOfficeScreen() {
                   disabled={logout.isPending}
                   style={styles.signOutBtn}
                 >
-                  <Text allowFontScaling={false} style={styles.signOutText}>
+                  <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.signOutText}>
                     {logout.isPending ? 'SIGNING OUT...' : 'LOG OUT'}
                   </Text>
                 </TouchableOpacity>

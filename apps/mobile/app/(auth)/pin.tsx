@@ -17,6 +17,7 @@ import { useAuthStore } from '../../src/stores/authStore';
 export default function PinScreen() {
   const router = useRouter();
   const clearAuth = useAuthStore((s) => s.clearAuth);
+  const unlockPin = useAuthStore((s) => s.unlockPin);
   const [pin, setPin] = useState('');
   const [shake, setShake] = useState(false);
   const [attemptsLeft, setAttemptsLeft] = useState<number | null>(null);
@@ -35,6 +36,7 @@ export default function PinScreen() {
       const result = await verifyPin(pin);
       if (result.ok) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        unlockPin();
         router.replace('/(tabs)');
         return;
       }
@@ -54,7 +56,7 @@ export default function PinScreen() {
         runningRef.current = false;
       }, 280);
     })();
-  }, [pin, router, clearAuth]);
+  }, [pin, router, clearAuth, unlockPin]);
 
   const handleForgot = () => {
     Alert.alert(

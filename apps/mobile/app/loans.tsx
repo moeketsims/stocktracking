@@ -116,7 +116,7 @@ export default function LoansScreen() {
             <View style={styles.list}>
               {visible.length === 0 ? (
                 <View style={styles.empty}>
-                  <Text allowFontScaling={false} style={styles.emptyTitle}>
+                  <Text maxFontSizeMultiplier={wp.fontScale.display} style={styles.emptyTitle}>
                     Nothing here
                   </Text>
                   <MonoText size={11} tracking={1} upper color={wp.color.ink3} style={{ marginTop: 6 }}>
@@ -181,11 +181,11 @@ function LoanVoucher({
         </View>
         <View style={styles.body}>
           <View style={styles.routeRow}>
-            <Text allowFontScaling={false} style={styles.name} numberOfLines={1}>
+            <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.name} numberOfLines={1}>
               {lender}
             </Text>
             <MonoText size={12} color={wp.color.ink3}>↔</MonoText>
-            <Text allowFontScaling={false} style={styles.name} numberOfLines={1}>
+            <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.name} numberOfLines={1}>
               {borrower}
             </Text>
           </View>
@@ -196,7 +196,7 @@ function LoanVoucher({
             color={wp.color.ink3}
             style={{ marginTop: 4 }}
           >
-            {timeAgo(loan.created_at).toUpperCase()}
+            {timeAgo(loan.created_at)}
           </MonoText>
         </View>
         <View style={styles.qtyCol}>

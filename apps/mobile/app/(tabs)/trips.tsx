@@ -38,12 +38,20 @@ const STATUS_STAMP: Record<TripStatus, { label: string; color: string }> = {
   cancelled: { label: 'CANCELLED', color: wp.color.ink3 },
 };
 
-function shortTripNumber(n: string, id?: string): string {
-  const m = n.match(/\d+/);
-  if (!m) return n.slice(-4).toUpperCase();
-  const code = m[0].slice(-4);
-  const currentYear = String(new Date().getFullYear());
-  return code === currentYear && id ? id.slice(-4).toUpperCase() : code;
+/**
+ * Sequence portion of a trip number, for the narrow ticket stub.
+ *
+ * "TRP-2026-0035" → "0035". The previous implementation used a non-global
+ * `match(/\d+/)`, which returned the first digit run — the YEAR — and then
+ * worked around the resulting "2026" by falling back to a UUID fragment when it
+ * happened to equal the current year. That made the list and the detail screen
+ * disagree about the same trip, and would have silently started printing "2026"
+ * on 1 January. Taking the LAST numeric segment is what was meant throughout.
+ */
+function tripSequence(n: string | null | undefined, id?: string): string {
+  const segments = (n ?? '').match(/\d+/g);
+  if (segments?.length) return segments[segments.length - 1];
+  return (n || id || '').slice(-4).toUpperCase();
 }
 
 export default function TripsScreen() {
@@ -116,7 +124,7 @@ export default function TripsScreen() {
             }
           >
             <Masthead
-              kicker={`DISPATCH LOG — ${fmtKickerDate()}`}
+              kicker={fmtKickerDate()}
               title="Trips"
             />
 
@@ -144,6 +152,7 @@ export default function TripsScreen() {
               <View style={styles.search}>
                 <Ionicons name="search" size={16} color={wp.color.ink2} />
                 <TextInput
+                  maxFontSizeMultiplier={wp.fontScale.text}
                   value={search}
                   onChangeText={setSearch}
                   placeholder="trip # · reg · driver"
@@ -245,7 +254,7 @@ function TripVoucher({
   const driver = trip.driver_name ?? 'Unassigned';
   const when = trip.completed_at
     ? new Date(trip.completed_at).toLocaleDateString('en-US', { day: '2-digit', month: 'short' }).toUpperCase()
-    : timeAgo(trip.created_at).toUpperCase();
+    : timeAgo(trip.created_at);
 
   return (
     <HardShadowFrame style={{ marginBottom: 10, opacity: faded ? 0.75 : 1 }}>
@@ -253,7 +262,7 @@ function TripVoucher({
         <View style={styles.stub}>
           <MonoText size={9} color={wp.color.ink3}>TRIP</MonoText>
           <MonoText size={12} weight={700} color={wp.color.ink}>
-            {shortTripNumber(trip.trip_number, trip.id)}
+            {tripSequence(trip.trip_number, trip.id)}
           </MonoText>
         </View>
         <View style={styles.stubDivider}>
@@ -261,13 +270,13 @@ function TripVoucher({
         </View>
         <View style={styles.body}>
           <View style={styles.routeRow}>
-            <Text allowFontScaling={false} style={styles.routeText} numberOfLines={2}>
+            <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.routeText} numberOfLines={2}>
               {from}
             </Text>
             <MonoText size={12} color={wp.color.ink3} style={styles.arrow}>
               →
             </MonoText>
-            <Text allowFontScaling={false} style={styles.routeText} numberOfLines={2}>
+            <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.routeText} numberOfLines={2}>
               {to}
             </Text>
           </View>

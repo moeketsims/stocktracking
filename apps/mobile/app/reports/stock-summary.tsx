@@ -99,7 +99,7 @@ export default function StockSummaryScreen() {
                     key={item.item_id}
                     idx={i + 1}
                     primary={item.item_name}
-                    secondary={`${item.kg_remaining.toFixed(1)} KG · ${item.bags_remaining} BAGS`}
+                    secondary={`${item.kg_remaining.toFixed(1)} kg · ${item.bags_remaining} bags`}
                     trailing={
                       <Stamp colorHex={status.color} rowIndex={i}>
                         {status.label}
@@ -119,7 +119,7 @@ export default function StockSummaryScreen() {
                   </KickerLabel>
                   {efficiency.data?.best_performer ? (
                     <KickerLabel size={9} tracking={1.5} color={wp.color.green}>
-                      BEST · {efficiency.data.best_performer.toUpperCase()}
+                      Best · {efficiency.data.best_performer}
                     </KickerLabel>
                   ) : null}
                 </View>
@@ -135,7 +135,7 @@ export default function StockSummaryScreen() {
                       key={loc.location_id}
                       idx={loc.rank}
                       primary={loc.location_name}
-                      secondary={`${loc.current_stock_bags} BAGS · WASTE ${loc.waste_rate_pct.toFixed(1)}%`}
+                      secondary={`${loc.current_stock_bags} bags · waste ${loc.waste_rate_pct.toFixed(1)}%`}
                       trailing={
                         <Stamp colorHex={color} rowIndex={i}>
                           {`${loc.efficiency_score.toFixed(0)}pt`}

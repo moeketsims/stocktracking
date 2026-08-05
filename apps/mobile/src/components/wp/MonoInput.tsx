@@ -48,6 +48,7 @@ export function MonoInput({
       </View>
       <View style={styles.underline}>
         <TextInput
+          maxFontSizeMultiplier={wp.fontScale.text}
           {...rest}
           value={value}
           placeholder={placeholder}
@@ -58,7 +59,7 @@ export function MonoInput({
           ]}
         />
         {empty && placeholder ? (
-          <Text allowFontScaling={false} style={styles.placeholder} pointerEvents="none">
+          <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.placeholder} pointerEvents="none">
             {placeholder}
           </Text>
         ) : null}

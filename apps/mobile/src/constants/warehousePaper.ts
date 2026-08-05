@@ -19,7 +19,12 @@ export const wp = {
     voucherBg: '#F6F1E2',
     ink: '#1A1916',
     ink2: '#5A5651',
-    ink3: '#6F695F',
+    // Darkened from #6F695F, which measured 4.34:1 on `paper` — below the AA
+    // 4.5:1 floor for the 11-12pt text it is actually used on. #635E54 measures
+    // 5.17:1. Note this sits close to `ink2` (5.85:1): on a light paper ground
+    // three distinct ink tiers cannot all clear AA, so tertiary hierarchy must
+    // come from size/weight/case, not from lightness.
+    ink3: '#635E54',
     // Dashed-divider color darkened so it still registers against the
     // warmer paper (was #D4CCB9).
     line: '#C9C0A8',
@@ -28,16 +33,33 @@ export const wp = {
     amber: '#C67F00',
     green: '#3B7A3A',
     tape: '#E6D486',
+    /**
+     * Status grammar — colour encodes URGENCY, not identity.
+     *
+     *   red   = act now          amber = attention soon
+     *   green = healthy/done     ink   = in flight, nothing owed by you
+     *
+     * The previous map assigned an arbitrary hue per state (navy `accepted`,
+     * purple `in_delivery`, green `trip_created`), which made colour useless
+     * as a pre-attentive "does this need me?" channel — the one job colour has
+     * in a logistics tool. Navy and purple are gone; in-flight states are now
+     * neutral ink so the coloured rows are exactly the actionable ones.
+     */
     pipeline: {
+      // Waiting on a human decision → attention soon.
       pending: '#C67F00',
-      accepted: '#1F3A8A',
-      in_delivery: '#5B2CA5',
-      trip_created: '#3B7A3A',
-      time_proposed: '#1A1916',
+      time_proposed: '#C67F00',
       partially_fulfilled: '#C67F00',
+      // Moving through the pipeline, nothing owed by the viewer → neutral.
+      accepted: '#1A1916',
+      trip_created: '#1A1916',
+      in_delivery: '#1A1916',
+      // Done.
       delivered: '#3B7A3A',
       fulfilled: '#3B7A3A',
+      // Terminal, no longer actionable.
       cancelled: '#8F8A7F',
+      // Failed / needs intervention.
       expired: '#C23B1F',
     } as Record<string, string>,
     criticalWash: 'rgba(194, 59, 31, 0.04)',
@@ -63,11 +85,22 @@ export const wp = {
     monoBold:  { fontFamily: 'JetBrainsMono_700Bold',    fontWeight: '700' as const },
   },
 
+  /**
+   * Legibility floor: 12pt for anything informational.
+   *
+   * These screens are read on mid-range Androids on a warehouse floor, often
+   * in direct sunlight. The previous 9-11pt uppercase-letterspaced-mono sizes
+   * were the worst case for fast scanning: uppercase removes word-shape cues,
+   * tracking breaks words apart, and small mono is already low-contrast.
+   * `stamp` stays at 10 because stamps carry one short word in bold at high
+   * colour contrast; `kicker` stays at 10 as pure decorative chrome that
+   * duplicates the title beneath it.
+   */
   size: {
-    stamp: 9,
+    stamp: 10,
     kicker: 10,
-    label: 11,
-    meta: 11,
+    label: 12,
+    meta: 12,
     body: 13,
     bodyLg: 14,
     rowTitle: 15,
@@ -107,8 +140,41 @@ export const wp = {
     stamp: { offsetX: 4, offsetY: 4, color: '#1A1916' },
   },
 
-  /** Alternates ±4deg per row for hand-stamped feel. */
-  rotation: (rowIndex: number): number => (rowIndex % 2 === 0 ? -4 : 4),
+  /**
+   * Font-scaling caps.
+   *
+   * The app previously passed `allowFontScaling={false}` on ~87 `<Text>` nodes,
+   * which hard-ignores the OS text-size setting. A warehouse workforce skews
+   * toward people who have turned that setting up, and refusing it outright is
+   * both an accessibility failure and a legibility one — the users who most need
+   * larger text are exactly the ones reading a bag count in a dim storeroom.
+   *
+   * Scaling is now honoured, but capped, because this layout has genuinely
+   * fixed-geometry elements: a 96pt hero numeral at 2× scale would push the
+   * ledger off-screen, and a stamp's outlined box is sized to its glyphs.
+   * Caps by role:
+   *
+   *   `text`    1.6 — body copy, labels, ledger values. Generous; these reflow.
+   *   `compact` 1.3 — text inside fixed-width chrome (stamps, tab labels,
+   *                   button faces) where the container cannot grow much.
+   *   `display` 1.15 — giant Fraunces numerals, which are already far above the
+   *                   legibility floor and whose job is proportion, not size.
+   */
+  fontScale: {
+    text: 1.6,
+    compact: 1.3,
+    display: 1.15,
+  },
+
+  /**
+   * Stamps no longer rotate. ±4deg bought whimsy at the cost of legibility on
+   * the shortest, most important strings in the app, and rotated outlined
+   * rectangles read as decoration — blurring the line between status (passive)
+   * and button (active) when both wear the same bordered-uppercase costume.
+   *
+   * Kept as a function returning 0 so existing `rowIndex` call sites stay valid.
+   */
+  rotation: (_rowIndex?: number): number => 0,
 } as const;
 
 export type WpColor = keyof typeof wp.color;
@@ -140,14 +206,26 @@ export function fmtKickerDate(date = new Date()): string {
 }
 
 /**
- * Stable 3-digit "publication number" for the dashboard masthead.
- * Derived from a string seed (e.g. user id) so it doesn't churn on re-render.
+ * Format a timestamp as a short "last synced" string for the dashboard
+ * masthead sub-line.
+ *
+ * This replaces `publicationNumber()`, a hash that invented a meaningless
+ * 3-digit "No. 249" purely so the newspaper metaphor looked complete. Shipping
+ * a number into a stock-control tool that answers "nothing" when a warehouse
+ * manager asks what it means costs trust for no gain. The masthead slot now
+ * carries the most useful fact available: how stale the data on screen is.
  */
-export function publicationNumber(seed: string | null | undefined): string {
-  if (!seed) return '001';
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    hash = ((hash << 5) - hash + seed.charCodeAt(i)) | 0;
-  }
-  return String((Math.abs(hash) % 900) + 100);
+export function fmtSyncedAt(date: Date | number | null | undefined): string {
+  if (date == null) return 'Not synced';
+  const then = typeof date === 'number' ? date : date.getTime();
+  if (!Number.isFinite(then)) return 'Not synced';
+
+  const mins = Math.floor((Date.now() - then) / 60_000);
+  if (mins < 0) return 'Synced just now';
+  if (mins < 1) return 'Synced just now';
+  if (mins < 60) return `Synced ${mins}m ago`;
+
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `Synced ${hrs}h ago`;
+  return `Synced ${Math.floor(hrs / 24)}d ago`;
 }

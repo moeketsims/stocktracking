@@ -147,7 +147,7 @@ export default function BatchDetailScreen() {
                   </Stamp>
                 </View>
 
-                <Text allowFontScaling={false} style={styles.itemTitle} numberOfLines={2}>
+                <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.itemTitle} numberOfLines={2}>
                   {batch.item?.name ?? 'Item'}
                 </Text>
 
@@ -239,6 +239,7 @@ export default function BatchDetailScreen() {
                 <DFieldBox label="Expiry date">
                   <View style={styles.textInputBox}>
                     <TextInput
+                      maxFontSizeMultiplier={wp.fontScale.text}
                       value={expiryDate}
                       onChangeText={setExpiryDate}
                       placeholder="YYYY-MM-DD"
@@ -251,6 +252,7 @@ export default function BatchDetailScreen() {
                 <DFieldBox label="Quality notes" noDivider>
                   <View style={styles.notesBox}>
                     <TextInput
+                      maxFontSizeMultiplier={wp.fontScale.text}
                       value={qualityNotes}
                       onChangeText={setQualityNotes}
                       placeholder="Observations…"
@@ -301,7 +303,7 @@ function MetaRow({
         {label}
       </MonoText>
       <Text
-        allowFontScaling={false}
+        maxFontSizeMultiplier={wp.fontScale.text}
         style={[styles.metaValue, valueColor ? { color: valueColor } : null]}
         numberOfLines={2}
       >

@@ -30,6 +30,7 @@ import {
   HardShadowFrame,
   InkButton,
   DFieldBox,
+  TabStrip,
 } from '../src/components/wp';
 import { wp, fmtKickerDate } from '../src/constants/warehousePaper';
 import type { PendingDelivery, AlertItem } from '../src/types';
@@ -132,38 +133,18 @@ export default function AlertsScreen() {
       <Stack.Screen options={{ headerShown: false }} />
       <SafeAreaView style={styles.safe} edges={['bottom']}>
         <Masthead
-          kicker={`OPS DESK — ${fmtKickerDate()}`}
-          title="Alerts & ledger"
+          kicker={fmtKickerDate()}
+          title="Alerts"
           backUseRouter
         />
 
-        {/* Tab strip */}
+        {/* Shared TabStrip — this screen previously kept its own copy. */}
         {visibleTabs.length > 1 && (
-          <View style={styles.tabStrip}>
-            {visibleTabs.map((t) => {
-              const on = tab === t.key;
-              return (
-                <TouchableOpacity
-                  key={t.key}
-                  activeOpacity={0.7}
-                  onPress={() => setTab(t.key)}
-                  style={[styles.tab, on && styles.tabActive]}
-                >
-                  <MonoText
-                    size={11}
-                    weight={on ? 700 : 500}
-                    tracking={1.5}
-                    upper
-                    color={on ? wp.color.ink : wp.color.ink3}
-                  >
-                    {t.label}
-                    {'  '}
-                    {t.count}
-                  </MonoText>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          <TabStrip<Tab>
+            items={visibleTabs.map((t) => ({ key: t.key, label: t.label, count: t.count }))}
+            active={tab}
+            onChange={setTab}
+          />
         )}
 
         {tab === 'alerts' ? (
@@ -249,7 +230,7 @@ export default function AlertsScreen() {
           >
             <View style={styles.modalSheet}>
               <View style={styles.modalHeader}>
-                <Text allowFontScaling={false} style={styles.modalTitle}>
+                <Text maxFontSizeMultiplier={wp.fontScale.display} style={styles.modalTitle}>
                   Correct closing KM
                 </Text>
                 <TouchableOpacity
@@ -270,6 +251,7 @@ export default function AlertsScreen() {
               <DFieldBox label="New closing KM">
                 <View style={styles.textInputBox}>
                   <TextInput
+                    maxFontSizeMultiplier={wp.fontScale.text}
                     value={newKmValue}
                     onChangeText={setNewKmValue}
                     keyboardType="number-pad"
@@ -282,6 +264,7 @@ export default function AlertsScreen() {
               <DFieldBox label="Reason" noDivider>
                 <View style={styles.notesBox}>
                   <TextInput
+                    maxFontSizeMultiplier={wp.fontScale.text}
                     value={kmReason}
                     onChangeText={setKmReason}
                     placeholder="Why is this being corrected?"
@@ -329,14 +312,14 @@ function AlertVoucher({
             {stampLabel}
           </Stamp>
         </View>
-        <Text allowFontScaling={false} style={styles.voucherTitle}>
+        <Text maxFontSizeMultiplier={wp.fontScale.display} style={styles.voucherTitle}>
           {alert.title}
         </Text>
-        <MonoText size={11} color={wp.color.ink2} style={{ marginTop: 6 }}>
+        <MonoText size={wp.size.body} color={wp.color.ink2} style={{ marginTop: 6 }}>
           {alert.message}
         </MonoText>
-        <MonoText size={10} tracking={1} upper color={wp.color.ink3} style={{ marginTop: 6 }}>
-          {timeAgo(alert.created_at).toUpperCase()} · {alert.item_name.toUpperCase()}
+        <MonoText size={wp.size.meta} tracking={0.2} color={wp.color.ink3} style={{ marginTop: 6 }}>
+          {timeAgo(alert.created_at)} · {alert.item_name}
         </MonoText>
         <View style={{ marginTop: 12, alignSelf: 'flex-start' }}>
           <InkButton label="Acknowledge" onPress={onAcknowledge} />
@@ -387,12 +370,12 @@ function DeliveryVoucher({
         {delivery.trip && (
           <MonoText size={10} tracking={1} upper color={wp.color.ink3} style={{ marginTop: 10 }}>
             TRIP {delivery.trip.trip_number}
-            {delivery.trip.driver_name ? ` · ${delivery.trip.driver_name.toUpperCase()}` : ''}
+            {delivery.trip.driver_name ? ` · ${delivery.trip.driver_name}` : ''}
           </MonoText>
         )}
 
-        <MonoText size={10} tracking={1} upper color={wp.color.ink3} style={{ marginTop: 4 }}>
-          {timeAgo(delivery.created_at).toUpperCase()}
+        <MonoText size={wp.size.meta} tracking={0.2} color={wp.color.ink3} style={{ marginTop: 4 }}>
+          {timeAgo(delivery.created_at)}
         </MonoText>
 
         <View style={{ marginTop: 12, alignSelf: 'flex-start' }}>
@@ -451,7 +434,7 @@ function ConfirmedDeliveryVoucher({
 function EmptyState({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <View style={styles.empty}>
-      <Text allowFontScaling={false} style={styles.emptyTitle}>
+      <Text maxFontSizeMultiplier={wp.fontScale.display} style={styles.emptyTitle}>
         {title}
       </Text>
       <MonoText size={11} tracking={1} upper color={wp.color.ink3} style={{ marginTop: 6 }}>
@@ -463,23 +446,6 @@ function EmptyState({ title, subtitle }: { title: string; subtitle: string }) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
-
-  // Tab strip
-  tabStrip: {
-    flexDirection: 'row',
-    borderBottomWidth: wp.border.mid,
-    borderBottomColor: wp.color.lineD,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  tabActive: {
-    borderBottomWidth: 3,
-    borderBottomColor: wp.color.ink,
-    marginBottom: -1.5,
-  },
 
   list: {
     paddingHorizontal: wp.space.screenH,

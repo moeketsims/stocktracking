@@ -6,6 +6,7 @@ import { registerForPushNotifications, submitPushToken } from '../utils/notifica
 import { useAuthStore } from '../stores/authStore';
 import { notificationsApi } from '../api/notifications';
 import { STALE_TIME } from '../constants/config';
+import { assertOnlineBeforeMutation } from '../utils/offline';
 
 export function useNotificationFeed() {
   return useQuery({
@@ -26,7 +27,10 @@ export function useUnreadNotificationCount() {
 export function useMarkNotificationRead() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => notificationsApi.markRead(id).then((r) => r.data),
+    mutationFn: async (id: string) => {
+      await assertOnlineBeforeMutation('mark this notification read');
+      return notificationsApi.markRead(id).then((r) => r.data);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['notifications'] });
     },
@@ -36,7 +40,10 @@ export function useMarkNotificationRead() {
 export function useMarkAllNotificationsRead() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => notificationsApi.markAllRead().then((r) => r.data),
+    mutationFn: async () => {
+      await assertOnlineBeforeMutation('mark notifications read');
+      return notificationsApi.markAllRead().then((r) => r.data);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['notifications'] });
     },
@@ -63,15 +70,20 @@ function cleanupSubscription(subscription?: Notifications.EventSubscription) {
 export function useNotifications() {
   const router = useRouter();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const notificationListener = useRef<Notifications.EventSubscription | undefined>(undefined);
   const responseListener = useRef<Notifications.EventSubscription | undefined>(undefined);
 
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !accessToken) return;
+
+    let active = true;
 
     // Register and submit token
     registerForPushNotifications().then((token) => {
-      if (token) submitPushToken(token);
+      if (active && token && useAuthStore.getState().accessToken === accessToken) {
+        void submitPushToken(token);
+      }
     });
 
     // Listen for notifications received while app is open
@@ -97,8 +109,9 @@ export function useNotifications() {
     );
 
     return () => {
+      active = false;
       cleanupSubscription(notificationListener.current);
       cleanupSubscription(responseListener.current);
     };
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, accessToken, router]);
 }

@@ -12,6 +12,7 @@
 
 import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
+import { Platform } from 'react-native';
 
 const KEY_PIN_HASH = 'pin_hash';
 const KEY_PIN_SALT = 'pin_salt';
@@ -40,9 +41,32 @@ async function hashPin(pin: string, salt: string): Promise<string> {
   );
 }
 
+async function getStoredValue(key: string): Promise<string | null> {
+  if (Platform.OS === 'web') {
+    return localStorage.getItem(key);
+  }
+  return SecureStore.getItemAsync(key);
+}
+
+async function setStoredValue(key: string, value: string): Promise<void> {
+  if (Platform.OS === 'web') {
+    localStorage.setItem(key, value);
+    return;
+  }
+  await SecureStore.setItemAsync(key, value);
+}
+
+async function deleteStoredValue(key: string): Promise<void> {
+  if (Platform.OS === 'web') {
+    localStorage.removeItem(key);
+    return;
+  }
+  await SecureStore.deleteItemAsync(key);
+}
+
 /** Returns true if a PIN has been configured for this device. */
 export async function hasPin(): Promise<boolean> {
-  const hash = await SecureStore.getItemAsync(KEY_PIN_HASH);
+  const hash = await getStoredValue(KEY_PIN_HASH);
   return !!hash;
 }
 
@@ -53,9 +77,9 @@ export async function setPin(pin: string): Promise<void> {
   }
   const salt = generateSalt();
   const hash = await hashPin(pin, salt);
-  await SecureStore.setItemAsync(KEY_PIN_SALT, salt);
-  await SecureStore.setItemAsync(KEY_PIN_HASH, hash);
-  await SecureStore.deleteItemAsync(KEY_PIN_ATTEMPTS);
+  await setStoredValue(KEY_PIN_SALT, salt);
+  await setStoredValue(KEY_PIN_HASH, hash);
+  await deleteStoredValue(KEY_PIN_ATTEMPTS);
 }
 
 /**
@@ -76,8 +100,8 @@ export async function verifyPin(
   | { ok: false; locked: true; attemptsLeft?: never }
 > {
   const [storedHash, salt] = await Promise.all([
-    SecureStore.getItemAsync(KEY_PIN_HASH),
-    SecureStore.getItemAsync(KEY_PIN_SALT),
+    getStoredValue(KEY_PIN_HASH),
+    getStoredValue(KEY_PIN_SALT),
   ]);
 
   if (!storedHash || !salt) {
@@ -87,11 +111,11 @@ export async function verifyPin(
 
   const candidate = await hashPin(pin, salt);
   if (candidate === storedHash) {
-    await SecureStore.deleteItemAsync(KEY_PIN_ATTEMPTS);
+    await deleteStoredValue(KEY_PIN_ATTEMPTS);
     return { ok: true };
   }
 
-  const prior = parseInt((await SecureStore.getItemAsync(KEY_PIN_ATTEMPTS)) ?? '0', 10);
+  const prior = parseInt((await getStoredValue(KEY_PIN_ATTEMPTS)) ?? '0', 10);
   const next = Number.isFinite(prior) ? prior + 1 : 1;
 
   if (next >= MAX_PIN_ATTEMPTS) {
@@ -99,22 +123,22 @@ export async function verifyPin(
     return { ok: false, locked: true };
   }
 
-  await SecureStore.setItemAsync(KEY_PIN_ATTEMPTS, String(next));
+  await setStoredValue(KEY_PIN_ATTEMPTS, String(next));
   return { ok: false, attemptsLeft: MAX_PIN_ATTEMPTS - next };
 }
 
 /** Wipe the stored PIN + salt + attempt counter. */
 export async function clearPin(): Promise<void> {
   await Promise.all([
-    SecureStore.deleteItemAsync(KEY_PIN_HASH),
-    SecureStore.deleteItemAsync(KEY_PIN_SALT),
-    SecureStore.deleteItemAsync(KEY_PIN_ATTEMPTS),
+    deleteStoredValue(KEY_PIN_HASH),
+    deleteStoredValue(KEY_PIN_SALT),
+    deleteStoredValue(KEY_PIN_ATTEMPTS),
   ]);
 }
 
 /** Read the current wrong-attempt count without modifying it. */
 export async function getAttemptCount(): Promise<number> {
-  const raw = await SecureStore.getItemAsync(KEY_PIN_ATTEMPTS);
+  const raw = await getStoredValue(KEY_PIN_ATTEMPTS);
   const n = parseInt(raw ?? '0', 10);
   return Number.isFinite(n) ? n : 0;
 }

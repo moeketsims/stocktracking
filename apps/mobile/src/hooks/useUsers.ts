@@ -3,6 +3,7 @@ import { Alert } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { usersApi, type ListUsersParams, type UpdateUserPayload } from '../api/users';
 import { STALE_TIME } from '../constants/config';
+import { assertOnlineBeforeMutation, isOfflineMutationError } from '../utils/offline';
 
 export function useUsers(params?: ListUsersParams) {
   return useQuery({
@@ -23,14 +24,17 @@ export function useUser(id: string) {
 export function useUpdateUser() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: UpdateUserPayload }) =>
-      usersApi.update(id, data).then((r) => r.data),
+    mutationFn: async ({ id, data }: { id: string; data: UpdateUserPayload }) => {
+      await assertOnlineBeforeMutation('update this user');
+      return usersApi.update(id, data).then((r) => r.data);
+    },
     onSuccess: (data) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       qc.invalidateQueries({ queryKey: ['users'] });
       Alert.alert('Success', data.message);
     },
     onError: (error: any) => {
+      if (isOfflineMutationError(error)) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', error.response?.data?.detail ?? 'Failed to update user');
     },
@@ -40,13 +44,17 @@ export function useUpdateUser() {
 export function useDeactivateUser() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => usersApi.deactivate(id).then((r) => r.data),
+    mutationFn: async (id: string) => {
+      await assertOnlineBeforeMutation('deactivate this user');
+      return usersApi.deactivate(id).then((r) => r.data);
+    },
     onSuccess: (data) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       qc.invalidateQueries({ queryKey: ['users'] });
       Alert.alert('Success', data.message);
     },
     onError: (error: any) => {
+      if (isOfflineMutationError(error)) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', error.response?.data?.detail ?? 'Failed to deactivate user');
     },
@@ -56,13 +64,17 @@ export function useDeactivateUser() {
 export function useActivateUser() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => usersApi.activate(id).then((r) => r.data),
+    mutationFn: async (id: string) => {
+      await assertOnlineBeforeMutation('activate this user');
+      return usersApi.activate(id).then((r) => r.data);
+    },
     onSuccess: (data) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       qc.invalidateQueries({ queryKey: ['users'] });
       Alert.alert('Success', data.message);
     },
     onError: (error: any) => {
+      if (isOfflineMutationError(error)) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', error.response?.data?.detail ?? 'Failed to activate user');
     },
@@ -71,12 +83,16 @@ export function useActivateUser() {
 
 export function useResetPassword() {
   return useMutation({
-    mutationFn: (id: string) => usersApi.resetPassword(id).then((r) => r.data),
+    mutationFn: async (id: string) => {
+      await assertOnlineBeforeMutation('send a password reset');
+      return usersApi.resetPassword(id).then((r) => r.data);
+    },
     onSuccess: (data) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert('Success', data.message);
     },
     onError: (error: any) => {
+      if (isOfflineMutationError(error)) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', error.response?.data?.detail ?? 'Failed to send password reset');
     },

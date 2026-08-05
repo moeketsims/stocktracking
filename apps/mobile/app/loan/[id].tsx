@@ -204,7 +204,7 @@ export default function LoanDetailScreen() {
                     <MonoText size={10} tracking={1.5} upper color={wp.color.ink3}>
                       {r.key}
                     </MonoText>
-                    <Text allowFontScaling={false} style={styles.metaValue} numberOfLines={2}>
+                    <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.metaValue} numberOfLines={2}>
                       {r.value}
                     </Text>
                   </View>

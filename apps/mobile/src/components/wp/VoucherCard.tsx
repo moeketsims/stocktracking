@@ -78,8 +78,14 @@ export function VoucherCard({
   rowIndex = 0,
   onPress,
 }: Props) {
-  const stampColor = pipelineColor(status);
+  // Label and colour must be ONE decision. Previously the caller could override
+  // the label (e.g. to "OVERDUE") while the colour still came from
+  // pipelineColor(status) — so an overdue in_delivery row rendered the word
+  // OVERDUE in purple and an overdue pending row rendered it in amber: same
+  // word, same meaning, two colours on one screen. An overriding label is by
+  // definition an exception the viewer must act on, so it always takes red.
   const label = stampLabel ?? STAMP_LABEL[status] ?? status.toUpperCase();
+  const stampColor = stampLabel ? wp.color.red : pipelineColor(status);
 
   return (
     <HardShadowFrame style={styles.outerSpacing}>
@@ -104,10 +110,12 @@ export function VoucherCard({
             >
               {title}
             </MonoText>
+            {/* Sentence case, not uppercase: this line carries names and
+                relative times, where word shape aids scanning and tracked
+                uppercase actively hurts it. */}
             <MonoText
-              size={10}
-              tracking={1}
-              upper
+              size={wp.size.meta}
+              tracking={0.2}
               color={wp.color.ink3}
               numberOfLines={1}
               style={styles.meta}

@@ -39,10 +39,10 @@ const STATUS_STAMP: Record<TripStatus, { label: string; color: string; rotate: n
   cancelled: { label: 'CANCEL', color: wp.color.ink3, rotate: -3 },
 };
 
-function shortTripNumber(n: string): string {
-  const m = n.match(/\d+/);
-  return m ? m[0].slice(-4) : n.slice(-4).toUpperCase();
-}
+// `shortTripNumber` removed: it took the first digit run of "TRP-2026-0035",
+// so it rendered the YEAR ("2026") as the trip's identifier. Both this screen
+// and the trips list now print the full `trip_number`, which is what users read
+// off the request screen and what dispatch says on the phone.
 
 export default function TripDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -173,10 +173,13 @@ export default function TripDetailScreen() {
           style={styles.flex}
         >
           <Masthead
-            kicker={`TRIP · N°${shortTripNumber(trip.trip_number)} · ${new Date(trip.created_at)
+            kicker={new Date(trip.created_at)
               .toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })
-              .toUpperCase()}`}
-            title="Dispatch record"
+              .toUpperCase()}
+            // The screen is named for the record it shows. "Dispatch record"
+            // told the user nothing they could match against the trip number
+            // they read off the request screen.
+            title={trip.trip_number}
             backUseRouter
           />
 
@@ -185,22 +188,38 @@ export default function TripDetailScreen() {
             <HardShadowFrame style={{ marginBottom: 18 }}>
               <View style={styles.voucher}>
                 <View style={styles.voucherHead}>
-                  <KickerLabel size={10} tracking={1.5} color={wp.color.ink3}>
-                    VOUCHER N° {shortTripNumber(trip.trip_number)}
+                  <KickerLabel size={wp.size.kicker} tracking={1.5} color={wp.color.ink3}>
+                    {trip.trip_number}
                   </KickerLabel>
                   <Stamp colorHex={statusStamp.color} rotate={statusStamp.rotate}>
                     {statusStamp.label}
                   </Stamp>
                 </View>
 
-                <View style={styles.heroRow}>
-                  <SerifNumber size={72} tracking={-3} leading={0.9} color={wp.color.ink} autoShrink>
-                    {String(totalPlannedBags)}
-                  </SerifNumber>
-                  <MonoText size={11} tracking={1.5} color={wp.color.ink3} style={{ marginLeft: 10 }}>
-                    BAGS PLANNED
-                  </MonoText>
-                </View>
+                {/* The 72pt Fraunces numeral is the most emphatic gesture in the
+                    system; it has to be earned. Framing a "0" like a museum
+                    piece made a missing manifest look like a deliberate
+                    headline. A zero here means the trip has no stops recorded,
+                    which is a problem to name, not a number to celebrate. */}
+                {totalPlannedBags > 0 ? (
+                  <View style={styles.heroRow}>
+                    <SerifNumber size={72} tracking={-3} leading={0.9} color={wp.color.ink} autoShrink>
+                      {String(totalPlannedBags)}
+                    </SerifNumber>
+                    <MonoText size={wp.size.label} tracking={1.5} color={wp.color.ink3} style={{ marginLeft: 10 }}>
+                      BAGS PLANNED
+                    </MonoText>
+                  </View>
+                ) : (
+                  <View style={styles.heroEmpty}>
+                    <MonoText size={wp.size.bodyLg} weight={700} color={wp.color.ink}>
+                      No bags planned
+                    </MonoText>
+                    <MonoText size={wp.size.meta} color={wp.color.ink3} style={{ marginTop: 2 }}>
+                      This trip has no stops recorded — contact dispatch.
+                    </MonoText>
+                  </View>
+                )}
 
                 <View style={styles.metaLedger}>
                   {metaRows.map((row, i) => (
@@ -211,7 +230,7 @@ export default function TripDetailScreen() {
                       <MonoText size={10} tracking={1.5} upper color={wp.color.ink3}>
                         {row.key}
                       </MonoText>
-                      <Text allowFontScaling={false} style={styles.metaValue} numberOfLines={2}>
+                      <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.metaValue} numberOfLines={2}>
                         {row.value}
                       </Text>
                     </View>
@@ -256,6 +275,7 @@ export default function TripDetailScreen() {
                       {closingKm || '—'}
                     </SerifNumber>
                     <TextInput
+                      maxFontSizeMultiplier={wp.fontScale.text}
                       value={closingKm}
                       onChangeText={setClosingKm}
                       keyboardType="number-pad"
@@ -306,7 +326,7 @@ function StopRow({ stop }: { stop: TripStop }) {
           <Stamp colorHex={typeColor} rotate={0}>
             {stop.stop_type.toUpperCase()}
           </Stamp>
-          <Text allowFontScaling={false} style={styles.stopName} numberOfLines={1}>
+          <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.stopName} numberOfLines={1}>
             {stop.location_name ?? 'Location'}
           </Text>
         </View>
@@ -345,6 +365,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'baseline',
     marginTop: 10,
+  },
+  heroEmpty: {
+    marginTop: 12,
+    marginBottom: 2,
   },
   metaLedger: {
     marginTop: 14,

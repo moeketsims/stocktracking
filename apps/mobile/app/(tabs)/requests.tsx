@@ -122,7 +122,7 @@ export default function RequestsScreen() {
           }
         >
           <Masthead
-            kicker={`ORDER DESK — ${fmtKickerDate()}`}
+            kicker={fmtKickerDate()}
             title="Requests"
           />
 
@@ -144,7 +144,7 @@ export default function RequestsScreen() {
                   style={styles.urgentRow}
                 >
                   <View style={{ flex: 1 }}>
-                    <Text allowFontScaling={false} style={styles.urgentTitle}>
+                    <Text maxFontSizeMultiplier={wp.fontScale.display} style={styles.urgentTitle}>
                       {urgent.location?.name ?? 'Unknown'}
                     </Text>
                     <MonoText size={11} color={wp.color.ink2} style={{ marginTop: 2 }}>
@@ -199,10 +199,24 @@ export default function RequestsScreen() {
                   key={r.id}
                   ticketNumber={shortTicketNumber(r.id)}
                   title={r.location?.name ?? 'Unknown'}
-                  meta={`${(r.requester?.full_name ?? 'Unknown').toUpperCase()} · ${timeAgo(r.created_at).toUpperCase()}${ageSeverity(r.created_at) !== 'normal' ? ' · OVERDUE' : ''}`}
+                  // Two facts, not three. The age flag used to be appended here
+                  // as well, which overflowed the line and truncated the most
+                  // important word to "OVE…" — while the stamp on the same row
+                  // already said OVERDUE. Dropping it removes the duplication
+                  // and the truncation together.
+                  meta={`${r.requester?.full_name ?? 'Unknown'} · ${timeAgo(r.created_at)}`}
                   quantityBags={r.quantity_bags}
                   status={r.status}
-                  stampLabel={ageSeverity(r.created_at) !== 'normal' ? 'OVERDUE' : undefined}
+                  // Don't collapse both age buckets into "OVERDUE": a 3-day-old
+                  // ticket and a 3-week-old one are different situations, and
+                  // the urgent callout above already distinguishes them.
+                  stampLabel={
+                    ageSeverity(r.created_at) === 'overdue'
+                      ? 'OVERDUE'
+                      : ageSeverity(r.created_at) === 'stale'
+                        ? 'FOLLOW UP'
+                        : undefined
+                  }
                   rowIndex={i}
                   onPress={() => router.push(`/request/${r.id}`)}
                 />
@@ -224,11 +238,11 @@ export default function RequestsScreen() {
                 onPress={toggleHistory}
                 activeOpacity={0.7}
               >
-                <Text allowFontScaling={false} style={styles.completedLabel}>
+                <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.completedLabel}>
                   {history.length} completed {history.length === 1 ? 'ticket' : 'tickets'}
                 </Text>
                 <View style={styles.completedAction}>
-                  <Text allowFontScaling={false} style={styles.completedView}>
+                  <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.completedView}>
                     {historyExpanded ? 'HIDE' : 'VIEW'}
                   </Text>
                   <Ionicons
@@ -251,14 +265,14 @@ export default function RequestsScreen() {
                         <MonoText size={10} color={wp.color.ink3} style={{ width: 64 }}>
                           N° {shortTicketNumber(r.id)}
                         </MonoText>
-                        <Text allowFontScaling={false} style={styles.historyName} numberOfLines={1}>
+                        <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.historyName} numberOfLines={1}>
                           {r.location?.name ?? 'Unknown'}
                         </Text>
                         <MonoText size={14} weight={700} color={wp.color.ink} style={styles.historyQty}>
                           {r.quantity_bags}
                         </MonoText>
                         <MonoText size={10} color={wp.color.ink3} style={styles.historyTime}>
-                          {timeAgo(r.created_at).toUpperCase()}
+                          {timeAgo(r.created_at)}
                         </MonoText>
                       </TouchableOpacity>
                     </View>

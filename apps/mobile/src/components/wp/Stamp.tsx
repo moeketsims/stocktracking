@@ -55,7 +55,7 @@ export function Stamp({
       ]}
     >
       <Text
-        allowFontScaling={false}
+        maxFontSizeMultiplier={wp.fontScale.compact}
         style={[
           wp.font.monoBold,
           {

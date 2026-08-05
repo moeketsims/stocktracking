@@ -7,6 +7,7 @@ import {
   type UpdateLineCountPayload,
 } from '../api/stockTakes';
 import { STALE_TIME } from '../constants/config';
+import { assertOnlineBeforeMutation, isOfflineMutationError } from '../utils/offline';
 
 export function useStockTakes(params?: { status?: string; limit?: number }) {
   return useQuery({
@@ -27,14 +28,17 @@ export function useStockTake(id: string) {
 export function useCreateStockTake() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: CreateStockTakePayload) =>
-      stockTakesApi.create(data).then((r) => r.data),
+    mutationFn: async (data: CreateStockTakePayload) => {
+      await assertOnlineBeforeMutation('start a stock take');
+      return stockTakesApi.create(data).then((r) => r.data);
+    },
     onSuccess: (data) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       qc.invalidateQueries({ queryKey: ['stock-takes'] });
       Alert.alert('Stock Take Started', `${data.lines_created} items to count.`);
     },
     onError: (error: any) => {
+      if (isOfflineMutationError(error)) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', error.response?.data?.detail ?? 'Failed to create stock take');
     },
@@ -44,7 +48,7 @@ export function useCreateStockTake() {
 export function useUpdateLineCount() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       stockTakeId,
       lineId,
       data,
@@ -52,12 +56,16 @@ export function useUpdateLineCount() {
       stockTakeId: string;
       lineId: string;
       data: UpdateLineCountPayload;
-    }) => stockTakesApi.updateLineCount(stockTakeId, lineId, data).then((r) => r.data),
+    }) => {
+      await assertOnlineBeforeMutation('save this stock count');
+      return stockTakesApi.updateLineCount(stockTakeId, lineId, data).then((r) => r.data);
+    },
     onSuccess: () => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       qc.invalidateQueries({ queryKey: ['stock-takes'] });
     },
     onError: (error: any) => {
+      if (isOfflineMutationError(error)) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', error.response?.data?.detail ?? 'Failed to save count');
     },
@@ -67,14 +75,17 @@ export function useUpdateLineCount() {
 export function useCompleteStockTake() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, notes }: { id: string; notes?: string }) =>
-      stockTakesApi.complete(id, notes).then((r) => r.data),
+    mutationFn: async ({ id, notes }: { id: string; notes?: string }) => {
+      await assertOnlineBeforeMutation('complete this stock take');
+      return stockTakesApi.complete(id, notes).then((r) => r.data);
+    },
     onSuccess: (data) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       qc.invalidateQueries({ queryKey: ['stock-takes'] });
       Alert.alert('Completed', `Stock take completed. ${data.adjustments_created} adjustments created.`);
     },
     onError: (error: any) => {
+      if (isOfflineMutationError(error)) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', error.response?.data?.detail ?? 'Failed to complete stock take');
     },
@@ -84,12 +95,16 @@ export function useCompleteStockTake() {
 export function useCancelStockTake() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => stockTakesApi.cancel(id).then((r) => r.data),
+    mutationFn: async (id: string) => {
+      await assertOnlineBeforeMutation('cancel this stock take');
+      return stockTakesApi.cancel(id).then((r) => r.data);
+    },
     onSuccess: () => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       qc.invalidateQueries({ queryKey: ['stock-takes'] });
     },
     onError: (error: any) => {
+      if (isOfflineMutationError(error)) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', error.response?.data?.detail ?? 'Failed to cancel stock take');
     },

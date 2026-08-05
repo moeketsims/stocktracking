@@ -56,7 +56,7 @@ function StackButton({
     <ActivityIndicator color={filled ? wp.color.paper : color} size="small" />
   ) : (
     <Text
-      allowFontScaling={false}
+      maxFontSizeMultiplier={wp.fontScale.compact}
       style={[
         styles.label,
         { color: filled ? wp.color.paper : color },

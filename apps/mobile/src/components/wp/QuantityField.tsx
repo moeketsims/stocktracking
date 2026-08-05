@@ -71,6 +71,7 @@ export function QuantityField({
           {/* Caret — only visible when focused; for simplicity we keep
               the input invisible and let the SerifNumber represent state. */}
           <TextInput
+            maxFontSizeMultiplier={wp.fontScale.text}
             ref={inputRef}
             value={value}
             onChangeText={onChangeText}

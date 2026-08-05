@@ -195,11 +195,11 @@ function Row({
     >
       <View style={[styles.bar, { backgroundColor: accent }]} />
       <View style={styles.body}>
-        <Text allowFontScaling={false} style={styles.title} numberOfLines={1}>
+        <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.title} numberOfLines={1}>
           {n.title}
         </Text>
         {n.body ? (
-          <Text allowFontScaling={false} style={styles.bodyText} numberOfLines={2}>
+          <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.bodyText} numberOfLines={2}>
             {n.body}
           </Text>
         ) : null}

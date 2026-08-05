@@ -30,6 +30,7 @@ import {
   SerifNumber,
   HardShadowFrame,
   TickerProgressBar,
+  TabStrip,
 } from '../../src/components/wp';
 import { wp, fmtKickerDate } from '../../src/constants/warehousePaper';
 import type { UserRole, StockTakeLine } from '../../src/types';
@@ -149,30 +150,15 @@ export default function StockTakeScreen() {
           backUseRouter
         />
 
-        {/* Tab strip — mono labels, 3px ink underline on active */}
-        <View style={styles.tabStrip}>
-          {(['active', 'history'] as Tab[]).map((t) => {
-            const on = tab === t;
-            return (
-              <TouchableOpacity
-                key={t}
-                activeOpacity={0.7}
-                onPress={() => setTab(t)}
-                style={[styles.tab, on && styles.tabActive]}
-              >
-                <MonoText
-                  size={11}
-                  weight={on ? 700 : 500}
-                  tracking={1.5}
-                  upper
-                  color={on ? wp.color.ink : wp.color.ink3}
-                >
-                  {t === 'active' ? 'Active count' : 'History'}
-                </MonoText>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        {/* Shared TabStrip — this screen previously kept its own copy. */}
+        <TabStrip<Tab>
+          items={[
+            { key: 'active', label: 'Active count' },
+            { key: 'history', label: 'History' },
+          ]}
+          active={tab}
+          onChange={setTab}
+        />
 
         {listLoading ? (
           <Loading message="" fullScreen />
@@ -244,7 +230,7 @@ function ActiveTab({
   if (!activeStockTakeId) {
     return (
       <View style={styles.noActiveWrap}>
-        <Text allowFontScaling={false} style={styles.noActiveTitle}>
+        <Text maxFontSizeMultiplier={wp.fontScale.display} style={styles.noActiveTitle}>
           No active count
         </Text>
         <MonoText size={11} tracking={1} upper color={wp.color.ink3} style={{ marginTop: 6 }}>
@@ -256,7 +242,7 @@ function ActiveTab({
           disabled={createLoading}
           style={styles.startBtn}
         >
-          <Text allowFontScaling={false} style={styles.startBtnLabel}>
+          <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.startBtnLabel}>
             {createLoading ? 'STARTING…' : 'START STOCK TAKE'}
           </Text>
         </TouchableOpacity>
@@ -283,7 +269,7 @@ function ActiveTab({
       <HardShadowFrame style={{ marginBottom: 12 }}>
         <View style={styles.voucher}>
           <View style={styles.progHead}>
-            <Text allowFontScaling={false} style={styles.progTitle} numberOfLines={1}>
+            <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.progTitle} numberOfLines={1}>
               {locationName}
             </Text>
             <MonoText size={11} color={wp.color.ink2}>
@@ -316,13 +302,13 @@ function ActiveTab({
             disabled={completeLoading}
             style={styles.primaryBtn}
           >
-            <Text allowFontScaling={false} style={styles.primaryBtnLabel}>
+            <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.primaryBtnLabel}>
               {completeLoading ? 'COMPLETING…' : 'COMPLETE STOCK TAKE'}
             </Text>
           </TouchableOpacity>
         )}
         <TouchableOpacity activeOpacity={0.7} onPress={onCancel} style={styles.cancelBtn}>
-          <Text allowFontScaling={false} style={styles.cancelBtnLabel}>
+          <Text maxFontSizeMultiplier={wp.fontScale.compact} style={styles.cancelBtnLabel}>
             CANCEL COUNT
           </Text>
         </TouchableOpacity>
@@ -360,7 +346,7 @@ function StockTakeLineVoucher({
       <View style={styles.voucher}>
         <View style={styles.itemHead}>
           <View style={{ flex: 1 }}>
-            <Text allowFontScaling={false} style={styles.itemTitle} numberOfLines={1}>
+            <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.itemTitle} numberOfLines={1}>
               {line.items?.name ?? 'Item'}
             </Text>
             <MonoText size={10} tracking={1.3} upper color={wp.color.ink3} style={{ marginTop: 2 }}>
@@ -385,6 +371,7 @@ function StockTakeLineVoucher({
           <View style={styles.gridCol}>
             <KickerLabel size={9} tracking={1.5} color={wp.color.ink3}>Counted</KickerLabel>
             <TextInput
+              maxFontSizeMultiplier={wp.fontScale.text}
               value={count}
               onChangeText={(v) => {
                 setCount(v);
@@ -435,7 +422,7 @@ function HistoryTab({
   if (stockTakes.length === 0) {
     return (
       <View style={styles.noActiveWrap}>
-        <Text allowFontScaling={false} style={styles.noActiveTitle}>
+        <Text maxFontSizeMultiplier={wp.fontScale.display} style={styles.noActiveTitle}>
           No history
         </Text>
         <MonoText size={11} tracking={1} upper color={wp.color.ink3} style={{ marginTop: 6 }}>
@@ -455,7 +442,7 @@ function HistoryTab({
           <TouchableOpacity activeOpacity={0.75} onPress={() => onOpen(st.id)} style={styles.voucher}>
             <View style={styles.itemHead}>
               <View style={{ flex: 1 }}>
-                <Text allowFontScaling={false} style={styles.itemTitle} numberOfLines={1}>
+                <Text maxFontSizeMultiplier={wp.fontScale.text} style={styles.itemTitle} numberOfLines={1}>
                   {st.locations?.name ?? 'Unknown'}
                 </Text>
                 <MonoText size={10} tracking={1.3} upper color={wp.color.ink3} style={{ marginTop: 2 }}>
@@ -508,23 +495,6 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
 
   // Tab strip
-  tabStrip: {
-    flexDirection: 'row',
-    borderBottomWidth: wp.border.mid,
-    borderBottomColor: wp.color.lineD,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  tabActive: {
-    // 3px ink underline, -1.5px so it sits flush with the masthead rule
-    borderBottomWidth: 3,
-    borderBottomColor: wp.color.ink,
-    marginBottom: -1.5,
-  },
-
   // Scroll / content
   scroll: {
     paddingHorizontal: wp.space.screenH,

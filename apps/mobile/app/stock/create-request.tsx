@@ -144,6 +144,7 @@ export default function PlaceOrderScreen() {
             <DFieldBox label="Notes · optional" noDivider>
               <View style={styles.notesBox}>
                 <TextInput
+                  maxFontSizeMultiplier={wp.fontScale.text}
                   placeholder="Any additional details…"
                   placeholderTextColor={wp.color.ink3}
                   value={notes}
@@ -192,7 +193,7 @@ function UrgencyTile({
         style={[styles.tile, selected && styles.tileSelected]}
       >
         <Text
-          allowFontScaling={false}
+          maxFontSizeMultiplier={wp.fontScale.compact}
           style={[
             styles.tileTitle,
             { color: selected ? wp.color.paper : titleColor },
