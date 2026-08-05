@@ -2,6 +2,25 @@ import React from 'react';
 import { Text, type TextProps, type TextStyle } from 'react-native';
 import { wp } from '../../constants/warehousePaper';
 
+// Fraunces 900 Italic reports a 2,466-unit vertical extent on a 2,000-unit
+// em square. A line box below this ratio clips the curved bottoms of its
+// figures on iOS, especially when adjustsFontSizeToFit is enabled.
+const MIN_SAFE_LEADING = 1.24;
+const LEFT_GLYPH_INSET = 0.02;
+// Fraunces 900 Italic's widest figure overhang is 248/2,000 em units.
+const RIGHT_GLYPH_INSET = 0.14;
+
+export function serifLineHeight(size: number, leading?: number): number {
+  return Math.ceil(size * Math.max(leading ?? MIN_SAFE_LEADING, MIN_SAFE_LEADING));
+}
+
+export function serifGlyphInsets(size: number) {
+  return {
+    paddingLeft: Math.ceil(size * LEFT_GLYPH_INSET),
+    paddingRight: Math.ceil(size * RIGHT_GLYPH_INSET),
+  };
+}
+
 interface Props extends TextProps {
   size: number;
   color?: string;
@@ -46,10 +65,16 @@ export function SerifNumber({
           fontSize: size,
           color,
           letterSpacing: tracking,
-          lineHeight: leading != null ? size * leading : undefined,
           fontStyle: 'italic',
         },
         style,
+        // Keep this last so a compressed caller style cannot reintroduce
+        // platform-specific glyph clipping. Insets live on Text itself;
+        // padding on a parent does not protect an italic glyph overhang.
+        {
+          lineHeight: serifLineHeight(size, leading),
+          ...serifGlyphInsets(size),
+        },
       ]}
     >
       {children}

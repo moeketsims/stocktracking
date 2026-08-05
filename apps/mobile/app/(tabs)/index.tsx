@@ -127,9 +127,6 @@ export default function DashboardScreen() {
                       leading={1.0}
                       color={wp.color.ink}
                       autoShrink
-                      // 0.08em compensates for Fraunces's tall ascenders without
-                      // enlarging the visual size — fixes top-edge glyph clipping.
-                      style={{ paddingTop: heroSize * 0.08 }}
                     >
                       {String(bags)}
                     </SerifNumber>
@@ -375,10 +372,8 @@ const styles = StyleSheet.create({
   },
   heroNumberWrap: {
     flexShrink: 1,
-    // Fraunces 900 italic at 96pt has tall ascenders and an italic slant
-    // overhang. Reserve space above (so ascenders clear the line box) and
-    // right (so the slant doesn't clip against the "bags" label).
-    paddingTop: 12,
+    // Reserve room for Fraunces's italic slant beside the "bags" label.
+    // Vertical font metrics are handled centrally by SerifNumber.
     paddingRight: 18,
   },
   heroUnit: {

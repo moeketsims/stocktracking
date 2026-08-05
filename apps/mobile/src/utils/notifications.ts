@@ -26,7 +26,27 @@ function getExpoProjectId(): string | undefined {
     : undefined;
 }
 
+function getResponseStatus(error: unknown): number | undefined {
+  if (typeof error !== 'object' || error === null || !('response' in error)) {
+    return undefined;
+  }
+
+  const response = (error as { response?: unknown }).response;
+  if (typeof response !== 'object' || response === null || !('status' in response)) {
+    return undefined;
+  }
+
+  const status = (response as { status?: unknown }).status;
+  return typeof status === 'number' ? status : undefined;
+}
+
 export async function registerForPushNotifications(): Promise<string | null> {
+  // Expo Go no longer supports remote push notifications. Registration is
+  // reserved for development and store builds that include native support.
+  if (Constants.appOwnership === 'expo') {
+    return null;
+  }
+
   if (!Device.isDevice) {
     console.log('Push notifications require a physical device');
     return null;
@@ -73,6 +93,12 @@ export async function submitPushToken(token: string): Promise<void> {
   try {
     await api.post('/api/users/push-token', { push_token: token, platform: Platform.OS });
   } catch (error) {
-    console.error('Failed to submit push token:', error);
+    // Authentication expiry is handled by the shared API interceptor. It is
+    // an expected session transition, not a notification failure to surface.
+    if (getResponseStatus(error) === 401) {
+      return;
+    }
+
+    console.warn('Failed to submit push token:', error);
   }
 }

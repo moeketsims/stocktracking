@@ -70,15 +70,20 @@ function cleanupSubscription(subscription?: Notifications.EventSubscription) {
 export function useNotifications() {
   const router = useRouter();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const notificationListener = useRef<Notifications.EventSubscription | undefined>(undefined);
   const responseListener = useRef<Notifications.EventSubscription | undefined>(undefined);
 
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !accessToken) return;
+
+    let active = true;
 
     // Register and submit token
     registerForPushNotifications().then((token) => {
-      if (token) submitPushToken(token);
+      if (active && token && useAuthStore.getState().accessToken === accessToken) {
+        void submitPushToken(token);
+      }
     });
 
     // Listen for notifications received while app is open
@@ -104,8 +109,9 @@ export function useNotifications() {
     );
 
     return () => {
+      active = false;
       cleanupSubscription(notificationListener.current);
       cleanupSubscription(responseListener.current);
     };
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, accessToken, router]);
 }

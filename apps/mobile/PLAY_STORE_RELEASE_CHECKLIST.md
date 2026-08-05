@@ -4,8 +4,8 @@ This checklist is for the Potato Stock Android production release.
 
 ## Build
 
-- Production backend URL: `https://stocktracker-frontend-baaede6418cc.herokuapp.com`
-- Staging backend URL: `https://stocktracker-0560a415bf9e.herokuapp.com`
+- Release backend URL: `https://stocktracker-0560a415bf9e.herokuapp.com`
+- Development, preview, and production profiles currently use the same backend URL.
 - Android package: `com.potatostock.mobile`
 - Build profile: `production`
 - Submit profile: `production` -> Google Play `internal` track
